@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+"""
+Build the PhilReviews static site into docs/ for GitHub Pages.
+
+Renders the Flask app to static HTML and copies assets so the site
+can be served without a backend.
+"""
+
+import os
+import shutil
+import sys
+
+# Ensure imports work regardless of cwd
+ROOT = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, ROOT)
+
+DOCS_DIR = os.path.join(ROOT, "docs")
+STATIC_SRC = os.path.join(ROOT, "static")
+STATIC_DST = os.path.join(DOCS_DIR, "static")
+
+
+def build():
+    from app import app
+
+    # Render the index page via Flask's test client
+    with app.test_client() as client:
+        resp = client.get("/")
+        html = resp.data.decode("utf-8")
+
+    # Prepare docs/ directory
+    os.makedirs(STATIC_DST, exist_ok=True)
+
+    # Write HTML
+    index_path = os.path.join(DOCS_DIR, "index.html")
+    with open(index_path, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    # Copy static assets
+    for fname in os.listdir(STATIC_SRC):
+        src = os.path.join(STATIC_SRC, fname)
+        if os.path.isfile(src):
+            shutil.copy2(src, STATIC_DST)
+
+    # Print summary
+    html_size = os.path.getsize(index_path)
+    print(f"Built docs/index.html ({html_size:,} bytes)")
+    for fname in sorted(os.listdir(STATIC_DST)):
+        fpath = os.path.join(STATIC_DST, fname)
+        print(f"  docs/static/{fname} ({os.path.getsize(fpath):,} bytes)")
+    print("Static site ready in docs/")
+
+
+if __name__ == "__main__":
+    build()

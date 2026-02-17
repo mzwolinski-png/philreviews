@@ -1,0 +1,6 @@
+reviews.db
+.env
+logs/
+__pycache__/
+scraper_progress.json
+*.pyc
