@@ -46,6 +46,10 @@ def build():
         if os.path.isfile(src):
             shutil.copy2(src, STATIC_DST)
 
+    # Write CNAME for custom domain
+    with open(os.path.join(DOCS_DIR, "CNAME"), "w") as f:
+        f.write("philreviews.org")
+
     # Print summary
     html_size = os.path.getsize(index_path)
     print(f"Built docs/index.html ({html_size:,} bytes)")
