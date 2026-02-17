@@ -30,6 +30,11 @@ def build():
     # Prepare docs/ directory
     os.makedirs(STATIC_DST, exist_ok=True)
 
+    # Rewrite absolute paths to relative so it works under a subpath
+    # e.g. /static/style.css → static/style.css
+    html = html.replace('"/static/', '"static/')
+    html = html.replace("'/static/", "'static/")
+
     # Write HTML
     index_path = os.path.join(DOCS_DIR, "index.html")
     with open(index_path, "w", encoding="utf-8") as f:
