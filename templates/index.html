@@ -19,6 +19,24 @@
 
 <div class="container">
 
+    <!-- Sources section -->
+    <div class="sources-section">
+        <h2>Sources</h2>
+        <div class="sources-grid">
+            {% for name, count in sources %}
+            <button class="source-card" data-journal="{{ name }}">
+                <span class="source-name">{{ name }}</span>
+                <span class="source-count">{{ "{:,}".format(count) }}</span>
+            </button>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Quick actions -->
+    <div class="quick-actions">
+        <button id="browse-recent" class="quick-action-btn">Browse Recent Reviews</button>
+    </div>
+
     <!-- Search panel -->
     <div class="search-panel">
         <div class="global-search">

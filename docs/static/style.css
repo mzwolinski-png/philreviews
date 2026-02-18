@@ -290,6 +290,68 @@ tbody td {
   margin-top: 2rem;
 }
 
+/* ---------- Sources section ---------- */
+.sources-section {
+  margin-bottom: 1.5rem;
+}
+.sources-section h2 {
+  font-family: "Libre Baskerville", Georgia, serif;
+  font-size: 1.1rem;
+  color: #1a3a5c;
+  margin: 0 0 0.75rem;
+}
+.sources-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.source-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: #fff;
+  border: 1px solid #e0dcd4;
+  border-radius: 4px;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: #1a3a5c;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.source-card:hover {
+  border-color: #1a3a5c;
+  box-shadow: 0 1px 4px rgba(26, 58, 92, 0.12);
+}
+.source-card .source-name {
+  font-weight: 600;
+}
+.source-card .source-count {
+  font-size: 0.75rem;
+  color: #8b6914;
+  font-weight: 600;
+}
+
+/* ---------- Quick actions ---------- */
+.quick-actions {
+  margin-bottom: 1rem;
+}
+.quick-action-btn {
+  background: #1a3a5c;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.quick-action-btn:hover {
+  background: #254d73;
+}
+
 /* ---------- Responsive ---------- */
 @media (max-width: 768px) {
   .container { padding: 1rem; }

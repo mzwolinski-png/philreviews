@@ -78,6 +78,32 @@
       });
     });
 
+    /* source card clicks — filter by journal */
+    document.querySelectorAll(".source-card").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        clearFilters();
+        els.journalFilter.value = btn.dataset.journal;
+        state.sortKey = "date";
+        state.sortDir = "desc";
+        state.page = 1;
+        update();
+        document.querySelector(".table-wrap").scrollIntoView({ behavior: "smooth" });
+      });
+    });
+
+    /* browse recent reviews */
+    const recentBtn = document.getElementById("browse-recent");
+    if (recentBtn) {
+      recentBtn.addEventListener("click", () => {
+        clearFilters();
+        state.sortKey = "date";
+        state.sortDir = "desc";
+        state.page = 1;
+        update();
+        document.querySelector(".table-wrap").scrollIntoView({ behavior: "smooth" });
+      });
+    }
+
     update();
   });
 

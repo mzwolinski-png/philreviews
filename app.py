@@ -42,11 +42,17 @@ def index():
     min_year = min(years) if years else 2000
     max_year = max(years) if years else 2026
 
+    # Source counts for the sources section
+    from collections import Counter
+    source_counts = Counter(r["journal"] for r in reviews if r["journal"])
+    sources = sorted(source_counts.items(), key=lambda x: -x[1])
+
     return render_template(
         "index.html",
         reviews_json=json.dumps(reviews, ensure_ascii=False),
         total=len(reviews),
         journals=journals,
+        sources=sources,
         min_year=min_year,
         max_year=max_year,
     )
