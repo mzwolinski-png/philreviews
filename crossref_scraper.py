@@ -77,6 +77,26 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
 
         if not pre_italic and book_title:
             # No text before <i>, but check for author after </i>
+            # Handle ", by Author. Edited by Editor" pattern (Mind format)
+            by_match = re.match(r'^by\s+(.+)', post_italic, re.IGNORECASE)
+            if by_match:
+                author_part = by_match.group(1).strip()
+                # Remove "Edited by ..." suffix
+                author_part = re.split(r'\.\s*Edited\s+by\b', author_part, flags=re.IGNORECASE)[0].strip()
+                author_part = re.sub(r'[,.\s]+$', '', author_part).strip()
+                is_edited = bool(re.search(r'\bEdited\b', post_italic, re.IGNORECASE))
+                first, last, has_multiple = _extract_first_author(author_part)
+                if last:
+                    return {
+                        'book_title': book_title,
+                        'book_author_first': first,
+                        'book_author_last': last,
+                        'is_edited_volume': is_edited,
+                        'has_multiple_authors': has_multiple,
+                        'needs_doi_scrape': False,
+                        'format': 'italic_then_author',
+                    }
+
             if post_italic and _looks_like_author_name(post_italic):
                 is_edited = bool(re.search(r'\beds?\.?\b|\beditors?\b', post_italic, re.IGNORECASE))
                 author_clean = re.sub(r',?\s*\beds?\.?\s*$|\beditors?\s*$', '',
