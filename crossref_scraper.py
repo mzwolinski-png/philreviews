@@ -605,6 +605,13 @@ class CrossrefReviewScraper:
             record['_needs_doi_scrape'] = True
             record['_format'] = parsed.get('format', '')
 
+        # Filter: if the book author and reviewer are the same person,
+        # this is likely a symposium piece or research article, not a review
+        if (record.get('Book Author Last Name') and record.get('Reviewer Last Name')
+                and record['Book Author Last Name'].lower() == record['Reviewer Last Name'].lower()
+                and record['Book Author First Name'].lower() == record['Reviewer First Name'].lower()):
+            return None
+
         self.stats['parsed_from_crossref'] += 1
         return record
 
