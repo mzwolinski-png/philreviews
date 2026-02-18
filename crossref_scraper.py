@@ -401,8 +401,13 @@ def is_book_review(crossref_item: dict) -> bool:
             return False
 
     # Positive indicators
-    if '<i>' in title or '<em>' in title:
-        return True
+    # Italic tags suggest a book title, but only if the italic text is substantial
+    # (short italic fragments are likely emphasis, variables, or foreign words)
+    italic_match = re.search(r'<(?:i|em)>(.*?)</(?:i|em)>', title)
+    if italic_match:
+        italic_text = re.sub(r'<[^>]+>', '', italic_match.group(1)).strip()
+        if len(italic_text) >= 15:
+            return True
     if '(review)' in title:
         return True
 
