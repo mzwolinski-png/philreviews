@@ -613,7 +613,7 @@ class CrossrefReviewScraper:
 
         record = {
             'Book Title': _normalize(parsed['book_title']) if parsed['book_title'] else '',
-            'Book Author First Name': _normalize(parsed['book_author_first']),
+            'Book Author First Name': re.sub(r'^by\s+', '', _normalize(parsed['book_author_first']), flags=re.IGNORECASE),
             'Book Author Last Name': _normalize(parsed['book_author_last']),
             'Reviewer First Name': _normalize(reviewer_first),
             'Reviewer Last Name': _normalize(reviewer_last),
