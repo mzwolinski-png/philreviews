@@ -297,7 +297,8 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
         first, last, has_multiple = _extract_first_author(author_clean)
         if (book_title and last and len(book_title) > 5
                 and _looks_like_author_name(author_clean)
-                and len(author_clean.split()) <= 5):
+                and len(author_clean.split()) <= 5
+                and not _looks_like_author_name(book_title)):
             return {
                 'book_title': book_title,
                 'book_author_first': first,
@@ -395,6 +396,97 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
                     'format': 'author_comma_title',
                 }
 
+    # --- Format O: "Author: Title" or "Author. Title" (Environmental Ethics format) ---
+    # Also handles "Author, eds. Title" and "Author, ed.: Title"
+    # Priority: ed(s). pattern first, then ". " split, then ": " split, then ", Title"
+
+    # O-1: "Author, ed(s). Title" or "Author, ed(s).: Title"
+    ee_eds_match = re.match(r'^(.+?),\s*eds?\.\s*:?\s*(.+)', stripped)
+    if ee_eds_match:
+        author_part = ee_eds_match.group(1).strip()
+        title_part = ee_eds_match.group(2).strip()
+        if _looks_like_author_name(author_part) and len(author_part.split()) <= 8 and len(title_part) > 5:
+            first, last, has_multiple = _extract_first_author(author_part)
+            if last:
+                return {
+                    'book_title': title_part,
+                    'book_author_first': first,
+                    'book_author_last': last,
+                    'is_edited_volume': True,
+                    'has_multiple_authors': has_multiple,
+                    'needs_doi_scrape': False,
+                    'format': 'ee_author_title',
+                }
+
+    # O-2: "Author. Title" (period separator — author ends with surname 3+ chars)
+    dot_splits = [(m.start(), m.end()) for m in re.finditer(r'\.\s+', stripped)]
+    for ds_start, ds_end in dot_splits:
+        cand_author = stripped[:ds_start].strip()
+        cand_title = stripped[ds_end:].strip()
+        if not cand_title or not cand_title[0].isupper():
+            continue
+        last_word = cand_author.split()[-1] if cand_author.split() else ''
+        if len(last_word) < 3:
+            continue  # Likely an initial, not the split point
+        if _looks_like_author_name(cand_author) and 2 <= len(cand_author.split()) <= 6 and len(cand_title) > 5:
+            is_edited = bool(re.search(r'\beds?\.?\b|\beditors?\b', cand_author, re.IGNORECASE))
+            first, last, has_multiple = _extract_first_author(cand_author)
+            if last:
+                return {
+                    'book_title': cand_title,
+                    'book_author_first': first,
+                    'book_author_last': last,
+                    'is_edited_volume': is_edited,
+                    'has_multiple_authors': has_multiple,
+                    'needs_doi_scrape': False,
+                    'format': 'ee_author_title',
+                }
+        break  # Only try first valid split
+
+    # O-3: "Author: Title" (colon separator — author is a name, not a book title)
+    ee_colon_match = re.match(r'^(.+?):\s+(.+)', stripped)
+    if ee_colon_match:
+        cand_author = ee_colon_match.group(1).strip()
+        cand_title = ee_colon_match.group(2).strip()
+        # Only treat as author:title if the pre-colon part is a short name
+        if (_looks_like_author_name(cand_author) and 2 <= len(cand_author.split()) <= 6
+                and len(cand_title) > 5):
+            is_edited = bool(re.search(r'\beds?\.?\b|\beditors?\b', cand_author, re.IGNORECASE))
+            author_clean = re.sub(r',?\s*\beds?\.?\s*$', '', cand_author,
+                                  flags=re.IGNORECASE).strip()
+            first, last, has_multiple = _extract_first_author(author_clean)
+            if last:
+                return {
+                    'book_title': cand_title,
+                    'book_author_first': first,
+                    'book_author_last': last,
+                    'is_edited_volume': is_edited,
+                    'has_multiple_authors': has_multiple,
+                    'needs_doi_scrape': False,
+                    'format': 'ee_author_title',
+                }
+
+    # O-4: "Title by Author" (without "(review)" suffix — EE uses this too)
+    ee_by_match = re.match(r'^(.+?)\s+by\s+([A-Z].+?)(?:,\s*eds?\.)?$', stripped)
+    if ee_by_match:
+        cand_title = ee_by_match.group(1).strip()
+        cand_author = ee_by_match.group(2).strip()
+        if _looks_like_author_name(cand_author) and len(cand_title) > 5:
+            is_edited = bool(re.search(r'\beds?\.?\b|\beditors?\b', cand_author, re.IGNORECASE))
+            author_clean = re.sub(r',?\s*\beds?\.?\s*$', '', cand_author,
+                                  flags=re.IGNORECASE).strip()
+            first, last, has_multiple = _extract_first_author(author_clean)
+            if last:
+                return {
+                    'book_title': cand_title,
+                    'book_author_first': first,
+                    'book_author_last': last,
+                    'is_edited_volume': is_edited,
+                    'has_multiple_authors': has_multiple,
+                    'needs_doi_scrape': False,
+                    'format': 'ee_author_title',
+                }
+
     # --- Format F: "Title - Author" or "Title- Author (eds)" (Phil Quarterly old format) ---
     dash_match = re.match(r'^(.+?)\s*[-\u2013\u2014]\s*(.+?)$', stripped)
     if dash_match:
@@ -468,17 +560,34 @@ def _looks_like_author_name(text: str) -> bool:
         return False
 
     # Author names are short and mostly capitalized words
-    # Title fragments tend to have lowercase words like "reflections", "symposium"
+    # Title fragments tend to have lowercase words or common nouns/adjectives
     non_name_words = {'the', 'a', 'an', 'of', 'on', 'in', 'for', 'and', 'to', 'from',
                       'review', 'book', 'symposium', 'critical', 'reflections',
                       'commentary', 'response', 'reply', 'essay', 'matter', 'body',
                       'special', 'is', 'what', 'how', 'why', 'case', 'against',
                       'beyond', 'toward', 'towards', 'between'}
 
+    # Common nouns/adjectives that appear in titles but not as surnames
+    title_words = {'nature', 'ethics', 'justice', 'ecology', 'environmental',
+                   'religion', 'global', 'climate', 'autonomous', 'literature',
+                   'engaging', 'doing', 'cheap', 'plant', 'animal', 'wild',
+                   'poverty', 'growth', 'being', 'piano', 'extinction', 'new',
+                   'connection', 'sustainability', 'change', 'world', 'earth',
+                   'value', 'morality', 'resources', 'rights', 'land',
+                   'marxism', 'stoic', 'african', 'desiring', 'inherent',
+                   'intrinsic', 'social', 'disclosive', 'food'}
+
     # If most words are non-name words, this is probably a title fragment
     lower_words = [w.lower().rstrip('.,;:?!') for w in words]
     non_name_count = sum(1 for w in lower_words if w in non_name_words)
     if non_name_count > len(words) / 2:
+        return False
+
+    # If any word is a common title word (and not a known surname), flag as suspicious
+    # Allow it only if there are also clear name indicators (initials like "J." or "M.")
+    title_word_count = sum(1 for w in lower_words if w in title_words)
+    has_initial = any(re.match(r'^[A-Z]\.$', w) for w in words)
+    if title_word_count > 0 and not has_initial:
         return False
 
     # Check that at least the last word starts with uppercase (last name)
@@ -580,13 +689,44 @@ def is_book_review(crossref_item: dict) -> bool:
     if re.match(r'^review:\s', title):
         return True
 
-    # Pattern: starts with "Author, First. Title" (common Crossref book review format)
+    # Pattern: starts with "LastName, First. <i>Title</i>" (common Crossref book review format)
+    # Must look like "Surname, FirstName" — surname is 1-2 words, no lowercase connectors
     raw_title = (crossref_item.get('title', ['']) or [''])[0]
-    if re.search(r'^[A-Z][^,]+,\s+[A-Z]', raw_title):
-        return True
+    author_comma_match = re.match(r'^([A-Z][a-zA-Z-]+),\s+([A-Z][a-z])', raw_title)
+    if author_comma_match:
+        surname = author_comma_match.group(1)
+        # Ensure it's a plausible surname (2-20 chars, not a common title word)
+        if 2 <= len(surname) <= 20 and surname.lower() not in (
+            'nature', 'ethics', 'justice', 'ecology', 'the', 'being', 'value',
+            'animal', 'people', 'land', 'wild', 'extinction', 'poverty', 'growth'):
+            return True
 
     # Pattern: "Title, by Author"
     if re.search(r',\s+by\s+[A-Z]', raw_title):
+        return True
+
+    # Pattern: "Author: Title" (Environmental Ethics format)
+    # e.g. "Andrew Brennan: Thinking about Nature"
+    colon_match = re.match(r'^([A-Z][a-zA-Z.\s,]+?):\s+([A-Z])', raw_title)
+    if colon_match:
+        name_part = colon_match.group(1).strip()
+        words = name_part.split()
+        if 2 <= len(words) <= 6 and _looks_like_author_name(name_part):
+            return True
+
+    # Pattern: "Author. Title" (Environmental Ethics format)
+    # e.g. "Kohei Saito. Slow Down: The Degrowth Manifesto"
+    # Must end surname (3+ chars) before period, not an initial
+    dot_match = re.match(r'^([A-Z][a-zA-Z.\s,]+?)\.\s+([A-Z][a-z])', raw_title)
+    if dot_match:
+        name_part = dot_match.group(1).strip()
+        words = name_part.split()
+        last_word = words[-1] if words else ''
+        if 2 <= len(words) <= 6 and len(last_word) >= 3 and _looks_like_author_name(name_part):
+            return True
+
+    # Pattern: "Author, eds. Title" (Environmental Ethics edited volume)
+    if re.match(r'^[A-Z].+?,\s*eds?\.\s+[A-Z]', raw_title):
         return True
 
     return False
@@ -653,6 +793,8 @@ class CrossrefReviewScraper:
         'Hypatia': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
         # "Author, Title" or generic "Book reviews" — needs enrichment for generic ones
         'The Journal of Value Inquiry': {'crossref_parseable': True, 'semantic_scholar_enrichable': True},
+        # "Author: Title" or "Author. Title" or "Title by Author"
+        'Environmental Ethics': {'crossref_parseable': True, 'openalex_enrichable': True},
     }
 
     def __init__(self):
