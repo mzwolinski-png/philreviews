@@ -55,8 +55,8 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     title = _normalize(title)
     subtitle = _normalize(subtitle) if subtitle else ''
 
-    # Strip "Book Reviews" / "Book Review" prefix (Ethics, JMP format)
-    stripped = re.sub(r'^Book\s*Reviews?\s*', '', title)
+    # Strip "Book Reviews" / "Book Review" / "Book Review:" prefix
+    stripped = re.sub(r'^Book\s*Reviews?\s*:?\s*', '', title)
 
     # --- Format A/B: <i>/<em> tags present ---
     italic_match = re.search(r'<(?:i|em)>(.*?)</(?:i|em)>', stripped)
@@ -192,6 +192,122 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
                 'format': 'italic_title_only',
             }
 
+    # --- Format H: "Title, written by Author" (JMP format) ---
+    written_by_match = re.match(r'^(.+?),\s+written\s+by\s+(.+?)$', stripped, re.IGNORECASE)
+    if written_by_match:
+        book_title = written_by_match.group(1).strip()
+        author_str = written_by_match.group(2).strip()
+        is_edited = bool(re.search(r'\beds?\.?\b|\beditors?\b', author_str, re.IGNORECASE))
+        author_clean = re.sub(r',?\s*\beds?\.?\s*$', '', author_str,
+                              flags=re.IGNORECASE).strip().rstrip(',').strip()
+        first, last, has_multiple = _extract_first_author(author_clean)
+        if book_title and last:
+            return {
+                'book_title': book_title,
+                'book_author_first': first,
+                'book_author_last': last,
+                'is_edited_volume': is_edited,
+                'has_multiple_authors': has_multiple,
+                'needs_doi_scrape': False,
+                'format': 'title_written_by_author',
+            }
+
+    # --- Format I: "Title, edited by Author" (JMP, others) ---
+    edited_by_match = re.match(r'^(.+?),\s+edited\s+by\s+(.+?)$', stripped, re.IGNORECASE)
+    if edited_by_match:
+        book_title = edited_by_match.group(1).strip()
+        author_str = edited_by_match.group(2).strip()
+        author_clean = re.sub(r'[,.\s]+$', '', author_str).strip()
+        first, last, has_multiple = _extract_first_author(author_clean)
+        if book_title and last:
+            return {
+                'book_title': book_title,
+                'book_author_first': first,
+                'book_author_last': last,
+                'is_edited_volume': True,
+                'has_multiple_authors': has_multiple,
+                'needs_doi_scrape': False,
+                'format': 'title_edited_by_author',
+            }
+
+    # --- Format J: "Title. By Author. (Publisher...)" (Philosophy journal) ---
+    # Matches patterns like:
+    #   "Greek Skepticism. by Charlotte L. Stough. (Berkeley...)"
+    #   "Space, Time and Stuff. By Frank Arntzenius. Oxford University Press, 2012..."
+    by_author_match = re.match(
+        r'^(.+?)\.\s+[Bb]y\s+(.+?)(?:\.\s*\(|\.\s+[A-Z][a-z]+[\s:,])', stripped
+    )
+    if by_author_match:
+        book_title = by_author_match.group(1).strip()
+        author_str = by_author_match.group(2).strip()
+        # Clean trailing punctuation, honorifics etc.
+        author_str = re.sub(r'[,.\s]+$', '', author_str).strip()
+        # Remove parenthetical qualifications like "(ed.)" or degree abbreviations
+        author_str = re.sub(r'\s*\([^)]*\)\s*', ' ', author_str).strip()
+        is_edited = bool(re.search(r'\beds?\.?\b|\beditors?\b|\bEdited\b', author_str, re.IGNORECASE))
+        author_clean = re.sub(r',?\s*\beds?\.?\s*$', '', author_str,
+                              flags=re.IGNORECASE).strip().rstrip(',').strip()
+        first, last, has_multiple = _extract_first_author(author_clean)
+        if book_title and last and len(book_title) > 5 and _looks_like_author_name(author_clean):
+            return {
+                'book_title': book_title,
+                'book_author_first': first,
+                'book_author_last': last,
+                'is_edited_volume': is_edited,
+                'has_multiple_authors': has_multiple,
+                'needs_doi_scrape': False,
+                'format': 'title_by_author_parens',
+            }
+
+    # --- Format M: "Title. Par/By Author." (Dialogue French format) ---
+    par_match = re.match(r'^(.+?)\.\s+[Pp]ar\s+(.+?)\.', stripped)
+    if par_match:
+        book_title = par_match.group(1).strip()
+        author_str = par_match.group(2).strip()
+        author_str = re.sub(r'[,.\s]+$', '', author_str).strip()
+        is_edited = False
+        first, last, has_multiple = _extract_first_author(author_str)
+        if book_title and last and len(book_title) > 5:
+            return {
+                'book_title': book_title,
+                'book_author_first': first,
+                'book_author_last': last,
+                'is_edited_volume': is_edited,
+                'has_multiple_authors': has_multiple,
+                'needs_doi_scrape': False,
+                'format': 'title_par_author',
+            }
+
+    # --- Format L: "Title, Author Name. Publisher, Year, pages." (Econ & Phil) ---
+    # E.g.: "Climate Matters: Ethics in a Warming World, John Broome. Norton, 2012, 224 pages."
+    # Also: "Is Multiculturalism Bad for Women?. Susan Moller Okin. Princeton..."
+    # The author name follows the title, separated by comma or period, then publisher follows.
+    title_comma_author = re.match(
+        r'^(.+?)[,.][ ]+([A-Z][a-zA-Z.\s-]{3,40}?)\.[ ]+(?:[A-Z][a-z]+[\s:,]|\()',
+        stripped
+    )
+    if title_comma_author:
+        book_title = title_comma_author.group(1).strip()
+        # Remove trailing question marks from title that might have been split
+        author_str = title_comma_author.group(2).strip()
+        author_str = re.sub(r'[,.\s]+$', '', author_str).strip()
+        is_edited = bool(re.search(r'\beds?\.?\b|\beditors?\b|\bEdited\b', author_str, re.IGNORECASE))
+        author_clean = re.sub(r',?\s*\beds?\.?\s*$', '', author_str,
+                              flags=re.IGNORECASE).strip().rstrip(',').strip()
+        first, last, has_multiple = _extract_first_author(author_clean)
+        if (book_title and last and len(book_title) > 5
+                and _looks_like_author_name(author_clean)
+                and len(author_clean.split()) <= 5):
+            return {
+                'book_title': book_title,
+                'book_author_first': first,
+                'book_author_last': last,
+                'is_edited_volume': is_edited,
+                'has_multiple_authors': has_multiple,
+                'needs_doi_scrape': False,
+                'format': 'title_comma_author',
+            }
+
     # --- Format C: "Title by Author (review)" (JHP style) ---
     jhp_match = re.match(r'^(.+?)\s+by\s+(.+?)\s*\(review\)\s*$', stripped, re.IGNORECASE)
     if jhp_match:
@@ -279,7 +395,8 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
 
     # --- Format D: title is "Book Review" or similar generic text ---
     if stripped.strip().lower() in ('book review', 'book reviews', 'book review.',
-                                    'book received', 'book notes', 'book note'):
+                                    'book received', 'book notes', 'book note',
+                                    'book reviews:', 'reviews', 'review'):
         return {
             'book_title': '',
             'book_author_first': '',
@@ -462,6 +579,7 @@ class CrossrefReviewScraper:
     # 'openalex_enrichable': book title in Crossref, author looked up via OpenAlex
     # 'skip': needs headless browser (Cloudflare-protected), not yet supported
     JOURNALS = {
+        # --- Original journals ---
         # Category A: <i> tags with author before them
         'Ethics': {'crossref_parseable': True},
         'Utilitas': {'crossref_parseable': True},
@@ -478,6 +596,38 @@ class CrossrefReviewScraper:
         'Mind': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
         # Category F/D mix: older entries have "Title - Author", newer are generic
         'The Philosophical Quarterly': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
+
+        # --- New journals ---
+        # "Title, Author. Publisher, Year, pages." or "<i>Title</i>, by Author"
+        'Economics and Philosophy': {'crossref_parseable': True, 'openalex_enrichable': True},
+        # "Book Review: Title, written/edited by Author" or "Author, Title (Publisher)"
+        'Journal of Moral Philosophy': {'crossref_parseable': True, 'openalex_enrichable': True},
+        # "Title. By Author. (Publisher, Year.)"
+        'Philosophy': {'crossref_parseable': True, 'openalex_enrichable': True},
+        # "Book Review: <i>Title</i>, by Author" or "Book Review: Title"
+        'Political Theory': {'crossref_parseable': True, 'openalex_enrichable': True},
+        # "Title, Author, Publisher" or "Title. Par Author." (French/English)
+        'Dialogue': {'crossref_parseable': True, 'openalex_enrichable': True},
+        # "Author <i>Title</i>. (Publisher, Year)" or "Author. Title. Pp."
+        'Religious Studies': {'crossref_parseable': True},
+        # "<i>Title</i>" or "Title, by Author"
+        'Faith and Philosophy': {'crossref_parseable': True, 'openalex_enrichable': True},
+        # "<i>Title</i>" embedded in text — often no author parseable
+        'British Journal for the History of Philosophy': {'crossref_parseable': False, 'openalex_enrichable': True},
+        # Mixed: "<i>Title</i>" — often no author parseable
+        'The Journal of Aesthetics and Art Criticism': {'crossref_parseable': False, 'openalex_enrichable': True},
+        # Generic "BOOK REVIEWS" — needs Semantic Scholar enrichment
+        'The British Journal of Aesthetics': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
+        # Generic "Book reviews" or "Book Review" — needs enrichment
+        'History and Philosophy of Logic': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
+        # Many generic "Book reviews" — needs enrichment
+        'International Journal for Philosophy of Religion': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
+        # Mixed formats, many generic — needs enrichment
+        'Journal of Applied Philosophy': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
+        # Mixed: some "Author: Title", many not parseable — needs enrichment
+        'Continental Philosophy Review': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
+        # Mixed: "Author Title. City, Publisher" — too inconsistent
+        'Hypatia': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
     }
 
     def __init__(self):
