@@ -372,6 +372,29 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
                     'format': 'review_colon_author_title',
                 }
 
+    # --- Format N: "Author, Title" (Journal of Value Inquiry style) ---
+    # E.g. "Monica Mueller, Contrary to Thoughtlessness: Rethinking Practical Wisdom"
+    # Author part: 1-4 words, looks like a name; Title part: at least 15 chars
+    author_comma_title = re.match(r'^([A-Z][a-zA-Z.\s-]{2,40}?),\s+([A-Z].{14,})$', stripped)
+    if author_comma_title:
+        author_str = author_comma_title.group(1).strip()
+        book_title = author_comma_title.group(2).strip()
+        if _looks_like_author_name(author_str):
+            is_edited = bool(re.search(r'\beds?\.?\b|\beditors?\b', author_str, re.IGNORECASE))
+            author_clean = re.sub(r',?\s*\beds?\.?\s*$', '', author_str,
+                                  flags=re.IGNORECASE).strip().rstrip(',').strip()
+            first, last, has_multiple = _extract_first_author(author_clean)
+            if book_title and last:
+                return {
+                    'book_title': book_title,
+                    'book_author_first': first,
+                    'book_author_last': last,
+                    'is_edited_volume': is_edited,
+                    'has_multiple_authors': has_multiple,
+                    'needs_doi_scrape': False,
+                    'format': 'author_comma_title',
+                }
+
     # --- Format F: "Title - Author" or "Title- Author (eds)" (Phil Quarterly old format) ---
     dash_match = re.match(r'^(.+?)\s*[-\u2013\u2014]\s*(.+?)$', stripped)
     if dash_match:
@@ -628,6 +651,8 @@ class CrossrefReviewScraper:
         'Continental Philosophy Review': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
         # Mixed: "Author Title. City, Publisher" — too inconsistent
         'Hypatia': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
+        # "Author, Title" or generic "Book reviews" — needs enrichment for generic ones
+        'The Journal of Value Inquiry': {'crossref_parseable': True, 'semantic_scholar_enrichable': True},
     }
 
     def __init__(self):
