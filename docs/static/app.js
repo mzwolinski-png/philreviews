@@ -4,6 +4,8 @@
 
   let allReviews = [];
   let filtered = [];
+  let allJournals = [];
+  let selectedJournals = new Set();
   let state = { page: 1, perPage: 25, sortKey: "date", sortDir: "desc", expandedIdx: null };
 
   const esc = (s) => {
@@ -20,12 +22,18 @@
   /* ---------- Init ---------- */
   document.addEventListener("DOMContentLoaded", () => {
     allReviews = JSON.parse(document.getElementById("review-data").textContent);
+
+    /* Build journal list from data */
+    const journalSet = new Set();
+    allReviews.forEach((r) => journalSet.add(r.journal));
+    allJournals = Array.from(journalSet).sort((a, b) => a.localeCompare(b));
+    selectedJournals = new Set(allJournals);
+
     els = {
       globalSearch: $("global-search"),
       titleFilter: $("filter-title"),
       authorFilter: $("filter-author"),
       reviewerFilter: $("filter-reviewer"),
-      journalFilter: $("filter-journal"),
       yearFrom: $("filter-year-from"),
       yearTo: $("filter-year-to"),
       accessFilter: $("filter-access"),
@@ -36,6 +44,11 @@
       perPageSelect: $("per-page"),
       tbody: $("review-tbody"),
       pagination: $("pagination"),
+      journalBtn: $("journal-select-btn"),
+      journalDropdown: $("journal-dropdown"),
+      journalSelectAll: $("journal-select-all"),
+      journalSelectNone: $("journal-select-none"),
+      filterIndicator: $("filter-indicator"),
     };
 
     /* event listeners */
@@ -44,24 +57,71 @@
       els.advancedToggle.textContent = open ? "Hide Advanced Search" : "Advanced Search";
     });
 
-    els.clearBtn.addEventListener("click", clearFilters);
+    els.clearBtn.addEventListener("click", () => {
+      clearFilters();
+      syncToUrl();
+    });
     els.perPageSelect.addEventListener("change", () => {
       state.perPage = parseInt(els.perPageSelect.value, 10);
       state.page = 1;
       render();
+      syncToUrl();
     });
 
     /* debounced text inputs */
     let timer;
-    const debounced = () => { clearTimeout(timer); timer = setTimeout(() => { state.page = 1; update(); }, 200); };
+    const debounced = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => { state.page = 1; update(); syncToUrl(); }, 200);
+    };
     [els.globalSearch, els.titleFilter, els.authorFilter, els.reviewerFilter].forEach(
       (el) => el.addEventListener("input", debounced)
     );
 
     /* instant selects / number inputs */
-    [els.journalFilter, els.yearFrom, els.yearTo, els.accessFilter].forEach(
-      (el) => el.addEventListener("change", () => { state.page = 1; update(); })
+    [els.yearFrom, els.yearTo, els.accessFilter].forEach(
+      (el) => el.addEventListener("change", () => { state.page = 1; update(); syncToUrl(); })
     );
+
+    /* journal multi-select dropdown */
+    els.journalBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      els.journalDropdown.classList.toggle("open");
+    });
+    document.addEventListener("click", (e) => {
+      if (!els.journalDropdown.contains(e.target) && e.target !== els.journalBtn) {
+        els.journalDropdown.classList.remove("open");
+      }
+    });
+    els.journalSelectAll.addEventListener("click", () => {
+      selectedJournals = new Set(allJournals);
+      syncCheckboxes();
+      updateJournalBtnLabel();
+      state.page = 1;
+      update();
+      syncToUrl();
+    });
+    els.journalSelectNone.addEventListener("click", () => {
+      selectedJournals.clear();
+      syncCheckboxes();
+      updateJournalBtnLabel();
+      state.page = 1;
+      update();
+      syncToUrl();
+    });
+    els.journalDropdown.querySelectorAll(".journal-option input").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        if (cb.checked) {
+          selectedJournals.add(cb.value);
+        } else {
+          selectedJournals.delete(cb.value);
+        }
+        updateJournalBtnLabel();
+        state.page = 1;
+        update();
+        syncToUrl();
+      });
+    });
 
     /* sortable headers */
     document.querySelectorAll("th[data-sort]").forEach((th) => {
@@ -75,6 +135,7 @@
         }
         state.page = 1;
         render();
+        syncToUrl();
       });
     });
 
@@ -82,11 +143,14 @@
     document.querySelectorAll(".source-card").forEach((btn) => {
       btn.addEventListener("click", () => {
         clearFilters();
-        els.journalFilter.value = btn.dataset.journal;
+        selectedJournals = new Set([btn.dataset.journal]);
+        syncCheckboxes();
+        updateJournalBtnLabel();
         state.sortKey = "date";
         state.sortDir = "desc";
         state.page = 1;
         update();
+        syncToUrl();
         document.querySelector(".table-wrap").scrollIntoView({ behavior: "smooth" });
       });
     });
@@ -100,12 +164,121 @@
         state.sortDir = "desc";
         state.page = 1;
         update();
+        syncToUrl();
         document.querySelector(".table-wrap").scrollIntoView({ behavior: "smooth" });
       });
     }
 
+    /* popstate for browser back/forward */
+    window.addEventListener("popstate", () => {
+      readFromUrl();
+      update();
+    });
+
+    /* Read URL state, then render */
+    readFromUrl();
     update();
   });
+
+  /* ---------- Journal multi-select helpers ---------- */
+  function syncCheckboxes() {
+    els.journalDropdown.querySelectorAll(".journal-option input").forEach((cb) => {
+      cb.checked = selectedJournals.has(cb.value);
+    });
+  }
+
+  function updateJournalBtnLabel() {
+    if (selectedJournals.size === 0) {
+      els.journalBtn.textContent = "No journals selected";
+    } else if (selectedJournals.size === allJournals.length) {
+      els.journalBtn.textContent = "All Journals";
+    } else if (selectedJournals.size === 1) {
+      els.journalBtn.textContent = Array.from(selectedJournals)[0];
+    } else if (selectedJournals.size <= 2) {
+      els.journalBtn.textContent = Array.from(selectedJournals).join(", ");
+    } else {
+      const first = Array.from(selectedJournals)[0];
+      els.journalBtn.textContent = first + " +" + (selectedJournals.size - 1) + " more";
+    }
+  }
+
+  /* ---------- URL persistence ---------- */
+  function syncToUrl() {
+    const params = new URLSearchParams();
+
+    const g = els.globalSearch.value.trim();
+    if (g) params.set("q", g);
+
+    const ft = els.titleFilter.value.trim();
+    if (ft) params.set("title", ft);
+
+    const fa = els.authorFilter.value.trim();
+    if (fa) params.set("author", fa);
+
+    const fr = els.reviewerFilter.value.trim();
+    if (fr) params.set("reviewer", fr);
+
+    if (selectedJournals.size > 0 && selectedJournals.size < allJournals.length) {
+      params.set("journals", Array.from(selectedJournals).join(","));
+    }
+
+    const y1 = els.yearFrom.value;
+    const y2 = els.yearTo.value;
+    if (y1 || y2) {
+      params.set("year", (y1 || "") + "-" + (y2 || ""));
+    }
+
+    const ac = els.accessFilter.value;
+    if (ac) params.set("access", ac);
+
+    const defaultSort = state.sortKey === "date" && state.sortDir === "desc";
+    if (!defaultSort) params.set("sort", state.sortKey + "-" + state.sortDir);
+
+    if (state.page > 1) params.set("page", state.page);
+
+    const hash = params.toString();
+    const url = window.location.pathname + (hash ? "#" + hash : "");
+    history.replaceState(null, "", url);
+  }
+
+  function readFromUrl() {
+    const hash = window.location.hash.slice(1);
+    if (!hash) return;
+
+    const params = new URLSearchParams(hash);
+
+    if (params.has("q")) els.globalSearch.value = params.get("q");
+    if (params.has("title")) els.titleFilter.value = params.get("title");
+    if (params.has("author")) els.authorFilter.value = params.get("author");
+    if (params.has("reviewer")) els.reviewerFilter.value = params.get("reviewer");
+
+    if (params.has("journals")) {
+      const names = params.get("journals").split(",");
+      selectedJournals = new Set(names.filter((n) => allJournals.includes(n)));
+      syncCheckboxes();
+      updateJournalBtnLabel();
+    }
+
+    if (params.has("year")) {
+      const parts = params.get("year").split("-");
+      if (parts[0]) els.yearFrom.value = parts[0];
+      if (parts[1]) els.yearTo.value = parts[1];
+    }
+
+    if (params.has("access")) els.accessFilter.value = params.get("access");
+
+    if (params.has("sort")) {
+      const sp = params.get("sort").split("-");
+      if (sp.length === 2) {
+        state.sortKey = sp[0];
+        state.sortDir = sp[1];
+      }
+    }
+
+    if (params.has("page")) {
+      state.page = parseInt(params.get("page"), 10) || 1;
+    }
+  }
 
   /* ---------- Filtering ---------- */
   function applyFilters() {
@@ -113,10 +286,10 @@
     const ft = els.titleFilter.value.toLowerCase().trim();
     const fa = els.authorFilter.value.toLowerCase().trim();
     const fr = els.reviewerFilter.value.toLowerCase().trim();
-    const fj = els.journalFilter.value;
     const fy1 = els.yearFrom.value ? parseInt(els.yearFrom.value, 10) : null;
     const fy2 = els.yearTo.value ? parseInt(els.yearTo.value, 10) : null;
     const fac = els.accessFilter.value.toLowerCase();
+    const filterByJournal = selectedJournals.size < allJournals.length;
 
     filtered = allReviews.filter((r) => {
       if (g) {
@@ -126,7 +299,7 @@
       if (ft && !r.title.toLowerCase().includes(ft)) return false;
       if (fa && !r.author.toLowerCase().includes(fa)) return false;
       if (fr && !r.reviewer.toLowerCase().includes(fr)) return false;
-      if (fj && r.journal !== fj) return false;
+      if (filterByJournal && !selectedJournals.has(r.journal)) return false;
       if (fac && r.access.toLowerCase() !== fac) return false;
       if (fy1 || fy2) {
         const y = parseInt((r.date || "").substring(0, 4), 10);
@@ -136,6 +309,25 @@
       }
       return true;
     });
+
+    updateFilterIndicator();
+  }
+
+  function updateFilterIndicator() {
+    const active = [];
+    if (els.globalSearch.value.trim()) active.push("search");
+    if (els.titleFilter.value.trim()) active.push("title");
+    if (els.authorFilter.value.trim()) active.push("author");
+    if (els.reviewerFilter.value.trim()) active.push("reviewer");
+    if (selectedJournals.size < allJournals.length) active.push("journals");
+    if (els.yearFrom.value || els.yearTo.value) active.push("year");
+    if (els.accessFilter.value) active.push("access");
+
+    if (active.length > 0) {
+      els.filterIndicator.textContent = active.length + " filter" + (active.length > 1 ? "s" : "") + " active";
+    } else {
+      els.filterIndicator.textContent = "";
+    }
   }
 
   /* ---------- Sorting ---------- */
@@ -249,7 +441,11 @@
     els.pagination.querySelectorAll(".page-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         const np = parseInt(btn.dataset.p, 10);
-        if (np >= 1 && np <= totalPages) { state.page = np; render(); }
+        if (np >= 1 && np <= totalPages) {
+          state.page = np;
+          render();
+          syncToUrl();
+        }
       });
     });
   }
@@ -260,10 +456,12 @@
     els.titleFilter.value = "";
     els.authorFilter.value = "";
     els.reviewerFilter.value = "";
-    els.journalFilter.value = "";
     els.yearFrom.value = "";
     els.yearTo.value = "";
     els.accessFilter.value = "";
+    selectedJournals = new Set(allJournals);
+    syncCheckboxes();
+    updateJournalBtnLabel();
     state.page = 1;
     state.expandedIdx = null;
     update();

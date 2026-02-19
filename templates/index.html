@@ -25,6 +25,38 @@
         <div class="global-search">
             <input type="text" id="global-search" placeholder="Search all reviews&hellip;" autocomplete="off">
         </div>
+        <div class="filter-bar">
+            <div class="filter-bar-group journal-filter-wrap">
+                <label>Journals</label>
+                <button id="journal-select-btn" type="button">All Journals</button>
+                <div id="journal-dropdown" class="journal-dropdown">
+                    <div class="journal-dropdown-actions">
+                        <button type="button" id="journal-select-all">Select All</button>
+                        <button type="button" id="journal-select-none">Clear</button>
+                    </div>
+                    <div class="journal-dropdown-list">
+                        {% for j in journals %}
+                        <label class="journal-option">
+                            <input type="checkbox" value="{{ j }}" checked> {{ j }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="filter-bar-group year-filter-wrap">
+                <label>Year</label>
+                <div class="year-inputs">
+                    <input type="number" id="filter-year-from" min="{{ min_year }}" max="{{ max_year }}" placeholder="{{ min_year }}">
+                    <span class="year-dash">&ndash;</span>
+                    <input type="number" id="filter-year-to" min="{{ min_year }}" max="{{ max_year }}" placeholder="{{ max_year }}">
+                </div>
+            </div>
+            <div class="filter-bar-group filter-bar-actions">
+                <button id="clear-filters">Clear All Filters</button>
+                <span id="filter-indicator" class="filter-indicator"></span>
+            </div>
+        </div>
+
         <button id="advanced-toggle">Advanced Search</button>
 
         <div id="advanced-panel" class="advanced-filters">
@@ -42,23 +74,6 @@
                     <input type="text" id="filter-reviewer" placeholder="e.g. Smith">
                 </div>
                 <div class="filter-group">
-                    <label for="filter-journal">Journal</label>
-                    <select id="filter-journal">
-                        <option value="">All Journals</option>
-                        {% for j in journals %}
-                        <option value="{{ j }}">{{ j }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label for="filter-year-from">Year From</label>
-                    <input type="number" id="filter-year-from" min="{{ min_year }}" max="{{ max_year }}" placeholder="{{ min_year }}">
-                </div>
-                <div class="filter-group">
-                    <label for="filter-year-to">Year To</label>
-                    <input type="number" id="filter-year-to" min="{{ min_year }}" max="{{ max_year }}" placeholder="{{ max_year }}">
-                </div>
-                <div class="filter-group">
                     <label for="filter-access">Access</label>
                     <select id="filter-access">
                         <option value="">Any</option>
@@ -66,9 +81,6 @@
                         <option value="restricted">Restricted</option>
                     </select>
                 </div>
-            </div>
-            <div class="filter-actions">
-                <button id="clear-filters">Clear All Filters</button>
             </div>
         </div>
     </div>
