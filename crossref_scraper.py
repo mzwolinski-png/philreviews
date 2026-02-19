@@ -55,6 +55,31 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     title = _normalize(title)
     subtitle = _normalize(subtitle) if subtitle else ''
 
+    # --- Format R: "Book Review:Title. Author Name" (old Ethics format, pre-1940) ---
+    # Must check BEFORE stripping prefix, since the "Book Review:" is the signal
+    br_colon = re.match(r'^Book\s*Review\s*:\s*(.+)', title)
+    if br_colon:
+        remainder = br_colon.group(1).strip()
+        # Split at the last ". AuthorName" — author is 1-5 capitalized words at end
+        author_end = re.search(r'\.\s+([A-Z][a-zA-Z.\s-]+?)$', remainder)
+        if author_end:
+            author_str = author_end.group(1).strip()
+            # Validate it looks like a name (not a title fragment)
+            if _looks_like_author_name(author_str):
+                book_title = remainder[:author_end.start()].strip().rstrip('.')
+                if book_title and len(book_title) > 3:
+                    first, last, has_multiple = _extract_first_author(author_str)
+                    if last:
+                        return {
+                            'book_title': book_title,
+                            'book_author_first': first,
+                            'book_author_last': last,
+                            'is_edited_volume': False,
+                            'has_multiple_authors': has_multiple,
+                            'needs_doi_scrape': False,
+                            'format': 'book_review_colon',
+                        }
+
     # Strip "Book Reviews" / "Book Review" / "Book Review:" / "Review of" prefix
     stripped = re.sub(r'^Book\s*Reviews?\s*:?\s*', '', title)
     stripped = re.sub(r'^Review\s+of\s+', '', stripped)
@@ -908,6 +933,11 @@ class CrossrefReviewScraper:
         # "Review of Author's Title. Publisher..." or "Author's Title. Publisher..."
         'Erasmus Journal for Philosophy and Economics': {
             'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # "Review of Title, by Author" format — clean parsing
+        'Ancient Philosophy': {
+            'crossref_parseable': True,
             'detection_mode': 'italic_only',
         },
         # Dedicated review journal — Author, "Title" format; all entries are reviews
