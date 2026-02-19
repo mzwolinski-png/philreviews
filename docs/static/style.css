@@ -280,6 +280,15 @@ tbody td {
   color: #999;
 }
 
+/* ---------- Header link ---------- */
+.site-header h1 a {
+  color: inherit;
+  text-decoration: none;
+}
+.site-header h1 a:hover {
+  text-decoration: underline;
+}
+
 /* ---------- Footer ---------- */
 .site-footer {
   text-align: center;
@@ -288,6 +297,39 @@ tbody td {
   color: #999;
   border-top: 1px solid #e0dcd4;
   margin-top: 2rem;
+}
+.site-footer a {
+  color: #777;
+  text-decoration: none;
+}
+.site-footer a:hover {
+  color: #1a3a5c;
+  text-decoration: underline;
+}
+
+/* ---------- Changelog ---------- */
+.changelog {
+  max-width: 720px;
+}
+.changelog-entry {
+  margin-bottom: 2rem;
+}
+.changelog-entry h2 {
+  font-family: "Libre Baskerville", Georgia, serif;
+  font-size: 1.1rem;
+  color: #1a3a5c;
+  margin: 0 0 0.5rem;
+  border-bottom: 1px solid #e0dcd4;
+  padding-bottom: 0.4rem;
+}
+.changelog-entry ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+.changelog-entry li {
+  margin-bottom: 0.3rem;
+  color: #444;
+  font-size: 0.95rem;
 }
 
 /* ---------- Sources section ---------- */

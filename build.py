@@ -22,10 +22,13 @@ STATIC_DST = os.path.join(DOCS_DIR, "static")
 def build():
     from app import app
 
-    # Render the index page via Flask's test client
+    # Render pages via Flask's test client
     with app.test_client() as client:
         resp = client.get("/")
         html = resp.data.decode("utf-8")
+
+        resp_cl = client.get("/changelog")
+        changelog_html = resp_cl.data.decode("utf-8")
 
     # Prepare docs/ directory
     os.makedirs(STATIC_DST, exist_ok=True)
@@ -34,11 +37,17 @@ def build():
     # e.g. /static/style.css → static/style.css
     html = html.replace('"/static/', '"static/')
     html = html.replace("'/static/", "'static/")
+    changelog_html = changelog_html.replace('"/static/', '"static/')
+    changelog_html = changelog_html.replace("'/static/", "'static/")
 
     # Write HTML
     index_path = os.path.join(DOCS_DIR, "index.html")
     with open(index_path, "w", encoding="utf-8") as f:
         f.write(html)
+
+    changelog_path = os.path.join(DOCS_DIR, "changelog.html")
+    with open(changelog_path, "w", encoding="utf-8") as f:
+        f.write(changelog_html)
 
     # Copy static assets
     for fname in os.listdir(STATIC_SRC):
@@ -52,7 +61,9 @@ def build():
 
     # Print summary
     html_size = os.path.getsize(index_path)
+    cl_size = os.path.getsize(changelog_path)
     print(f"Built docs/index.html ({html_size:,} bytes)")
+    print(f"Built docs/changelog.html ({cl_size:,} bytes)")
     for fname in sorted(os.listdir(STATIC_DST)):
         fpath = os.path.join(STATIC_DST, fname)
         print(f"  docs/static/{fname} ({os.path.getsize(fpath):,} bytes)")

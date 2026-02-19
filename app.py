@@ -58,5 +58,10 @@ def index():
     )
 
 
+@app.route("/changelog")
+def changelog():
+    return render_template("changelog.html")
+
+
 if __name__ == "__main__":
     app.run(debug=True)

@@ -8,34 +8,17 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script data-goatcounter="https://philreviews.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 </head>
 <body>
 
 <header class="site-header">
-    <h1>PhilReviews</h1>
+    <h1><a href="index.html">PhilReviews</a></h1>
     <p class="tagline">A comprehensive index of philosophy book reviews</p>
     <p class="meta">{{ total | default(0) }} reviews &middot; {{ min_year }}&ndash;{{ max_year }}</p>
 </header>
 
 <div class="container">
-
-    <!-- Sources section -->
-    <div class="sources-section">
-        <h2>Sources</h2>
-        <div class="sources-grid">
-            {% for name, count in sources %}
-            <button class="source-card" data-journal="{{ name }}">
-                <span class="source-name">{{ name }}</span>
-                <span class="source-count">{{ "{:,}".format(count) }}</span>
-            </button>
-            {% endfor %}
-        </div>
-    </div>
-
-    <!-- Quick actions -->
-    <div class="quick-actions">
-        <button id="browse-recent" class="quick-action-btn">Browse Recent Reviews</button>
-    </div>
 
     <!-- Search panel -->
     <div class="search-panel">
@@ -90,6 +73,24 @@
         </div>
     </div>
 
+    <!-- Sources section -->
+    <div class="sources-section">
+        <h2>Sources</h2>
+        <div class="sources-grid">
+            {% for name, count in sources %}
+            <button class="source-card" data-journal="{{ name }}">
+                <span class="source-name">{{ name }}</span>
+                <span class="source-count">{{ "{:,}".format(count) }}</span>
+            </button>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Quick actions -->
+    <div class="quick-actions">
+        <button id="browse-recent" class="quick-action-btn">Browse Recent Reviews</button>
+    </div>
+
     <!-- Results bar -->
     <div class="results-bar">
         <span id="result-count"></span>
@@ -126,7 +127,7 @@
 </div>
 
 <footer class="site-footer">
-    PhilReviews &mdash; built by Matt Zwolinski
+    PhilReviews &mdash; built by <a href="https://mzwolinski.com" target="_blank" rel="noopener">Matt Zwolinski</a> &middot; <a href="mailto:mzwolinski@sandiego.edu">Contact</a> &middot; <a href="changelog.html">Update Log</a>
 </footer>
 
 <!-- Embedded review data -->

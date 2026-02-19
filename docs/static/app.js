@@ -210,6 +210,16 @@
       });
     });
 
+    /* GoatCounter click tracking on review links */
+    els.tbody.querySelectorAll(".read-link").forEach((a) => {
+      a.addEventListener("click", (e) => {
+        if (typeof goatcounter !== "undefined" && goatcounter.count) {
+          const label = a.closest(".detail-row").previousElementSibling.querySelector("td").textContent || "unknown";
+          goatcounter.count({ path: "click-" + label, event: true });
+        }
+      });
+    });
+
     /* pagination */
     renderPagination(totalPages);
   }
