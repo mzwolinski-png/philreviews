@@ -55,8 +55,9 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     title = _normalize(title)
     subtitle = _normalize(subtitle) if subtitle else ''
 
-    # Strip "Book Reviews" / "Book Review" / "Book Review:" prefix
+    # Strip "Book Reviews" / "Book Review" / "Book Review:" / "Review of" prefix
     stripped = re.sub(r'^Book\s*Reviews?\s*:?\s*', '', title)
+    stripped = re.sub(r'^Review\s+of\s+', '', stripped)
 
     # --- Format A/B: <i>/<em> tags present ---
     italic_match = re.search(r'<(?:i|em)>(.*?)</(?:i|em)>', stripped)
@@ -83,6 +84,10 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
                 author_part = by_match.group(1).strip()
                 # Remove "Edited by ..." suffix
                 author_part = re.split(r'\.\s*Edited\s+by\b', author_part, flags=re.IGNORECASE)[0].strip()
+                # Remove publisher/city/year tail: "Author. Publisher, City, Year..."
+                # Split at first ". " followed by a word that doesn't look like a name initial
+                # (i.e., not just a single letter followed by a period)
+                author_part = re.split(r'\.\s+(?=[A-Z][a-z]{2,}[\s:,]|\d{4}|\(|[A-Z]\.\s*&)', author_part)[0].strip()
                 author_part = re.sub(r'[,.\s]+$', '', author_part).strip()
                 is_edited = bool(re.search(r'\bEdited\b', post_italic, re.IGNORECASE))
                 first, last, has_multiple = _extract_first_author(author_part)
@@ -327,6 +332,21 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
                 'has_multiple_authors': has_multiple,
                 'needs_doi_scrape': False,
                 'format': 'title_by_author',
+            }
+
+    # --- Format C2: "Title (review)" with no author (Philosophy East and West) ---
+    review_suffix = re.match(r'^(.+?)\s*\(review\)\s*$', stripped, re.IGNORECASE)
+    if review_suffix and not re.search(r'\bby\b', stripped, re.IGNORECASE):
+        book_title = review_suffix.group(1).strip()
+        if book_title and len(book_title) > 3:
+            return {
+                'book_title': book_title,
+                'book_author_first': '',
+                'book_author_last': '',
+                'is_edited_volume': False,
+                'has_multiple_authors': False,
+                'needs_doi_scrape': True,
+                'format': 'title_review_suffix',
             }
 
     # --- Format E: "Title, by Author" or "A Review of Title, by Author" (AJP style) ---
@@ -657,8 +677,16 @@ def _extract_first_author(author_str: str) -> Tuple[str, str, bool]:
 
 # --- Book review detection ---
 
-def is_book_review(crossref_item: dict) -> bool:
-    """Check if a Crossref work item is a book review."""
+def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
+    """Check if a Crossref work item is a book review.
+
+    Args:
+        crossref_item: Crossref API work item.
+        detection_mode: Controls which heuristics are used.
+            'all'        — use every pattern (default, good for EE/JVI-style journals)
+            'italic_only' — only detect via italic tags or explicit "book review" text
+                           (safe for journals whose article titles use colons/subtitles)
+    """
     title = (crossref_item.get('title', ['']) or [''])[0].lower()
 
     # Exclude non-review items
@@ -689,13 +717,16 @@ def is_book_review(crossref_item: dict) -> bool:
     if re.match(r'^review:\s', title):
         return True
 
-    # Pattern: starts with "LastName, First. <i>Title</i>" (common Crossref book review format)
-    # Must look like "Surname, FirstName" — surname is 1-2 words, no lowercase connectors
+    # --- Name-based heuristics (skip for italic_only mode) ---
+    if detection_mode == 'italic_only':
+        return False
+
     raw_title = (crossref_item.get('title', ['']) or [''])[0]
+
+    # Pattern: starts with "LastName, First. <i>Title</i>" (common Crossref book review format)
     author_comma_match = re.match(r'^([A-Z][a-zA-Z-]+),\s+([A-Z][a-z])', raw_title)
     if author_comma_match:
         surname = author_comma_match.group(1)
-        # Ensure it's a plausible surname (2-20 chars, not a common title word)
         if 2 <= len(surname) <= 20 and surname.lower() not in (
             'nature', 'ethics', 'justice', 'ecology', 'the', 'being', 'value',
             'animal', 'people', 'land', 'wild', 'extinction', 'poverty', 'growth'):
@@ -706,7 +737,6 @@ def is_book_review(crossref_item: dict) -> bool:
         return True
 
     # Pattern: "Author: Title" (Environmental Ethics format)
-    # e.g. "Andrew Brennan: Thinking about Nature"
     colon_match = re.match(r'^([A-Z][a-zA-Z.\s,]+?):\s+([A-Z])', raw_title)
     if colon_match:
         name_part = colon_match.group(1).strip()
@@ -715,8 +745,6 @@ def is_book_review(crossref_item: dict) -> bool:
             return True
 
     # Pattern: "Author. Title" (Environmental Ethics format)
-    # e.g. "Kohei Saito. Slow Down: The Degrowth Manifesto"
-    # Must end surname (3+ chars) before period, not an initial
     dot_match = re.match(r'^([A-Z][a-zA-Z.\s,]+?)\.\s+([A-Z][a-z])', raw_title)
     if dot_match:
         name_part = dot_match.group(1).strip()
@@ -795,6 +823,45 @@ class CrossrefReviewScraper:
         'The Journal of Value Inquiry': {'crossref_parseable': True, 'semantic_scholar_enrichable': True},
         # "Author: Title" or "Author. Title" or "Title by Author"
         'Environmental Ethics': {'crossref_parseable': True, 'openalex_enrichable': True},
+
+        # --- Journals added via italic_only detection ---
+        # Article titles commonly use colons/subtitles, so name-based heuristics cause false positives.
+        # "Author <i>Title</i>" or "<i>Title</i>. By Author" format
+        'The British Journal for the Philosophy of Science': {
+            'crossref_parseable': False, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Generic "Book Review"/"Review" titles — needs Semantic Scholar enrichment
+        'Erkenntnis': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Dedicated book review journal — all entries are reviews
+        # Uses italic tags + "- By Author" format; many plain title-only entries
+        'Philosophical Books': {
+            'crossref_parseable': False, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # "Title by Author (review)" or "Title (review)" format
+        'Philosophy East and West': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # "Title by Author (review)" format — near-perfect parsing
+        'The Review of Metaphysics': {
+            'crossref_parseable': True,
+            'detection_mode': 'italic_only',
+        },
+        # "Title (review)" format — title-only, authors via OpenAlex
+        'Philosophy and Literature': {
+            'crossref_parseable': False, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Philosophy journal with reviews — mainly italic + (review) format
+        'Sophia': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
     }
 
     def __init__(self):
@@ -875,7 +942,8 @@ class CrossrefReviewScraper:
                 break
 
         # Filter to book reviews client-side
-        reviews = [item for item in all_items if is_book_review(item)]
+        detection_mode = self.JOURNALS.get(journal_name, {}).get('detection_mode', 'all')
+        reviews = [item for item in all_items if is_book_review(item, detection_mode)]
         self.log(f"  Found {len(all_items)} items, {len(reviews)} book reviews")
         self.stats['journals_searched'] += 1
         self.stats['dois_found'] += len(reviews)
