@@ -393,6 +393,70 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
                     'format': 'review_colon_author_title',
                 }
 
+    # --- Format P: "Author's Title" or "Review of Author's Title" (EJPE style) ---
+    # E.g. "Julian Reiss's Philosophy of economics: a contemporary introduction. Routledge, 2013"
+    # E.g. "Review of Thomas Mulligan's Justice and the Meritocratic State. New York: Routledge, 2018"
+    possessive = re.match(r"^(?:Review of )?(.+?)['\u2019]s\s+(.+)$", stripped)
+    if possessive and not re.search(r'["\u0027\u201c\u2018]', possessive.group(1)):
+        author_str = possessive.group(1).strip()
+        book_title = possessive.group(2).strip()
+        # Clean bibliographic metadata
+        _cities_p = (r'New York|London|Oxford|Cambridge|Princeton|Lanham|Chicago|Ithaca'
+                     r'|Philadelphia|Durham|Minneapolis|Abingdon|San Francisco|Berkeley'
+                     r'|Stanford|New Haven|Cham')
+        _pubs_p = (r'Oxford University Press|Cambridge University Press|Princeton University Press'
+                   r'|Harvard University Press|Cornell University Press|Columbia University Press'
+                   r'|University of Chicago Press|University of California Press|Stanford University Press'
+                   r'|Yale University Press|MIT Press|Routledge|Bloomsbury|Random House'
+                   r'|Palgrave Macmillan|Springer Nature|Springer|Odile Jacob|Allen Lane')
+        book_title = re.sub(r'\s*\([^)]*(?:' + _pubs_p + r')[^)]*\)', '', book_title).strip()
+        # Handle "Title. City (State): Publisher" or "Title. City: Publisher"
+        book_title = re.split(r'\.\s+[A-Z][a-z]+(?:\s*\([^)]+\))?\s*[:,]\s', book_title)[0].strip()
+        book_title = re.split(r'\.\s+(?:' + _pubs_p + r')', book_title)[0].strip()
+        book_title = re.split(r',\s+(?:' + _pubs_p + r')', book_title)[0].strip()
+        book_title = re.split(r',\s+[A-Z][a-z]+(?:\s*\([^)]+\))?\s*[:,]\s', book_title)[0].strip()
+        book_title = re.split(r'\.\s+(?:ISBN|pp\b|\d+\s*pp|\d{4}\b)', book_title)[0].strip()
+        book_title = re.split(r',\s+\d+\s*pp\b', book_title)[0].strip()
+        book_title = re.sub(r'[.,]\s*$', '', book_title).strip()
+        if _looks_like_author_name(author_str) and book_title and len(book_title) > 3:
+            is_edited = bool(re.search(r'\beds?\.?\b|\beditors?\b', author_str, re.IGNORECASE))
+            first, last, has_multiple = _extract_first_author(author_str)
+            if last:
+                return {
+                    'book_title': book_title,
+                    'book_author_first': first,
+                    'book_author_last': last,
+                    'is_edited_volume': is_edited,
+                    'has_multiple_authors': has_multiple,
+                    'needs_doi_scrape': False,
+                    'format': 'possessive_author_title',
+                }
+
+    # --- Format Q: 'Author, "Title"' or "Author, 'Title'" (Philosophy in Review) ---
+    # E.g. 'Thomas Kelly, "Bias: A Philosophical Study"'
+    # E.g. "Michael Hviid Jacobsen, (ed.), \"Postmortal Society: Towards a Sociology of Immortality.\""
+    quoted = re.match(r'^(.+?),?\s*(?:\([Ee]ds?\.?\)\s*\.?\s*,?\s*)?["\u0027\u201c\u2018](.{10,}?)["\u0027\u201d\u2019]\.?\s*$', stripped)
+    if quoted:
+        author_str = quoted.group(1).strip().rstrip(',').strip()
+        # Remove editor markers from author string
+        author_str = re.sub(r',?\s*\([Ee]ds?\.?\)\s*\.?', '', author_str).strip().rstrip(',').strip()
+        # Remove "&amp;" artifacts
+        author_str = author_str.replace('&amp;', '&')
+        book_title = quoted.group(2).strip().rstrip('.')
+        is_edited = bool(re.search(r'\([Ee]ds?\.?\)', stripped))
+        if _looks_like_author_name(author_str) and book_title:
+            first, last, has_multiple = _extract_first_author(author_str)
+            if last:
+                return {
+                    'book_title': book_title,
+                    'book_author_first': first,
+                    'book_author_last': last,
+                    'is_edited_volume': is_edited,
+                    'has_multiple_authors': has_multiple,
+                    'needs_doi_scrape': False,
+                    'format': 'quoted_title',
+                }
+
     # --- Format N: "Author, Title" (Journal of Value Inquiry style) ---
     # E.g. "Monica Mueller, Contrary to Thoughtlessness: Rethinking Practical Wisdom"
     # Author part: 1-4 words, looks like a name; Title part: at least 15 chars
@@ -728,11 +792,18 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
     if re.match(r'^review:\s', title):
         return True
 
+    # Pattern: "Author's Title..." (EJPE possessive format)
+    raw_title = (crossref_item.get('title', ['']) or [''])[0]
+    if re.match(r"^(?:Review of )?[A-Z][a-z]+(?:\s[A-Z]\.?)* [A-Z][a-zA-Z-]+['\u2019]s\s", raw_title):
+        return True
+
+    # Pattern: 'Author, "Title"' or "Author, 'Title'" (Philosophy in Review)
+    if re.match(r'''^[A-Z].+?,\s*(?:\(eds?\.?\)\s*,?\s*)?["'\u201c'].{10,}["'\u201d']''', raw_title):
+        return True
+
     # --- Name-based heuristics (skip for italic_only mode) ---
     if detection_mode == 'italic_only':
         return False
-
-    raw_title = (crossref_item.get('title', ['']) or [''])[0]
 
     # Pattern: starts with "LastName, First. <i>Title</i>" (common Crossref book review format)
     author_comma_match = re.match(r'^([A-Z][a-zA-Z-]+),\s+([A-Z][a-z])', raw_title)
@@ -834,6 +905,16 @@ class CrossrefReviewScraper:
         'The Journal of Value Inquiry': {'crossref_parseable': True, 'semantic_scholar_enrichable': True},
         # "Author: Title" or "Author. Title" or "Title by Author"
         'Environmental Ethics': {'crossref_parseable': True, 'openalex_enrichable': True},
+        # "Review of Author's Title. Publisher..." or "Author's Title. Publisher..."
+        'Erasmus Journal for Philosophy and Economics': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Dedicated review journal — Author, "Title" format; all entries are reviews
+        'Philosophy in Review': {
+            'crossref_parseable': True,
+            'all_reviews': True,
+        },
 
         # --- Journals added via italic_only detection ---
         # Article titles commonly use colons/subtitles, so name-based heuristics cause false positives.
@@ -953,8 +1034,11 @@ class CrossrefReviewScraper:
                 break
 
         # Filter to book reviews client-side
-        detection_mode = self.JOURNALS.get(journal_name, {}).get('detection_mode', 'all')
-        reviews = [item for item in all_items if is_book_review(item, detection_mode)]
+        if self.JOURNALS.get(journal_name, {}).get('all_reviews'):
+            reviews = all_items
+        else:
+            detection_mode = self.JOURNALS.get(journal_name, {}).get('detection_mode', 'all')
+            reviews = [item for item in all_items if is_book_review(item, detection_mode)]
         self.log(f"  Found {len(all_items)} items, {len(reviews)} book reviews")
         self.stats['journals_searched'] += 1
         self.stats['dois_found'] += len(reviews)
