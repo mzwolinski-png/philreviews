@@ -1027,32 +1027,65 @@ class CrossrefReviewScraper:
 
     # --- OpenAlex book author lookup (Category B enrichment) ---
 
-    def _normalize_for_comparison(self, title: str) -> str:
+    def _normalize_for_comparison(self, title: str, drop_subtitle: bool = True) -> str:
         """Normalize a title for fuzzy comparison."""
         t = re.sub(r'<[^>]+>', '', title)
-        t = t.split(':')[0]  # drop subtitle
+        if drop_subtitle:
+            t = t.split(':')[0]  # drop subtitle
         t = re.sub(r'[^a-z0-9 ]', '', t.lower())
         return t.strip()
 
-    def _titles_match(self, book_title: str, openalex_title: str) -> bool:
-        """Check if two book titles are a reasonable match."""
+    def _title_match_score(self, book_title: str, openalex_title: str) -> float:
+        """Score how well two titles match. Returns 0.0 to 1.0."""
+        if not book_title or not openalex_title:
+            return 0.0
+
+        # First compare FULL titles (with subtitles) for a strong match
+        full_book = self._normalize_for_comparison(book_title, drop_subtitle=False)
+        full_oa = self._normalize_for_comparison(openalex_title, drop_subtitle=False)
+        if full_book and full_oa:
+            if full_book == full_oa:
+                return 1.0
+            if full_book.startswith(full_oa) or full_oa.startswith(full_book):
+                # Prefer longer overlap
+                return 0.95 * min(len(full_book), len(full_oa)) / max(len(full_book), len(full_oa))
+            full_book_words = set(full_book.split())
+            full_oa_words = set(full_oa.split())
+            if full_book_words and full_oa_words:
+                full_overlap = len(full_book_words & full_oa_words) / max(len(full_book_words), len(full_oa_words))
+                if full_overlap > 0.8:
+                    return full_overlap * 0.95
+
+        # Fall back to main-title-only comparison
         norm_book = self._normalize_for_comparison(book_title)
         norm_oa = self._normalize_for_comparison(openalex_title)
         if not norm_book or not norm_oa:
-            return False
+            return 0.0
+        if norm_book == norm_oa:
+            return 0.8  # Good but not as confident as full-title match
         if norm_book.startswith(norm_oa) or norm_oa.startswith(norm_book):
-            return True
+            return 0.7 * min(len(norm_book), len(norm_oa)) / max(len(norm_book), len(norm_oa))
         book_words = set(norm_book.split())
         oa_words = set(norm_oa.split())
-        if len(book_words) == 0:
-            return False
+        if not book_words:
+            return 0.0
         overlap = len(book_words & oa_words) / max(len(book_words), len(oa_words))
-        return overlap > 0.7
+        return overlap * 0.6
 
-    def lookup_book_author(self, book_title: str) -> Optional[Tuple[str, str]]:
+    def _titles_match(self, book_title: str, openalex_title: str) -> bool:
+        """Check if two book titles are a reasonable match."""
+        return self._title_match_score(book_title, openalex_title) >= 0.5
+
+    def lookup_book_author(self, book_title: str, review_year: int = 0) -> Optional[Tuple[str, str]]:
         """
         Look up the author of a book via OpenAlex API.
         Returns (first_name, last_name) or None if not found.
+
+        Args:
+            book_title: The book title to search for.
+            review_year: Year the review was published (used to prefer books
+                         published shortly before the review when multiple
+                         books share the same title).
         """
         if not book_title or len(book_title) < 4:
             return None
@@ -1074,20 +1107,51 @@ class CrossrefReviewScraper:
                 return None
 
             results = resp.json().get('results', [])
+            # Score all results and pick the best match
+            best_score = 0.0
+            best_year_penalty = float('inf')
+            best_author = None
             for result in results:
                 oa_title = result.get('title', '')
-                if self._titles_match(book_title, oa_title):
-                    authorships = result.get('authorships', [])
-                    if authorships:
-                        author = authorships[0].get('author', {})
-                        display_name = author.get('display_name', '')
-                        if display_name:
-                            parts = display_name.split()
-                            if len(parts) >= 2:
-                                return (' '.join(parts[:-1]), parts[-1])
-                            elif len(parts) == 1:
-                                return ('', parts[0])
-            return None
+                score = self._title_match_score(book_title, oa_title)
+                if score < 0.5:
+                    continue
+                authorships = result.get('authorships', [])
+                if not authorships:
+                    continue
+                author = authorships[0].get('author', {})
+                display_name = author.get('display_name', '')
+                if not display_name:
+                    continue
+                parts = display_name.split()
+                if not parts:
+                    continue
+
+                # When multiple books have the same score, prefer the one
+                # published closest to (but not after) the review year.
+                # A book reviewed in 2023 most likely came out 2020-2023.
+                oa_year = result.get('publication_year') or 0
+                if review_year and oa_year:
+                    year_diff = review_year - oa_year
+                    # Penalize books published after the review (unlikely)
+                    # and books published long before the review
+                    year_penalty = abs(year_diff) if year_diff >= 0 else 100
+                else:
+                    year_penalty = 50  # Unknown year — neutral
+
+                # Pick this result if it has a higher score, or same score
+                # but better year proximity
+                if (score > best_score
+                        or (score == best_score and year_penalty < best_year_penalty)):
+                    if len(parts) >= 2:
+                        best_score = score
+                        best_year_penalty = year_penalty
+                        best_author = (' '.join(parts[:-1]), parts[-1])
+                    elif len(parts) == 1:
+                        best_score = score
+                        best_year_penalty = year_penalty
+                        best_author = ('', parts[0])
+            return best_author
         except Exception as e:
             self.log(f"  OpenAlex lookup error for '{search_title}': {e}", "WARNING")
             return None
@@ -1110,7 +1174,15 @@ class CrossrefReviewScraper:
             if i > 0 and i % 20 == 0:
                 self.log(f"  OpenAlex progress: {i}/{len(needs_author)} ({found} found)")
 
-            author = self.lookup_book_author(record['Book Title'])
+            # Extract review year to help disambiguate same-titled books
+            review_year = 0
+            pub_date = record.get('Publication Date', '')
+            if pub_date and len(pub_date) >= 4:
+                try:
+                    review_year = int(pub_date[:4])
+                except ValueError:
+                    pass
+            author = self.lookup_book_author(record['Book Title'], review_year=review_year)
             if author:
                 record['Book Author First Name'] = author[0]
                 record['Book Author Last Name'] = author[1]
