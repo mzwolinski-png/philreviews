@@ -400,6 +400,17 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     if author_comma_title:
         author_str = author_comma_title.group(1).strip()
         book_title = author_comma_title.group(2).strip()
+        # Clean bibliographic metadata from title (publisher, city, page count, ISBN, price)
+        _cities = r'New York|London|Oxford|Cambridge|Princeton|Lanham|Chicago|Ithaca|Philadelphia|Durham|Minneapolis'
+        _pubs = (r'Oxford University Press|Cambridge University Press|Princeton University Press'
+                 r'|Harvard University Press|Cornell University Press|Columbia University Press'
+                 r'|Routledge|Bloomsbury|Lexington Books|MIT Press|Anthem Press')
+        book_title = re.sub(r'\s*\([^)]*(?:' + _pubs + r')[^)]*\)(?:\s*,?\s*\d+\s*pages?\.?)?', '', book_title).strip()
+        book_title = re.split(r'\.\s+(?:' + _cities + r')[,:]\s', book_title)[0].strip()
+        book_title = re.split(r'\.\s+(?:' + _pubs + r')', book_title)[0].strip()
+        book_title = re.split(r',\s+(?:' + _cities + r')[,:]\s', book_title)[0].strip()
+        book_title = re.split(r'\.\s+(?:ISBN|pp\b|\d+\s*pp|\d{4}\b)', book_title)[0].strip()
+        book_title = re.sub(r'[.,]\s*$', '', book_title).strip()
         if _looks_like_author_name(author_str):
             is_edited = bool(re.search(r'\beds?\.?\b|\beditors?\b', author_str, re.IGNORECASE))
             author_clean = re.sub(r',?\s*\beds?\.?\s*$', '', author_str,
