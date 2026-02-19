@@ -90,19 +90,50 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
         book_title = re.sub(r'<[^>]+>', '', italic_match.group(1)).strip()
         pre_italic = stripped[:italic_match.start()]
         pre_italic = re.sub(r'<[^>]+>', '', pre_italic)
-        pre_italic = re.sub(r'[,.\s]+$', '', pre_italic).strip()
+        # Strip bibliographic noise: [1984], (1969), (Ed.), dates, prices, page counts
+        pre_italic = re.sub(r',?\s*[\[\(]?\d{4}[\]\)]?\s*', '', pre_italic)
+        pre_italic = re.sub(r'\(\s*\)', '', pre_italic)  # empty parens left after year removal
+        pre_italic = re.sub(r',?\s*\([Ee]ds?\.?\)', '', pre_italic)  # (Ed.) / (Eds.)
+        pre_italic = re.sub(r'[,.\s:;]+$', '', pre_italic).strip()
 
         # Text AFTER the closing </i> tag — e.g. "<i>Title</i>. Author Name"
         post_italic = stripped[italic_match.end():]
         post_italic = re.sub(r'<[^>]+>', '', post_italic)  # strip stray HTML
+        post_italic = post_italic.replace('&amp;', '&')  # decode HTML entities
         # Remove leading punctuation/whitespace: ". Author Name" → "Author Name"
         post_italic = re.sub(r'^[,.\s:;]+', '', post_italic).strip()
+        # Remove "translated by..." / "trans." suffix
+        post_italic = re.split(r',?\s+translated\s+by\b', post_italic, flags=re.IGNORECASE)[0].strip()
         # Remove publisher/city/year tail: "Author Name. New York: Publisher, 2005..."
         post_italic = re.split(r'\.\s+(?:[A-Z][a-z]+:|\d{4}|pp\.)', post_italic)[0].strip()
+        # Split at comma followed by publisher-like or city-like text
+        post_italic = re.split(r',\s+(?:(?:Lawrence|Macmillan|Routledge|Oxford|Cambridge|Princeton|Harvard|Yale|MIT|Springer|Blackwell|Wiley|Penguin|Clarendon|Duckworth|Methuen|Allen|Longman|Chapman|Academic|Humanities|Nijhoff|Reidel|Kluwer)\b|Ltd\.)', post_italic)[0].strip()
+        post_italic = re.split(r',\s+(?:New York|London|Cambridge|Oxford|Princeton|Chicago|Boston|Berkeley|Dordrecht|Leiden|The Hague|Ithaca|Toronto|Paris|Amsterdam|Berlin|Florence|Bloomington|Indianapolis|Philadelphia|Pittsburgh|Notre Dame|Englewood)', post_italic)[0].strip()
+        # Split at comma followed by year
+        post_italic = re.split(r',\s+\d{4}\b', post_italic)[0].strip()
         post_italic = re.sub(r'[,.\s]+$', '', post_italic).strip()
 
         if not pre_italic and book_title:
             # No text before <i>, but check for author after </i>
+            # Handle "Edited by Author" in post_italic (may have subtitle prefix)
+            edited_by_post = re.search(r'[Ee]dited\s+by\s+(.+)', post_italic)
+            if edited_by_post:
+                author_part = edited_by_post.group(1).strip()
+                author_part = re.split(r'\.\s+(?=[A-Z][a-z]{2,}(?:[\s:,]|$)|\d{4})', author_part)[0].strip()
+                author_part = re.split(r',\s+\d{4}\b', author_part)[0].strip()
+                author_part = re.sub(r'[,.\s]+$', '', author_part).strip()
+                first, last, has_multiple = _extract_first_author(author_part)
+                if last and _looks_like_author_name((first + ' ' + last).strip() if first else last):
+                    return {
+                        'book_title': book_title,
+                        'book_author_first': first,
+                        'book_author_last': last,
+                        'is_edited_volume': True,
+                        'has_multiple_authors': has_multiple,
+                        'needs_doi_scrape': False,
+                        'format': 'italic_then_author',
+                    }
+
             # Handle ", by Author. Edited by Editor" pattern (Mind format)
             by_match = re.match(r'^by\s+(.+)', post_italic, re.IGNORECASE)
             if by_match:
@@ -260,16 +291,59 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
                 'format': 'title_edited_by_author',
             }
 
+    # --- Format I2: "Title Edited by Author Publisher, Year, Pages" (no comma before Edited) ---
+    edited_mid = re.match(r'^(.+?)\s+[Ee]dited\s+by\s+(.+)', stripped)
+    if edited_mid:
+        book_title = edited_mid.group(1).strip().rstrip(',.')
+        author_str = edited_mid.group(2).strip()
+        # Strip publisher/price/year/page info from end of author string
+        author_str = re.split(r'\s+(?=[A-Z][a-z]{3,}[,:]\s)', author_str)[0]  # City: or Publisher,
+        author_str = re.sub(r'\s+\d{4}.*$', '', author_str)
+        author_str = re.sub(r',\s*\d+\s*pp\.?.*$', '', author_str)
+        author_str = re.sub(r'\s*[\$£][\d.]+.*$', '', author_str)
+        author_str = re.sub(r'[,.\s]+$', '', author_str).strip()
+        # "Edited by" lists are "First Last, First Last and First Last" format
+        # Extract just the first editor
+        has_multiple = ',' in author_str or ' and ' in author_str.lower()
+        first_editor = re.split(r',\s+|\s+and\s+', author_str, maxsplit=1, flags=re.IGNORECASE)[0].strip()
+        parts = first_editor.split()
+        if len(parts) >= 2:
+            first, last = ' '.join(parts[:-1]), parts[-1]
+        elif len(parts) == 1:
+            first, last = '', parts[0]
+        else:
+            first, last = '', ''
+        if book_title and last and len(book_title) > 5 and _looks_like_author_name(first_editor):
+            return {
+                'book_title': book_title,
+                'book_author_first': first,
+                'book_author_last': last,
+                'is_edited_volume': True,
+                'has_multiple_authors': has_multiple,
+                'needs_doi_scrape': False,
+                'format': 'title_edited_by_mid',
+            }
+
     # --- Format J: "Title. By Author. (Publisher...)" (Philosophy journal) ---
     # Matches patterns like:
     #   "Greek Skepticism. by Charlotte L. Stough. (Berkeley...)"
     #   "Space, Time and Stuff. By Frank Arntzenius. Oxford University Press, 2012..."
-    by_author_match = re.match(
-        r'^(.+?)\.\s+[Bb]y\s+(.+?)(?:\.\s*\(|\.\s+[A-Z][a-z]+[\s:,])', stripped
-    )
+    #   "Title. By Robert R. Magliola, West Lafayette: Publisher. 1977. Pages."
+    by_author_match = re.match(r'^(.+?)\.\s+[Bb]y\s+(.+)', stripped)
     if by_author_match:
         book_title = by_author_match.group(1).strip()
         author_str = by_author_match.group(2).strip()
+        # Strip publisher/city/year/page info from author string
+        # Split at ", City:" or ", City," or ". Publisher" or ". Year" or ". Pages"
+        # Strip city/publisher after author: ", West Lafayette..." or ", Lawrence & Wishart..."
+        author_str = re.split(r',\s+(?:(?:New|West|St\.|San|Los|La|Le|Fort|Ann|Baton|Notre)\s+)?(?:York|London|Cambridge|Oxford|Princeton|Chicago|Boston|Berkeley|Dordrecht|Leiden|Hague|Ithaca|Toronto|Paris|Amsterdam|Berlin|Florence|Bloomington|Indianapolis|Philadelphia|Pittsburgh|Dame|Lafayette|Haven|Bonaventure|Cliffs|Angeles|Francisco|Diego|Arbor|Rouge)\b', author_str)[0]
+        author_str = re.split(r',\s+(?:Lawrence|Macmillan|Routledge|Oxford|Cambridge|Princeton|Harvard|Yale|MIT|Springer|Blackwell|Wiley|Penguin|Clarendon|Duckworth|Methuen|Allen|Longman|Chapman|Academic|Humanities|Nijhoff|Reidel|Kluwer|Ltd)\b', author_str)[0]
+        # Split at ". Publisher/Year" but not after a single initial (e.g. "R. Magliola")
+        pub_split = re.search(r'(?<![A-Z])\.\s+(?:\(|[A-Z][a-z]{3,}[\s:,]|\d{4}|[xivlc]+[,.]|\d+\s+p)', author_str)
+        if pub_split:
+            author_str = author_str[:pub_split.start()]
+        # Split at ", year"
+        author_str = re.split(r',\s+\d{4}\b', author_str)[0]
         # Clean trailing punctuation, honorifics etc.
         author_str = re.sub(r'[,.\s]+$', '', author_str).strip()
         # Remove parenthetical qualifications like "(ed.)" or degree abbreviations
