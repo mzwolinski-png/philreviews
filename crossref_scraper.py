@@ -146,6 +146,10 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
 
         # Text AFTER the closing </i> tag — e.g. "<i>Title</i>. Author Name"
         post_italic = stripped[italic_match.end():]
+        # Truncate at start of second <i> tag (multi-review entries, e.g. HOPE)
+        second_italic = re.search(r'<(?:i|em)>', post_italic)
+        if second_italic:
+            post_italic = post_italic[:second_italic.start()]
         post_italic = re.sub(r'<[^>]+>', '', post_italic)  # strip stray HTML
         post_italic = post_italic.replace('&amp;', '&')  # decode HTML entities
         # Remove leading punctuation/whitespace: ". Author Name" → "Author Name"
