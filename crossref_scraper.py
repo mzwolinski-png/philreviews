@@ -1139,6 +1139,16 @@ class CrossrefReviewScraper:
         'Business Ethics Quarterly': {
             'crossref_parseable': True, 'openalex_enrichable': True,
         },
+        # "Book Review: Title" format — most need OpenAlex for book author
+        'Political Theory': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
+        'Journal of Moral Philosophy': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
+        'Ethical Theory and Moral Practice': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
     }
 
     def __init__(self):
