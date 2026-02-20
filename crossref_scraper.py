@@ -1015,53 +1015,53 @@ class CrossrefReviewScraper:
     JOURNALS = {
         # --- Original journals ---
         # Category A: <i> tags with author before them
-        'Ethics': {'crossref_parseable': True},
-        'Utilitas': {'crossref_parseable': True},
-        'Inquiry': {'crossref_parseable': True},
-        'Philosophy of Science': {'crossref_parseable': True},
-        'European Journal of Philosophy': {'crossref_parseable': True},
+        'Ethics': {'crossref_parseable': True, 'detection_mode': 'italic_only'},
+        'Utilitas': {'crossref_parseable': True, 'detection_mode': 'italic_only'},
+        'Inquiry': {'crossref_parseable': True, 'detection_mode': 'italic_only'},
+        'Philosophy of Science': {'crossref_parseable': True, 'detection_mode': 'italic_only'},
+        'European Journal of Philosophy': {'crossref_parseable': True, 'detection_mode': 'italic_only'},
         # Category C: "Title by Author (review)"
-        'Journal of the History of Philosophy': {'crossref_parseable': True},
+        'Journal of the History of Philosophy': {'crossref_parseable': True, 'detection_mode': 'italic_only'},
         # Category E: "Title, by Author"
-        'Australasian Journal of Philosophy': {'crossref_parseable': True},
+        'Australasian Journal of Philosophy': {'crossref_parseable': True, 'detection_mode': 'italic_only'},
         # Category B: <i>Title</i> only — book author from OpenAlex
-        'The Philosophical Review': {'crossref_parseable': False, 'openalex_enrichable': True},
+        'The Philosophical Review': {'crossref_parseable': False, 'openalex_enrichable': True, 'detection_mode': 'italic_only'},
         # Category D: generic "Book Review" — enriched via Semantic Scholar
-        'Mind': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
+        'Mind': {'crossref_parseable': False, 'semantic_scholar_enrichable': True, 'detection_mode': 'italic_only'},
         # Category F/D mix: older entries have "Title - Author", newer are generic
-        'The Philosophical Quarterly': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
+        'The Philosophical Quarterly': {'crossref_parseable': False, 'semantic_scholar_enrichable': True, 'detection_mode': 'italic_only'},
 
         # --- New journals ---
         # "Title, Author. Publisher, Year, pages." or "<i>Title</i>, by Author"
         'Economics and Philosophy': {'crossref_parseable': True, 'openalex_enrichable': True},
         # "Book Review: Title, written/edited by Author" or "Author, Title (Publisher)"
-        'Journal of Moral Philosophy': {'crossref_parseable': True, 'openalex_enrichable': True},
+        'Journal of Moral Philosophy': {'crossref_parseable': True, 'openalex_enrichable': True, 'detection_mode': 'italic_only'},
         # "Title. By Author. (Publisher, Year.)"
-        'Philosophy': {'crossref_parseable': True, 'openalex_enrichable': True},
+        'Philosophy': {'crossref_parseable': True, 'openalex_enrichable': True, 'detection_mode': 'italic_only'},
         # "Book Review: <i>Title</i>, by Author" or "Book Review: Title"
-        'Political Theory': {'crossref_parseable': True, 'openalex_enrichable': True},
+        'Political Theory': {'crossref_parseable': True, 'openalex_enrichable': True, 'detection_mode': 'italic_only'},
         # "Title, Author, Publisher" or "Title. Par Author." (French/English)
         'Dialogue': {'crossref_parseable': True, 'openalex_enrichable': True},
         # "Author <i>Title</i>. (Publisher, Year)" or "Author. Title. Pp."
         'Religious Studies': {'crossref_parseable': True},
         # "<i>Title</i>" or "Title, by Author"
-        'Faith and Philosophy': {'crossref_parseable': True, 'openalex_enrichable': True},
+        'Faith and Philosophy': {'crossref_parseable': True, 'openalex_enrichable': True, 'detection_mode': 'italic_only'},
         # "<i>Title</i>" embedded in text — often no author parseable
-        'British Journal for the History of Philosophy': {'crossref_parseable': False, 'openalex_enrichable': True},
+        'British Journal for the History of Philosophy': {'crossref_parseable': False, 'openalex_enrichable': True, 'detection_mode': 'italic_only'},
         # Mixed: "<i>Title</i>" — often no author parseable
-        'The Journal of Aesthetics and Art Criticism': {'crossref_parseable': False, 'openalex_enrichable': True},
+        'The Journal of Aesthetics and Art Criticism': {'crossref_parseable': False, 'openalex_enrichable': True, 'detection_mode': 'italic_only'},
         # Generic "BOOK REVIEWS" — needs Semantic Scholar enrichment
-        'The British Journal of Aesthetics': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
+        'The British Journal of Aesthetics': {'crossref_parseable': False, 'semantic_scholar_enrichable': True, 'detection_mode': 'italic_only'},
         # Generic "Book reviews" or "Book Review" — needs enrichment
-        'History and Philosophy of Logic': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
+        'History and Philosophy of Logic': {'crossref_parseable': False, 'semantic_scholar_enrichable': True, 'detection_mode': 'italic_only'},
         # Many generic "Book reviews" — needs enrichment
-        'International Journal for Philosophy of Religion': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
+        'International Journal for Philosophy of Religion': {'crossref_parseable': False, 'semantic_scholar_enrichable': True, 'detection_mode': 'italic_only'},
         # Mixed formats, many generic — needs enrichment
-        'Journal of Applied Philosophy': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
+        'Journal of Applied Philosophy': {'crossref_parseable': False, 'semantic_scholar_enrichable': True, 'detection_mode': 'italic_only'},
         # Mixed: some "Author: Title", many not parseable — needs enrichment
         'Continental Philosophy Review': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
         # Mixed: "Author Title. City, Publisher" — too inconsistent
-        'Hypatia': {'crossref_parseable': False, 'semantic_scholar_enrichable': True},
+        'Hypatia': {'crossref_parseable': False, 'semantic_scholar_enrichable': True, 'detection_mode': 'italic_only'},
         # "Author, Title" or generic "Book reviews" — needs enrichment for generic ones
         'The Journal of Value Inquiry': {'crossref_parseable': True, 'semantic_scholar_enrichable': True},
         # "Author: Title" or "Author. Title" or "Title by Author"
@@ -1138,6 +1138,7 @@ class CrossrefReviewScraper:
         # "Title, by Author. Publisher, Year. Pages." format
         'Business Ethics Quarterly': {
             'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
         },
         # "Book Review: Title" format — most need OpenAlex for book author
         'Political Theory': {
@@ -1148,10 +1149,12 @@ class CrossrefReviewScraper:
         },
         'Ethical Theory and Moral Practice': {
             'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
         },
         # "BOOK REVIEW: Author. TITLE. Publisher, Year." format
         'Hypatia': {
             'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
         },
         # "Author, Title. City: Publisher, Year, ISBN" format
         'Hypatia Reviews Online': {

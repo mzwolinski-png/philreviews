@@ -12,7 +12,7 @@ import sys
 import time
 import sqlite3
 import requests
-from crossref_scraper import parse_review_title, _looks_like_author_name, _extract_first_author
+from crossref_scraper import parse_review_title, _looks_like_author_name, _extract_first_author, is_book_review
 
 DB_PATH = 'reviews.db'
 SESSION = requests.Session()
@@ -355,6 +355,114 @@ def fix_all_titles_with_metadata():
 
     print(f'Cleaned {fixed} titles with bibliographic metadata')
     return fixed
+
+
+def remove_false_positive_reviews():
+    """Remove research articles that were misidentified as book reviews.
+
+    Detection: entries where the 'author' is actually a title fragment,
+    created when parse_review_title() split a research article title at
+    a comma, colon, or hyphen.
+
+    For each suspect entry, re-fetch from Crossref and re-check with
+    strict is_book_review(detection_mode='italic_only'). If it no longer
+    qualifies as a book review, delete it. If it IS a legitimate review,
+    re-parse to fix the author.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+
+    # Find suspect entries: empty first name + non-empty last name (title fragment as "author")
+    # OR first name contains articles/prepositions (another title-fragment pattern)
+    rows = conn.execute("""
+        SELECT id, doi, book_title, book_author_first_name, book_author_last_name,
+               publication_source, review_link
+        FROM reviews
+        WHERE doi != ''
+        AND (
+            -- Pattern 1: empty first name + non-empty last name
+            (book_author_first_name = '' AND book_author_last_name != ''
+             AND LENGTH(book_author_last_name) > 0)
+            OR
+            -- Pattern 2: first name contains prepositions/articles (title fragments)
+            (book_author_first_name LIKE '% of %' OR book_author_first_name LIKE '% and %'
+             OR book_author_first_name LIKE '% the %' OR book_author_first_name LIKE '% in %'
+             OR book_author_first_name LIKE '% for %' OR book_author_first_name LIKE '% to %'
+             OR book_author_first_name LIKE '% a %' OR book_author_first_name LIKE '% an %'
+             OR book_author_first_name LIKE '% on %' OR book_author_first_name LIKE '% with %'
+             OR book_author_first_name LIKE '% from %' OR book_author_first_name LIKE '% or %'
+             OR book_author_first_name LIKE '% is %' OR book_author_first_name LIKE '% as %')
+            OR
+            -- Pattern 3: "last name" is a multi-word phrase (clearly not a surname)
+            (book_author_last_name LIKE '% % %')
+        )
+    """).fetchall()
+    conn.close()
+
+    suspects = [dict(r) for r in rows]
+    print(f'Found {len(suspects)} suspect entries (potential false positives)')
+
+    deleted = 0
+    reparsed = 0
+    kept = 0
+    errors = 0
+    by_journal_deleted = {}
+
+    for i, entry in enumerate(suspects):
+        doi = entry['doi']
+        try:
+            resp = SESSION.get(f'https://api.crossref.org/works/{doi}', timeout=15)
+            if resp.status_code != 200:
+                errors += 1
+                continue
+
+            crossref_data = resp.json()['message']
+
+            # Re-check with strict mode (no name-based heuristics)
+            if is_book_review(crossref_data, detection_mode='italic_only'):
+                # Legitimate book review — re-parse to fix the author
+                raw_title = (crossref_data.get('title', ['']) or [''])[0]
+                subtitle = (crossref_data.get('subtitle', ['']) or [''])[0] if crossref_data.get('subtitle') else ''
+                result = parse_review_title(raw_title, subtitle, crossref_data)
+                if result and result.get('book_title'):
+                    clean_book = clean_title(result['book_title'])
+                    first = result.get('book_author_first', '')
+                    last = result.get('book_author_last', '')
+                    update_entry(entry['id'], book_title=clean_book, first=first, last=last)
+                    reparsed += 1
+                else:
+                    kept += 1
+            else:
+                # NOT a book review — delete it
+                conn = sqlite3.connect(DB_PATH)
+                conn.execute("DELETE FROM reviews WHERE id = ?", (entry['id'],))
+                conn.commit()
+                conn.close()
+                deleted += 1
+                journal = entry['publication_source']
+                by_journal_deleted[journal] = by_journal_deleted.get(journal, 0) + 1
+
+        except Exception as e:
+            errors += 1
+
+        # Rate limiting
+        if (i + 1) % 10 == 0:
+            time.sleep(1)
+
+        if (i + 1) % 200 == 0:
+            print(f'  Processed {i + 1}/{len(suspects)}: {deleted} deleted, {reparsed} re-parsed, {errors} errors')
+
+    print(f'\nFalse positive removal results:')
+    print(f'  Deleted (not book reviews): {deleted}')
+    print(f'  Re-parsed (fixed author): {reparsed}')
+    print(f'  Kept as-is: {kept}')
+    print(f'  Errors: {errors}')
+    if by_journal_deleted:
+        print(f'  Deletions by journal:')
+        for journal, count in sorted(by_journal_deleted.items(), key=lambda x: -x[1]):
+            print(f'    {journal}: {count}')
+
+    return deleted, reparsed
 
 
 def main():
