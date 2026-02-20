@@ -52,23 +52,42 @@ def is_garbled_author(first: str, last: str) -> bool:
     combined = f'{first} {last}'.strip()
     if not combined:
         return False
-    # ISBN patterns
-    if re.search(r'ISBN|978[-\d]|0-\d{4}|97[89]\d', combined, re.IGNORECASE):
+    # ISBN patterns (including old-style 0-xxxx format)
+    if re.search(r'ISBN|978[-\d]|97[89]\d|0-\d{3,}', combined, re.IGNORECASE):
         return True
     # Publisher/institution names
-    if re.search(r'\bPress\b|\bUniversity\b|\bPublisher', combined, re.IGNORECASE):
+    if re.search(r'\bPress\b|\bUniversity\b|\bPublisher|\bVerlag\b|\bEditions?\b|\bPresses\b', combined, re.IGNORECASE):
         return True
     # Page counts
     if re.search(r'\bpp\.|\bpages\b|\bPp\b', combined, re.IGNORECASE):
         return True
     # Prices
-    if re.search(r'[\$£€]\d|dollars?', combined, re.IGNORECASE):
+    if re.search(r'[\$£€]\d|dollars?|\bRs\.', combined, re.IGNORECASE):
         return True
-    # Suspiciously long last name (>30 chars)
-    if len(last) > 30:
+    # Year patterns in author names (e.g. "2009)" or "2011),")
+    if re.search(r'\b(19|20)\d{2}\)?[,.]?\s*$', last):
         return True
-    # Last name is mostly digits
-    if last and sum(c.isdigit() for c in last) > len(last) / 2:
+    if re.search(r'\b(19|20)\d{2}\)', combined):
+        return True
+    # Publication metadata keywords
+    if re.search(r'\bHardcover\b|\bPaperback\b|\bHbk\b|\bPbk\b', combined, re.IGNORECASE):
+        return True
+    # Suspiciously long last name (>25 chars)
+    if len(last) > 25:
+        return True
+    # Last name contains digits
+    if last and re.search(r'\d', last):
+        return True
+    # First name contains colons or semicolons (publisher city patterns)
+    if first and re.search(r'[;:]', first):
+        return True
+    # First name starts with "&amp" (HTML entity)
+    if first and first.startswith('&amp'):
+        return True
+    # Last name is a common non-name word
+    non_names = {'Approaches', 'Alternative', 'Blackwell', 'Thought', 'rapports',
+                 'pages', 'Press', 'Club', 'Allegory', 'Hegel'}
+    if last in non_names:
         return True
     return False
 
@@ -159,15 +178,28 @@ def fix_garbled_authors():
     """Fix entries where author fields contain garbled metadata."""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
+    # Use SQL-based detection for reliability — catches ISBNs, publishers,
+    # page counts, prices, and suspiciously long last names
     rows = conn.execute(
         "SELECT id, doi, book_title, book_author_first_name, book_author_last_name, "
         "publication_source FROM reviews "
-        "WHERE book_author_last_name != '' AND book_author_last_name IS NOT NULL"
+        "WHERE book_author_last_name != '' AND book_author_last_name IS NOT NULL "
+        "AND (book_author_last_name LIKE '%ISBN%' "
+        "  OR book_author_last_name LIKE '%Press%' "
+        "  OR book_author_last_name LIKE '%University%' "
+        "  OR book_author_last_name LIKE '%Publisher%' "
+        "  OR book_author_last_name LIKE '%Verlag%' "
+        "  OR book_author_last_name LIKE '%pp%' "
+        "  OR book_author_last_name LIKE '%pages%' "
+        "  OR book_author_last_name LIKE '%978-%' "
+        "  OR book_author_last_name LIKE '%0-%' "
+        "  OR book_author_last_name LIKE '%Hardcover%' "
+        "  OR book_author_last_name LIKE '%Paperback%' "
+        "  OR LENGTH(book_author_last_name) > 30)"
     ).fetchall()
     conn.close()
 
-    garbled = [dict(r) for r in rows if is_garbled_author(
-        r['book_author_first_name'] or '', r['book_author_last_name'] or '')]
+    garbled = [dict(r) for r in rows]
     print(f'Found {len(garbled)} entries with garbled author names')
 
     fixed = 0
