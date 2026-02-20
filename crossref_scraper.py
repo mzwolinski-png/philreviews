@@ -56,6 +56,7 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     subtitle = _normalize(subtitle) if subtitle else ''
 
     # --- Format R: "Book Review:Title. Author Name" (old Ethics format, pre-1940) ---
+    # Also handles "Book Review: Title" (no author, e.g. QJAE) → title-only with enrichment
     # Must check BEFORE stripping prefix, since the "Book Review:" is the signal
     br_colon = re.match(r'^Book\s*Review\s*:\s*(.+)', title)
     if br_colon:
@@ -79,6 +80,53 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
                             'needs_doi_scrape': False,
                             'format': 'book_review_colon',
                         }
+        # No author found — treat remainder as title-only (QJAE "Book Review: Title" format)
+        if remainder and len(remainder) > 3:
+            # Strip trailing italic markup if present
+            clean_remainder = re.sub(r'<[^>]+>', '', remainder).strip().rstrip('.')
+            if clean_remainder:
+                return {
+                    'book_title': clean_remainder,
+                    'book_author_first': '',
+                    'book_author_last': '',
+                    'is_edited_volume': False,
+                    'has_multiple_authors': False,
+                    'needs_doi_scrape': True,
+                    'format': 'book_review_colon_title_only',
+                }
+
+    # --- Format S: "Review of Author, Title" or "Review of Title, by Author" ---
+    review_of_match = re.match(r'^Review\s+(?:of|Essay:)\s+(.+)', title, re.IGNORECASE)
+    if review_of_match:
+        remainder = review_of_match.group(1).strip()
+        # "Review of Title, by Author" pattern
+        by_match = re.match(r'^(.+?),\s+by\s+(.+?)$', remainder, re.IGNORECASE)
+        if by_match:
+            book_title = by_match.group(1).strip().rstrip('.')
+            author_str = by_match.group(2).strip().rstrip('.')
+            first, last, has_multiple = _extract_first_author(author_str)
+            if book_title and last:
+                return {
+                    'book_title': book_title,
+                    'book_author_first': first,
+                    'book_author_last': last,
+                    'is_edited_volume': False,
+                    'has_multiple_authors': has_multiple,
+                    'needs_doi_scrape': False,
+                    'format': 'review_of_by',
+                }
+        # Title-only: "Review of Title"
+        clean = re.sub(r'<[^>]+>', '', remainder).strip().rstrip('.')
+        if clean and len(clean) > 3:
+            return {
+                'book_title': clean,
+                'book_author_first': '',
+                'book_author_last': '',
+                'is_edited_volume': False,
+                'has_multiple_authors': False,
+                'needs_doi_scrape': True,
+                'format': 'review_of_title_only',
+            }
 
     # Strip "Book Reviews" / "Book Review" / "Book Review:" / "Review of" prefix
     stripped = re.sub(r'^Book\s*Reviews?\s*:?\s*', '', title)
@@ -457,6 +505,15 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
         book_title = ajp_match.group(1).strip().strip('"').strip()
         author_str = ajp_match.group(2).strip()
         is_edited = bool(re.search(r'\beds?\.?\b|\beditors?\b', author_str, re.IGNORECASE))
+        # Strip publisher/city/year/price/page-count metadata from author string
+        # Split at ". City:" or ". Publisher" or ". Year" patterns
+        author_str = re.split(r'\.\s+(?:(?:New|West|St\.|San)\s+)?(?:York|London|Cambridge|Oxford|Princeton|Chicago|Boston|Berkeley|Dordrecht|Leiden|Ithaca|Toronto|Paris|Amsterdam|Berlin|Bloomington|Indianapolis|Philadelphia|Pittsburgh|Notre Dame|Basingstoke|Northampton|Malden|Lanham|Albany|Cham)(?:[\s:,/]|$)', author_str)[0]
+        author_str = re.split(r'\.\s+(?:(?:Lawrence|Macmillan|Routledge|Blackwell|Springer|Penguin|Harvard|Yale|MIT|Clarendon|Wiley|Palgrave|Elgar|Rowman|Doubleday|Houghton|McGraw|Polity|Continuum|Broadview|Hackett|Sage|Brill|Ashgate|Verso|Beacon|Basic|Transaction|Liberty|Ludwig|Mises|Cato|Oxford|Cambridge|Princeton|Cornell|Columbia|Stanford|Chicago|Duke|Georgetown|University|Academic)\s)', author_str)[0]
+        author_str = re.split(r'\.\s+\d{4}\b', author_str)[0]
+        author_str = re.sub(r'\s*\d+\s*pp\.?.*$', '', author_str, flags=re.IGNORECASE)
+        author_str = re.sub(r'\s*ISBN[:\s].*$', '', author_str, flags=re.IGNORECASE)
+        author_str = re.sub(r'\s*[\$£]\d+.*$', '', author_str)
+        author_str = author_str.strip().rstrip('.,;: ')
         author_clean = re.sub(r',?\s*\beds?\.?\s*$', '', author_str,
                               flags=re.IGNORECASE).strip().rstrip(',').strip()
         first, last, has_multiple = _extract_first_author(author_clean)
@@ -938,6 +995,11 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
     if re.match(r'^[A-Z].+?,\s*eds?\.\s+[A-Z]', raw_title):
         return True
 
+    # Pattern: "Title. City: Publisher, Year. Pages." (RAE/BEQ format)
+    # Detect by presence of page count + publisher/city info
+    if re.search(r'\d+\s*pp\b', raw_title, re.IGNORECASE):
+        return True
+
     return False
 
 
@@ -1057,6 +1119,25 @@ class CrossrefReviewScraper:
         'Sophia': {
             'crossref_parseable': True, 'openalex_enrichable': True,
             'detection_mode': 'italic_only',
+        },
+
+        # --- Economics / PPE journals ---
+        # "Book Review: Title" format (newer), "Book reviews" generic (older)
+        'Quarterly Journal of Austrian Economics': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
+        # "<i>Title</i> by Author" format — standard italic detection
+        'History of Political Economy': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # "Author, Title. City: Publisher, Year. Pages. Price" format
+        'The Review of Austrian Economics': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
+        # "Title, by Author. Publisher, Year. Pages." format
+        'Business Ethics Quarterly': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
         },
     }
 
