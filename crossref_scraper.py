@@ -1149,6 +1149,14 @@ class CrossrefReviewScraper:
         'Ethical Theory and Moral Practice': {
             'crossref_parseable': True, 'openalex_enrichable': True,
         },
+        # "BOOK REVIEW: Author. TITLE. Publisher, Year." format
+        'Hypatia': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
+        # "Author, Title. City: Publisher, Year, ISBN" format
+        'Hypatia Reviews Online': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
     }
 
     def __init__(self):
