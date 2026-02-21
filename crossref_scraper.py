@@ -1164,6 +1164,55 @@ class CrossrefReviewScraper:
         'Hypatia Reviews Online': {
             'crossref_parseable': True, 'openalex_enrichable': True,
         },
+
+        # --- Tier 1: New journals (Feb 2026) ---
+        # Generic "Book Review" titles — needs Semantic Scholar enrichment
+        'Law and Philosophy': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # "Book review of Author's Title" — excellent descriptive titles
+        'Phenomenology and the Cognitive Sciences': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # "Book Review: Title" format — parseable with Format R
+        'Philosophy of the Social Sciences': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # "Book Review: Title" format
+        'European Journal of Political Theory': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # --- Tier 2: New journals (Feb 2026) ---
+        # Generic "Book Review" titles — needs Semantic Scholar enrichment
+        'Bioethics': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # "Review Essay" and review format — use italic detection
+        'The Review of Politics': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Generic "Book Review" titles — needs Semantic Scholar enrichment
+        'Studies in History and Philosophy of Science': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Generic "Book Review" titles — needs Semantic Scholar enrichment
+        'Philosophical Psychology': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Generic "Book Review" titles — needs Semantic Scholar enrichment
+        'Public Choice': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
     }
 
     def __init__(self):
