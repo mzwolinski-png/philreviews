@@ -1453,6 +1453,7 @@ class CrossrefReviewScraper:
                     'search': search_title,
                     'select': 'id,title,authorships,publication_year',
                     'per_page': 5,
+                    'api_key': os.getenv('OPENALEX_API_KEY', ''),
                     'mailto': self.crossref_email,
                 },
                 timeout=15,
