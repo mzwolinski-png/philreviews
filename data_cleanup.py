@@ -246,6 +246,149 @@ def fix_garbled_authors():
     return fixed, cleared
 
 
+def lookup_open_library(title, review_year=None):
+    """Look up a book's author via Open Library search API.
+
+    Returns (first_name, last_name) or (None, None) if no match.
+    """
+    if not title or len(title) < 5:
+        return None, None
+
+    # Clean the title for search
+    search_title = re.sub(r'<[^>]+>', '', title)  # Strip HTML
+    search_title = re.sub(r'&amp;', '&', search_title)
+    search_title = re.sub(r'&[a-z]+;', '', search_title)
+    search_title = search_title.strip()
+
+    if len(search_title) < 5:
+        return None, None
+
+    try:
+        resp = SESSION.get('https://openlibrary.org/search.json', params={
+            'title': search_title,
+            'limit': 5,
+            'fields': 'title,author_name,first_publish_year',
+        }, timeout=15)
+        if resp.status_code != 200:
+            return None, None
+
+        docs = resp.json().get('docs', [])
+        if not docs:
+            return None, None
+
+        # Score each result by title similarity and year proximity
+        best_score = -1
+        best_author = None
+
+        for doc in docs:
+            authors = doc.get('author_name', [])
+            if not authors:
+                continue
+
+            # Title similarity: exact or close match
+            doc_title = doc.get('title', '').lower().strip()
+            query_lower = search_title.lower().strip()
+
+            if doc_title == query_lower:
+                title_score = 10
+            elif doc_title.startswith(query_lower) or query_lower.startswith(doc_title):
+                title_score = 7
+            elif query_lower in doc_title or doc_title in query_lower:
+                title_score = 5
+            else:
+                # Skip poor matches
+                continue
+
+            # Year proximity score (review year should be within 0-8 years of book publish)
+            year_score = 0
+            pub_year = doc.get('first_publish_year')
+            if pub_year and review_year:
+                try:
+                    diff = int(review_year) - int(pub_year)
+                    if 0 <= diff <= 3:
+                        year_score = 5
+                    elif -1 <= diff <= 8:
+                        year_score = 3
+                    elif -2 <= diff <= 15:
+                        year_score = 1
+                    else:
+                        year_score = -2  # Penalize far-off years
+                except (ValueError, TypeError):
+                    pass
+
+            total_score = title_score + year_score
+            if total_score > best_score:
+                best_score = total_score
+                best_author = authors[0]
+
+        if best_author and best_score >= 5:
+            # Split "First Last" into parts
+            parts = best_author.strip().split()
+            if len(parts) >= 2:
+                first = ' '.join(parts[:-1])
+                last = parts[-1]
+                # Validate: reject if it looks like garbage
+                if _looks_like_author_name(f'{first} {last}'.strip()):
+                    return first, last
+            elif len(parts) == 1:
+                return '', parts[0]
+
+        return None, None
+    except Exception as e:
+        return None, None
+
+
+def fix_missing_authors_open_library():
+    """Fix missing authors by looking up book titles in Open Library."""
+    entries = get_missing_author_entries()
+    # Filter to entries with reasonable titles
+    eligible = [e for e in entries if e['book_title'] and len(e['book_title']) > 5]
+    print(f'Found {len(eligible)} entries eligible for Open Library lookup')
+
+    fixed = 0
+    failed = 0
+    by_journal = {}
+
+    for i, entry in enumerate(eligible):
+        title = entry['book_title']
+        # Extract year from publication_date if available
+        review_year = None
+        conn = sqlite3.connect(DB_PATH)
+        row = conn.execute("SELECT publication_date FROM reviews WHERE id = ?",
+                          (entry['id'],)).fetchone()
+        conn.close()
+        if row and row[0]:
+            review_year = row[0][:4]
+
+        first, last = lookup_open_library(title, review_year)
+        if first is not None and last:
+            update_entry(entry['id'], first=first, last=last)
+            fixed += 1
+            journal = entry['publication_source']
+            by_journal[journal] = by_journal.get(journal, 0) + 1
+            if fixed <= 20:
+                print(f'  Fixed: "{title[:60]}" → {first} {last}')
+        else:
+            failed += 1
+
+        # Rate limiting: ~2/sec for Open Library
+        if (i + 1) % 2 == 0:
+            time.sleep(0.5)
+
+        if (i + 1) % 100 == 0:
+            print(f'  Processed {i + 1}/{len(eligible)}: {fixed} fixed, {failed} failed')
+
+    print(f'\nOpen Library lookup results:')
+    print(f'  Fixed: {fixed}')
+    print(f'  Still missing: {failed}')
+    if by_journal:
+        print(f'  By journal:')
+        for journal, count in sorted(by_journal.items(), key=lambda x: -x[1]):
+            print(f'    {journal}: {count}')
+
+    return fixed
+
+
 def fix_missing_authors():
     """Re-fetch and re-parse entries with missing authors."""
     entries = get_missing_author_entries()

@@ -1294,6 +1294,41 @@ class CrossrefReviewScraper:
             'crossref_parseable': False, 'semantic_scholar_enrichable': True,
             'detection_mode': 'italic_only',
         },
+
+        # ── History of Philosophy ─────────────────────────────────────
+        # "Author. <i>Title</i>" format — history of philosophy (est. ~842 reviews)
+        'Archiv für Geschichte der Philosophie': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── Philosophy of Mathematics ─────────────────────────────────
+        # "Author. <i>Title</i>" format — philosophy of math (est. ~568 reviews)
+        'Philosophia Mathematica': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── Logic / Epistemology ──────────────────────────────────────
+        # "Author. <i>Title</i>" format — logic and epistemology (est. ~454 reviews)
+        'Dialectica': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── Continental / General Philosophy ──────────────────────────
+        # "<i>Title</i>, by Author" format — continental/general (est. ~121 reviews)
+        'International Journal of Philosophical Studies': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── European Philosophy ───────────────────────────────────────
+        # "Author. <i>Title</i>" format — European analytic philosophy (est. ~40 reviews)
+        'Grazer Philosophische Studien': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
     }
 
     def __init__(self):
