@@ -1213,6 +1213,35 @@ class CrossrefReviewScraper:
             'crossref_parseable': False, 'semantic_scholar_enrichable': True,
             'detection_mode': 'italic_only',
         },
+
+        # --- Non-Western philosophy ---
+        # Generic "Book review" titles — needs Semantic Scholar enrichment
+        'Journal of Indian Philosophy': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Generic "Book Reviews" / "Book review" titles
+        'Asian Philosophy': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Generic "Book Reviews" titles
+        'Dao': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # --- General philosophy (niche) ---
+        # Generic "Book Review" titles
+        'Metaphilosophy': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Generic "Book review" titles
+        'Philosophia': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
     }
 
     def __init__(self):
