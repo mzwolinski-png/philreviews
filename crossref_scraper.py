@@ -1497,6 +1497,43 @@ class CrossrefReviewScraper:
             'crossref_parseable': True, 'openalex_enrichable': True,
             'detection_mode': 'italic_only',
         },
+
+        # ── History of Concepts ───────────────────────────────────────
+        # Archiv für Begriffsgeschichte — ISSN maps to Philologus, skipped
+        # History of Philosophy & Logical Analysis — ISSN maps to wrong journal, skipped
+
+        # ── Analytic Philosophy ───────────────────────────────────────
+        # Analysis (est. ~354 reviews)
+        'Analysis': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Canadian Journal of Philosophy (est. ~126 reviews)
+        'Canadian Journal of Philosophy': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── Feminist Philosophy / Bioethics ───────────────────────────
+        # International Journal of Feminist Approaches to Bioethics (est. ~122 reviews)
+        'IJFAB: International Journal of Feminist Approaches to Bioethics': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── Process Philosophy ────────────────────────────────────────
+        # Process Studies (est. ~95 reviews)
+        'Process Studies': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── Pragmatism ────────────────────────────────────────────────
+        # European Journal of Pragmatism and American Philosophy (est. ~76 reviews)
+        'European Journal of Pragmatism and American Philosophy': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
     }
 
     def __init__(self):
