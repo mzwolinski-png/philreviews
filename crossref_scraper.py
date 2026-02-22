@@ -1383,6 +1383,63 @@ class CrossrefReviewScraper:
             'crossref_parseable': True, 'openalex_enrichable': True,
             'detection_mode': 'italic_only',
         },
+
+        # ── General / Broad Coverage ─────────────────────────────────
+        # Southern Journal of Philosophy (est. ~181 reviews)
+        'The Southern Journal of Philosophy': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Philosophical Forum (est. ~59 reviews)
+        'The Philosophical Forum': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── Philosophy of Education ──────────────────────────────────
+        # Studies in Philosophy and Education (est. ~151 reviews)
+        'Studies in Philosophy and Education': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Journal of Philosophy of Education (est. ~82 reviews)
+        'Journal of Philosophy of Education': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Educational Philosophy and Theory (est. ~134 reviews)
+        'Educational Philosophy and Theory': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── Continental Philosophy (more) ─────────────────────────────
+        # Journal of the British Society for Phenomenology (est. ~143 reviews)
+        'Journal of the British Society for Phenomenology': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── Ancient Philosophy ────────────────────────────────────────
+        # Apeiron — ancient Greek philosophy (est. ~76 reviews)
+        'Apeiron': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── Political Philosophy ──────────────────────────────────────
+        # Critical Review of Intl Social and Political Philosophy (est. ~58 reviews)
+        'Critical Review of International Social and Political Philosophy': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── Philosophy of Science ─────────────────────────────────────
+        # Foundations of Science (est. ~35 reviews)
+        'Foundations of Science': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
     }
 
     def __init__(self):
