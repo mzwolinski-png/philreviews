@@ -484,6 +484,27 @@ tbody td {
   color: #1a3a5c;
   margin: 0 0 0.75rem;
 }
+.sources-toggle {
+  cursor: pointer;
+  user-select: none;
+}
+.sources-toggle:hover {
+  color: #8b6914;
+}
+.source-total {
+  font-size: 0.85rem;
+  font-weight: 400;
+  color: #666;
+}
+.toggle-icon {
+  font-size: 0.7rem;
+  display: inline-block;
+  transition: transform 0.2s;
+  margin-left: 0.3rem;
+}
+.toggle-icon.open {
+  transform: rotate(90deg);
+}
 .sources-grid {
   display: flex;
   flex-wrap: wrap;

@@ -139,6 +139,22 @@
       });
     });
 
+    /* sources toggle — expand/collapse */
+    const sourcesToggle = document.getElementById("sources-toggle");
+    const sourcesGrid = document.getElementById("sources-grid");
+    if (sourcesToggle && sourcesGrid) {
+      sourcesToggle.addEventListener("click", () => {
+        const icon = sourcesToggle.querySelector(".toggle-icon");
+        if (sourcesGrid.style.display === "none") {
+          sourcesGrid.style.display = "flex";
+          if (icon) icon.classList.add("open");
+        } else {
+          sourcesGrid.style.display = "none";
+          if (icon) icon.classList.remove("open");
+        }
+      });
+    }
+
     /* source card clicks — filter by journal */
     document.querySelectorAll(".source-card").forEach((btn) => {
       btn.addEventListener("click", () => {

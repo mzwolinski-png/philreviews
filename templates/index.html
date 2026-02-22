@@ -85,10 +85,13 @@
         </div>
     </div>
 
-    <!-- Sources section -->
+    <!-- Sources section (collapsible) -->
     <div class="sources-section">
-        <h2>Sources</h2>
-        <div class="sources-grid">
+        <h2 class="sources-toggle" id="sources-toggle">
+            Sources <span class="source-total">({{ sources|length }} journals)</span>
+            <span class="toggle-icon">&#9654;</span>
+        </h2>
+        <div class="sources-grid" id="sources-grid" style="display:none;">
             {% for name, count in sources %}
             <button class="source-card" data-journal="{{ name }}">
                 <span class="source-name">{{ name }}</span>
