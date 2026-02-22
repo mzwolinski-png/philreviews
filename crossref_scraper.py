@@ -1440,6 +1440,63 @@ class CrossrefReviewScraper:
             'crossref_parseable': True, 'openalex_enrichable': True,
             'detection_mode': 'italic_only',
         },
+
+        # ── Aesthetics ───────────────────────────────────────────────
+        # British Journal of Aesthetics (est. ~192 reviews)
+        'The British Journal of Aesthetics': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── Social / Political Philosophy (more) ─────────────────────
+        # Philosophy and Social Criticism (est. ~225 reviews)
+        'Philosophy &amp; Social Criticism': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Constellations (est. ~34 reviews)
+        'Constellations': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── Philosophy of Religion (more) ─────────────────────────────
+        # Neue Zeitschrift für Systematische Theologie (est. ~141 reviews)
+        'Neue Zeitschrift für Systematische Theologie und Religionsphilosophie': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── History of Philosophy (more) ──────────────────────────────
+        # Intellectual History Review (est. ~113 reviews)
+        'Intellectual History Review': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Hume Studies (est. ~91 reviews)
+        'Hume Studies': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Studia Leibnitiana (est. ~11 reviews)
+        'Studia Leibnitiana': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── Applied Ethics (more) ─────────────────────────────────────
+        # Science and Engineering Ethics (est. ~68 reviews)
+        'Science and Engineering Ethics': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── General Philosophy ────────────────────────────────────────
+        # Synthese (est. ~104 reviews)
+        'Synthese': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
     }
 
     def __init__(self):
