@@ -1242,6 +1242,58 @@ class CrossrefReviewScraper:
             'crossref_parseable': False, 'semantic_scholar_enrichable': True,
             'detection_mode': 'italic_only',
         },
+
+        # --- Additional niche journals ---
+        # Generic "Book Review" — large backlog from 1900s-1970s
+        'The Monist': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Generic "Book Review Essay" / "Book Review" — education/ethics
+        'Journal of Moral Education': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Generic "Book Review" — Scandinavian general philosophy
+        'Theoria': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Generic "Book Review" — AI/philosophy of mind
+        'Minds and Machines': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Generic "Book Review"
+        'Ratio': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # "Book Review: Title" or "Review of Title" — some parseable
+        'Res Publica': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Generic "BOOK REVIEW" / "Book Review"
+        'Philosophical Investigations': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Generic "BOOK REVIEWS"
+        'Journal of Social Philosophy': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Generic "Book Review" — medieval philosophy
+        'Vivarium': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Book reviews and critical notices — American pragmatism
+        'Transactions of the Charles S. Peirce Society': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
     }
 
     def __init__(self):
