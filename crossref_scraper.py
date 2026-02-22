@@ -1329,6 +1329,60 @@ class CrossrefReviewScraper:
             'crossref_parseable': True, 'openalex_enrichable': True,
             'detection_mode': 'italic_only',
         },
+
+        # ── 17th/18th Century Philosophy ──────────────────────────────
+        # "Author. <i>Title</i>" format — Kant scholarship (est. ~379 reviews)
+        'Kant-Studien': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Leibniz Review — ISSN not indexed in Crossref, skipped
+
+        # ── 19th Century / Continental Philosophy ─────────────────────
+        # Nietzsche scholarship (est. ~68 reviews)
+        'The Journal of Nietzsche Studies': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Hegel scholarship (est. ~45 reviews)
+        'Hegel Bulletin': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Continental/American philosophy (est. ~46 reviews)
+        'The Journal of Speculative Philosophy': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── Philosophy of Language ────────────────────────────────────
+        # Mind and language (est. ~85 reviews)
+        'Mind &amp; Language': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── Applied Ethics ────────────────────────────────────────────
+        # Global bioethics (est. ~28 reviews)
+        'Developing World Bioethics': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── African Philosophy ────────────────────────────────────────
+        # Filosofia Theoretica — too few reviews in Crossref (~2), skipped
+        # East African philosophy (est. ~10 reviews)
+        'Thought and Practice': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── General Analytic Philosophy ───────────────────────────────
+        # Analytic philosophy (est. ~19 reviews)
+        'Acta Analytica': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
     }
 
     def __init__(self):
