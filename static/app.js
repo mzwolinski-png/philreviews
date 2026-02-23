@@ -37,6 +37,7 @@
       yearFrom: $("filter-year-from"),
       yearTo: $("filter-year-to"),
       accessFilter: $("filter-access"),
+      typeFilter: $("filter-type"),
       clearBtn: $("clear-filters"),
       advancedToggle: $("advanced-toggle"),
       advancedPanel: $("advanced-panel"),
@@ -79,7 +80,7 @@
     );
 
     /* instant selects / number inputs */
-    [els.yearFrom, els.yearTo, els.accessFilter].forEach(
+    [els.yearFrom, els.yearTo, els.accessFilter, els.typeFilter].forEach(
       (el) => el.addEventListener("change", () => { state.page = 1; update(); syncToUrl(); })
     );
 
@@ -247,6 +248,9 @@
     const ac = els.accessFilter.value;
     if (ac) params.set("access", ac);
 
+    const tp = els.typeFilter.value;
+    if (tp) params.set("type", tp);
+
     const defaultSort = state.sortKey === "date" && state.sortDir === "desc";
     if (!defaultSort) params.set("sort", state.sortKey + "-" + state.sortDir);
 
@@ -282,6 +286,7 @@
     }
 
     if (params.has("access")) els.accessFilter.value = params.get("access");
+    if (params.has("type")) els.typeFilter.value = params.get("type");
 
     if (params.has("sort")) {
       const sp = params.get("sort").split("-");
@@ -305,6 +310,7 @@
     const fy1 = els.yearFrom.value ? parseInt(els.yearFrom.value, 10) : null;
     const fy2 = els.yearTo.value ? parseInt(els.yearTo.value, 10) : null;
     const fac = els.accessFilter.value.toLowerCase();
+    const ftype = els.typeFilter.value;
     const filterByJournal = selectedJournals.size < allJournals.length;
 
     filtered = allReviews.filter((r) => {
@@ -317,6 +323,7 @@
       if (fr && !r.reviewer.toLowerCase().includes(fr)) return false;
       if (filterByJournal && !selectedJournals.has(r.journal)) return false;
       if (fac && r.access.toLowerCase() !== fac) return false;
+      if (ftype && (r.type || "review") !== ftype) return false;
       if (fy1 || fy2) {
         const y = parseInt((r.date || "").substring(0, 4), 10);
         if (isNaN(y)) return false;
@@ -338,6 +345,7 @@
     if (selectedJournals.size < allJournals.length) active.push("journals");
     if (els.yearFrom.value || els.yearTo.value) active.push("year");
     if (els.accessFilter.value) active.push("access");
+    if (els.typeFilter.value) active.push("type");
 
     if (active.length > 0) {
       els.filterIndicator.textContent = active.length + " filter" + (active.length > 1 ? "s" : "") + " active";
@@ -493,6 +501,7 @@
     els.yearFrom.value = "";
     els.yearTo.value = "";
     els.accessFilter.value = "";
+    els.typeFilter.value = "";
     selectedJournals = new Set(allJournals);
     syncCheckboxes();
     updateJournalBtnLabel();
