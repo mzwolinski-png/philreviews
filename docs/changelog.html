@@ -35,6 +35,21 @@
 <div class="container changelog">
 
     <div class="changelog-entry">
+        <h2>February 23, 2026 (evening)</h2>
+        <ul>
+            <li>Added site logo (PR magnifying glass monogram), favicon, and Open Graph / Twitter Card meta tags for social sharing previews</li>
+            <li>Added 294 missing book reviews from Analysis (now 400 total Analysis reviews, 1934&ndash;2026), including William Talbott&rsquo;s review of L. A. Paul&rsquo;s <em>Transformative Experience</em></li>
+            <li>Major data cleanup: stripped author names that were incorrectly appended to ~14,000 book titles from JSTOR imports</li>
+            <li>Fixed 135 garbled author entries with &ldquo;editby&rdquo; / &ldquo;Editby&rdquo; prefixes jammed into editor names</li>
+            <li>Fixed 23 entries with &ldquo;Critical Notice:&rdquo; / &ldquo;Symposium:&rdquo; / &ldquo;Discussion:&rdquo; prefixes in author fields</li>
+            <li>Cleared 330 entries with publisher info, title fragments, or other garbled data in author fields (colon-split parsing errors)</li>
+            <li>Deleted ~40 non-review articles (discussion articles, regular journal articles) misidentified as book reviews</li>
+            <li>Enriched 778 missing book authors: 132 via Crossref DOI title parsing, 646 via internal cross-referencing (matching entries for the same book reviewed in different journals)</li>
+            <li>Fixed HTML entities in journal names: Mind &amp; Language, Philosophy &amp; Social Criticism</li>
+        </ul>
+    </div>
+
+    <div class="changelog-entry">
         <h2>February 23, 2026</h2>
         <ul>
             <li>Massive JSTOR metadata import: 31,038 new reviews from JSTOR&rsquo;s complete metadata archive, expanding the database from 46,313 to 77,351 reviews across 158 journals</li>
