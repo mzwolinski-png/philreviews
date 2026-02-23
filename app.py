@@ -29,6 +29,8 @@ def normalize(record):
         "link": link,
         "summary": record.get("review_summary", ""),
         "access": record.get("access_type", ""),
+        "type": record.get("entry_type", "review") or "review",
+        "symposium_group": record.get("symposium_group", ""),
     }
 
 

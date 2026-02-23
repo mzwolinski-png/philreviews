@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS reviews (
     review_summary TEXT,
     access_type TEXT,
     doi TEXT,
+    entry_type TEXT DEFAULT 'review',
+    symposium_group TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_doi
@@ -35,10 +37,21 @@ def _connect():
     return sqlite3.connect(DB_PATH)
 
 
+def _migrate(conn):
+    """Add new columns if they don't exist (for existing databases)."""
+    cursor = conn.execute("PRAGMA table_info(reviews)")
+    existing_cols = {row[1] for row in cursor.fetchall()}
+    if 'entry_type' not in existing_cols:
+        conn.execute("ALTER TABLE reviews ADD COLUMN entry_type TEXT DEFAULT 'review'")
+    if 'symposium_group' not in existing_cols:
+        conn.execute("ALTER TABLE reviews ADD COLUMN symposium_group TEXT")
+
+
 def init_db():
     """Create the reviews table if it doesn't exist."""
     with _connect() as conn:
         conn.executescript(_SCHEMA)
+        _migrate(conn)
 
 
 def insert_review(fields: dict):
@@ -47,6 +60,7 @@ def insert_review(fields: dict):
         "book_title", "book_author_first_name", "book_author_last_name",
         "reviewer_first_name", "reviewer_last_name", "publication_source",
         "publication_date", "review_link", "review_summary", "access_type", "doi",
+        "entry_type", "symposium_group",
     ]
     values = [fields.get(c, "") for c in cols]
     placeholders = ", ".join("?" for _ in cols)
@@ -64,6 +78,7 @@ def insert_reviews(records: list[dict]):
         "book_title", "book_author_first_name", "book_author_last_name",
         "reviewer_first_name", "reviewer_last_name", "publication_source",
         "publication_date", "review_link", "review_summary", "access_type", "doi",
+        "entry_type", "symposium_group",
     ]
     placeholders = ", ".join("?" for _ in cols)
     col_names = ", ".join(cols)

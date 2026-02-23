@@ -376,6 +376,10 @@ tbody td {
 }
 .badge-open { background: #d4edda; color: #155724; }
 .badge-restricted { background: #f8d7da; color: #721c24; }
+.badge-symposium { background: #d1ecf1; color: #0c5460; }
+.symposium-peers { margin-top: 0.5rem; font-size: 0.85rem; }
+.symposium-peers ul { margin: 0.25rem 0 0 1.2rem; padding: 0; }
+.symposium-peers li { margin-bottom: 0.2rem; }
 
 .read-link {
   color: #1a3a5c;

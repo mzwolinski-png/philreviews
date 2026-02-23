@@ -368,7 +368,7 @@
 
     const total = allReviews.length;
     const count = filtered.length;
-    els.resultCount.textContent = "Showing " + count.toLocaleString() + " of " + total.toLocaleString() + " reviews";
+    els.resultCount.textContent = "Showing " + count.toLocaleString() + " of " + total.toLocaleString() + " entries";
 
     /* sort indicators */
     document.querySelectorAll("th[data-sort]").forEach((th) => {
@@ -399,11 +399,29 @@
       if (expanded) {
         html += '<tr class="detail-row"><td colspan="5"><div class="detail-content">';
         if (r.summary) html += '<p class="summary">' + esc(r.summary) + "</p>";
+        if (r.type === "symposium") {
+          html += '<span class="access-badge badge-symposium">Symposium</span> ';
+        }
         if (r.access) {
           const cls = r.access.toLowerCase() === "open" ? "badge-open" : "badge-restricted";
           html += '<span class="access-badge ' + cls + '">' + esc(r.access) + "</span> ";
         }
-        if (r.link) html += '<a class="read-link" href="' + esc(r.link) + '" target="_blank" rel="noopener">Read Review &rarr;</a>';
+        if (r.link) html += '<a class="read-link" href="' + esc(r.link) + '" target="_blank" rel="noopener">' + (r.type === "symposium" ? "Read Contribution" : "Read Review") + ' &rarr;</a>';
+        if (r.type === "symposium" && r.symposium_group) {
+          const peers = allReviews.filter(function(p) {
+            return p.symposium_group === r.symposium_group && p !== r;
+          });
+          if (peers.length > 0) {
+            html += '<div class="symposium-peers"><strong>Other contributions:</strong><ul>';
+            peers.forEach(function(p) {
+              html += "<li>" + esc(p.reviewer);
+              if (p.title && p.title !== r.title) html += ' — "' + esc(p.title) + '"';
+              if (p.link) html += ' <a href="' + esc(p.link) + '" target="_blank" rel="noopener">Read &rarr;</a>';
+              html += "</li>";
+            });
+            html += "</ul></div>";
+          }
+        }
         html += "</div></td></tr>";
       }
     });
