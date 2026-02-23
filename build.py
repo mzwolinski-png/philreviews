@@ -6,7 +6,6 @@ Renders the Flask app to static HTML and copies assets so the site
 can be served without a backend.
 """
 
-import csv
 import os
 import shutil
 import sys
@@ -56,36 +55,6 @@ def build():
         if os.path.isfile(src):
             shutil.copy2(src, STATIC_DST)
 
-    # Generate CSV data export
-    from db import get_all_reviews
-    reviews = get_all_reviews()
-    csv_path = os.path.join(DOCS_DIR, "philreviews.csv")
-    fieldnames = [
-        "title", "author", "reviewer", "journal", "date",
-        "link", "doi", "access", "type",
-    ]
-    with open(csv_path, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for r in reviews:
-            first = (r.get("book_author_first_name") or "").strip()
-            last = (r.get("book_author_last_name") or "").strip()
-            author = f"{first} {last}".strip()
-            rev_first = (r.get("reviewer_first_name") or "").strip()
-            rev_last = (r.get("reviewer_last_name") or "").strip()
-            reviewer = f"{rev_first} {rev_last}".strip()
-            writer.writerow({
-                "title": r.get("book_title", ""),
-                "author": author,
-                "reviewer": reviewer,
-                "journal": r.get("publication_source", ""),
-                "date": r.get("publication_date", ""),
-                "link": r.get("review_link", ""),
-                "doi": r.get("doi", ""),
-                "access": r.get("access_type", ""),
-                "type": r.get("entry_type", ""),
-            })
-
     # Copy favicon to docs root so /favicon.svg works
     favicon_src = os.path.join(STATIC_SRC, "favicon.svg")
     if os.path.exists(favicon_src):
@@ -98,10 +67,8 @@ def build():
     # Print summary
     html_size = os.path.getsize(index_path)
     cl_size = os.path.getsize(changelog_path)
-    csv_size = os.path.getsize(csv_path)
     print(f"Built docs/index.html ({html_size:,} bytes)")
     print(f"Built docs/changelog.html ({cl_size:,} bytes)")
-    print(f"Built docs/philreviews.csv ({csv_size:,} bytes)")
     for fname in sorted(os.listdir(STATIC_DST)):
         fpath = os.path.join(STATIC_DST, fname)
         print(f"  docs/static/{fname} ({os.path.getsize(fpath):,} bytes)")
