@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="8" fill="#1a3a5c"/>
+  <!-- Magnifying glass circle -->
+  <circle cx="28" cy="26" r="18" fill="none" stroke="#faf9f6" stroke-width="3"/>
+  <!-- Handle -->
+  <line x1="40" y1="40" x2="54" y2="54" stroke="#faf9f6" stroke-width="4" stroke-linecap="round"/>
+  <!-- Gold inner ring -->
+  <circle cx="28" cy="26" r="14" fill="none" stroke="#8b6914" stroke-width="1" opacity="0.6"/>
+  <!-- PR inside -->
+  <text x="14" y="33" font-family="'Georgia', serif" font-weight="700" font-size="22" fill="#faf9f6">P</text>
+  <text x="28" y="33" font-family="'Georgia', serif" font-weight="700" font-size="22" fill="#8b6914">R</text>
+</svg>

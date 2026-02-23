@@ -55,6 +55,11 @@ def build():
         if os.path.isfile(src):
             shutil.copy2(src, STATIC_DST)
 
+    # Copy favicon to docs root so /favicon.svg works
+    favicon_src = os.path.join(STATIC_SRC, "favicon.svg")
+    if os.path.exists(favicon_src):
+        shutil.copy2(favicon_src, os.path.join(DOCS_DIR, "favicon.svg"))
+
     # Write CNAME for custom domain
     with open(os.path.join(DOCS_DIR, "CNAME"), "w") as f:
         f.write("philreviews.org")
