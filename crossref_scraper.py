@@ -1572,7 +1572,6 @@ class CrossrefReviewScraper:
             journal_name: Crossref container-title to filter on.
             max_results: Stop after this many *total* items fetched (0 = no limit).
         """
-        self.log(f"Searching {journal_name}...")
         all_items = []
         cursor = '*'
         page = 0
@@ -1596,7 +1595,7 @@ class CrossrefReviewScraper:
                 all_items.extend(items)
                 page += 1
 
-                if page % 10 == 0:
+                if page % 50 == 0:
                     self.log(f"  {journal_name}: fetched {len(all_items)} items so far...")
 
                 if max_results and len(all_items) >= max_results:
@@ -1619,7 +1618,7 @@ class CrossrefReviewScraper:
         else:
             detection_mode = self.JOURNALS.get(journal_name, {}).get('detection_mode', 'all')
             reviews = [item for item in all_items if is_book_review(item, detection_mode)]
-        self.log(f"  Found {len(all_items)} items, {len(reviews)} book reviews")
+        self.log(f"  {journal_name}: {len(all_items)} items, {len(reviews)} book reviews")
         self.stats['journals_searched'] += 1
         self.stats['dois_found'] += len(reviews)
         return reviews
@@ -1847,7 +1846,7 @@ class CrossrefReviewScraper:
         self.log(f"Looking up {len(needs_author)} book authors via OpenAlex...")
         found = 0
         for i, record in enumerate(needs_author):
-            if i > 0 and i % 20 == 0:
+            if i > 0 and i % 100 == 0:
                 self.log(f"  OpenAlex progress: {i}/{len(needs_author)} ({found} found)")
 
             # Extract review year to help disambiguate same-titled books
@@ -2089,7 +2088,6 @@ class CrossrefReviewScraper:
                 if record:
                     journal_records.append(record)
 
-            self.log(f"  Extracted {len(journal_records)} records from {journal}")
             all_records.extend(journal_records)
 
         if not skip_enrichment:
@@ -2110,49 +2108,24 @@ class CrossrefReviewScraper:
         else:
             self.log("Dry run — skipping database insert")
 
-        # Final stats
         duration = datetime.now() - start
-        self.log(f"\nCompleted in {str(duration).split('.')[0]}")
-        self.log(f"Stats: {json.dumps(self.stats, indent=2)}")
+        self.log(f"Completed in {str(duration).split('.')[0]}")
 
         self.results = all_records
         return all_records
 
     def _print_results(self, records: List[Dict]):
-        """Print a summary of extracted records grouped by journal."""
-        by_journal = {}
-        for r in records:
-            j = r.get('Publication Source', 'Unknown')
-            by_journal.setdefault(j, []).append(r)
-
-        print()
-        print("=" * 70)
-        print("EXTRACTION RESULTS")
-        print("=" * 70)
-
-        for journal, recs in sorted(by_journal.items()):
-            has_title = sum(1 for r in recs if r.get('Book Title'))
-            has_author = sum(1 for r in recs if r.get('Book Author Last Name'))
-            needs_scrape = sum(1 for r in recs if r.get('_needs_doi_scrape'))
-            print(f"\n{journal}: {len(recs)} reviews")
-            print(f"  Book title extracted: {has_title}/{len(recs)}")
-            print(f"  Book author extracted: {has_author}/{len(recs)}")
-            if needs_scrape:
-                print(f"  Needed DOI scrape: {needs_scrape}")
-
-            # Show first 3 as examples
-            for r in recs[:3]:
-                title = r.get('Book Title', '?')[:50]
-                author = f"{r.get('Book Author First Name', '')} {r.get('Book Author Last Name', '')}".strip() or '?'
-                reviewer = f"{r.get('Reviewer First Name', '')} {r.get('Reviewer Last Name', '')}".strip() or '?'
-                print(f"    - {title} | by {author} | reviewed by {reviewer}")
-
-        print(f"\n{'=' * 70}")
+        """Print a compact summary of extracted records."""
         total = len(records)
+        if total == 0:
+            self.log("No records extracted")
+            return
         with_title = sum(1 for r in records if r.get('Book Title'))
         with_author = sum(1 for r in records if r.get('Book Author Last Name'))
-        print(f"TOTAL: {total} reviews, {with_title} with titles ({with_title/total*100:.0f}%), "
-              f"{with_author} with authors ({with_author/total*100:.0f}%)")
+        journals = len({r.get('Publication Source', 'Unknown') for r in records})
+        self.log(f"Extracted {total} reviews from {journals} journals — "
+                 f"{with_title} with titles ({with_title*100//total}%), "
+                 f"{with_author} with authors ({with_author*100//total}%)")
 
 
 def _to_db_fields(record: dict) -> dict:
