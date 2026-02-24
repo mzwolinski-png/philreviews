@@ -35,36 +35,19 @@
 <div class="container changelog">
 
     <div class="changelog-entry">
-        <h2>February 23, 2026 (evening)</h2>
-        <ul>
-            <li>Added site logo (PR magnifying glass monogram), favicon, and Open Graph / Twitter Card meta tags for social sharing previews</li>
-            <li>Added 294 missing book reviews from Analysis (now 400 total Analysis reviews, 1934&ndash;2026), including William Talbott&rsquo;s review of L. A. Paul&rsquo;s <em>Transformative Experience</em></li>
-            <li>Major data cleanup: stripped author names that were incorrectly appended to ~14,000 book titles from JSTOR imports</li>
-            <li>Fixed 135 garbled author entries with &ldquo;editby&rdquo; / &ldquo;Editby&rdquo; prefixes jammed into editor names</li>
-            <li>Fixed 23 entries with &ldquo;Critical Notice:&rdquo; / &ldquo;Symposium:&rdquo; / &ldquo;Discussion:&rdquo; prefixes in author fields</li>
-            <li>Cleared 330 entries with publisher info, title fragments, or other garbled data in author fields (colon-split parsing errors)</li>
-            <li>Deleted ~40 non-review articles (discussion articles, regular journal articles) misidentified as book reviews</li>
-            <li>Enriched 778 missing book authors: 132 via Crossref DOI title parsing, 646 via internal cross-referencing (matching entries for the same book reviewed in different journals)</li>
-            <li>Fixed HTML entities in journal names: Mind &amp; Language, Philosophy &amp; Social Criticism</li>
-        </ul>
-    </div>
-
-    <div class="changelog-entry">
         <h2>February 23, 2026</h2>
         <ul>
+            <li>Added site logo, favicon, and Open Graph / Twitter Card meta tags for social sharing previews</li>
             <li>Massive JSTOR metadata import: 31,038 new reviews from JSTOR&rsquo;s complete metadata archive, expanding the database from 46,313 to 77,351 reviews across 158 journals</li>
-            <li>Added 41 new journals from JSTOR including: History and Philosophy of the Life Sciences (1,928 reviews), Utopian Studies (1,457), Iyyun: The Jerusalem Philosophical Quarterly (1,098), The Journal of Philosophy (774), Studies in Soviet Thought (741), Journal of the Society of Christian Ethics (574), International Journal of Ethics (437), Journal of Philosophical Studies (424), Journal of Thought (387), Studia Leibnitiana (382), Cr&iacute;tica (332), Human Studies (290), American Journal of Theology &amp; Philosophy (277), Philosophy &amp; Rhetoric (269), Research in Phenomenology (249), Social Theory and Practice (234), Journal of the History of Biology (231), The Bulletin of Symbolic Logic (225), The Centennial Review (187), The New Atlantis (186), Phronesis (178), American Political Thought (173), Environmental Philosophy (172), Journal of Animal Ethics (151), Sartre Studies International (150), Studies in East European Thought (140), Max Weber Studies (136), The Journal of Religious Ethics (95), The Southwestern Journal of Philosophy (94), The Personalist Forum (93), HOPOS (85), The Journal of Ayn Rand Studies (76), The Pluralist (76), Heidegger Studies (63), Frontiers of Philosophy in China (62), Behavior and Philosophy (60), Behaviorism (44), Business &amp; Professional Ethics Journal (44), Ethics and the Environment (40), Critical Philosophy of Race (2)</li>
-            <li>Enriched 18,405 existing journal entries from JSTOR metadata, adding reviews for The Review of Metaphysics (+3,804), The Review of Politics (+3,628), The Philosophical Review (+2,112), Philosophy (+1,594), Philosophy and Phenomenological Research (+1,028), and 20+ other journals</li>
-            <li>Fixed 61 bare &ldquo;Book Review&rdquo; titles using JSTOR title matching</li>
-            <li>Added automation: weekly Crossref content check (Sundays 6 AM) and daily Springer Nature API scan (3 AM) with automatic site rebuild</li>
-            <li>Added Philosophical Studies as a new journal: 88 entries (84 symposium contributions across 16 book symposia + 4 critical reviews, 1982&ndash;2025)</li>
-            <li>Added 35 symposium contributions across 7 new symposia in 3 journals: The Journal of Aesthetics and Art Criticism (Pippin&rsquo;s <em>After the Beautiful</em>), Ethical Theory and Moral Practice (Stichter, Cassam, Urquidez, Nuti, and Robeyns symposia), and Sophia (Schilbrack)</li>
-            <li>Searched 20+ additional journals for book symposia via Crossref</li>
-            <li>Expanded non-western philosophy coverage: Dao massively expanded from 16 to 436 reviews (2002&ndash;2025) using Springer subtitle pattern detection, Journal of Chinese Philosophy expanded to 85 reviews (1980&ndash;2018), plus new journals Comparative Philosophy (12 reviews, 2015&ndash;2024), Filosofia Theoretica (12 reviews, 2015&ndash;2025), South African Journal of Philosophy (16 reviews, 2001&ndash;2015), and Arabic Sciences and Philosophy (17 reviews, 1995&ndash;2024)</li>
-            <li>Added 8 new journals: Biology and Philosophy (61 reviews, 1986&ndash;2025), Studia Logica (54 reviews, 1991&ndash;2022), Ethical Perspectives (36 reviews, 1997&ndash;2010), Synthese (35 reviews, 1946&ndash;2020), and The Philosophical Quarterly expanded from 83 to 166 reviews (1951&ndash;2026)</li>
-            <li>Added Africana philosophy journals: The Black Scholar (157 reviews, 1969&ndash;2021) and The CLR James Journal (22 reviews, 1991&ndash;2023)</li>
-            <li>Expanded applied ethics coverage with 7 new journals: Theoretical Medicine and Bioethics (132 reviews, 1982&ndash;2022), Journal of Business Ethics (85 reviews, 1988&ndash;2025), Kennedy Institute of Ethics Journal (75 reviews, 1993&ndash;2025), Journal of Applied Philosophy (70 reviews, 1984&ndash;2011), Ethics and Information Technology (24 reviews, 2004&ndash;2023), Medicine, Health Care and Philosophy (10 reviews, 2010&ndash;2020), Neuroethics (9 reviews, 2011&ndash;2022), Cambridge Quarterly of Healthcare Ethics (5 reviews, 1994&ndash;2023), and Journal of Medical Ethics (7 reviews, 1982&ndash;2025)</li>
-            <li>Expanded Journal of Indian Philosophy from 8 to 40 reviews (1971&ndash;2020)</li>
+            <li>Added 41 new journals from JSTOR, including History and Philosophy of the Life Sciences (1,928 reviews), Utopian Studies (1,457), Iyyun (1,098), The Journal of Philosophy (774), and 37 others</li>
+            <li>Enriched 18,405 existing entries with JSTOR metadata across 25+ journals</li>
+            <li>Expanded non-western philosophy coverage: Dao expanded from 16 to 436 reviews, plus 6 new journals (Comparative Philosophy, Filosofia Theoretica, South African Journal of Philosophy, Arabic Sciences and Philosophy, Journal of Chinese Philosophy, Journal of Indian Philosophy)</li>
+            <li>Added Africana philosophy journals: The Black Scholar (157 reviews) and The CLR James Journal (22 reviews)</li>
+            <li>Expanded applied ethics coverage with 9 new journals including Journal of Business Ethics, Kennedy Institute of Ethics Journal, and Journal of Applied Philosophy</li>
+            <li>Added 123 symposium contributions across new symposia in Philosophical Studies, The Journal of Aesthetics and Art Criticism, Ethical Theory and Moral Practice, and Sophia</li>
+            <li>Added automation: weekly Crossref content check and daily Springer Nature API scan with automatic site rebuild</li>
+            <li>Major data cleanup: fixed ~14,500 entries with garbled author names, title metadata, and HTML entities from JSTOR imports</li>
+            <li>Enriched 778 missing book authors via Crossref DOI parsing and internal cross-referencing</li>
         </ul>
     </div>
 
@@ -72,15 +55,9 @@
         <h2>February 22, 2026</h2>
         <ul>
             <li>Added book symposia support: 1,272 symposium contributions across 237 symposia from 30+ journals, each with a &ldquo;Symposium&rdquo; badge and links to other contributions in the same symposium</li>
-            <li>Added Philosophy and Phenomenological Research symposia: 696 contributions across 123 symposia (1944&ndash;2024)</li>
-            <li>Added Cosmos + Taxis symposia: 141 contributions across 20 book symposia, scraped directly from the journal website</li>
-            <li>Added two new journals via direct website scraping: Cosmos + Taxis (73 reviews, 2016&ndash;2026) and Constitutional Political Economy (16 reviews, 1996&ndash;2025)</li>
-            <li>Removed ~1,500 false positive entries (research articles, editorials, symposium commentaries mistakenly identified as book reviews) across 20+ journals; removed 8 journals that contained no actual book reviews</li>
-            <li>Fixed 394 entries where the book author was incorrectly set to the reviewer&rsquo;s name</li>
-            <li>Added [Pr&eacute;cis] and [Author&rsquo;s Reply] labels to 345 symposium entries where the book author is also the contributor, so these are clearly distinguished from commentary entries</li>
-            <li>Fixed 75 Cosmos + Taxis symposium entries with missing reviewer names (extracted from PDF URLs and cross-referenced)</li>
-            <li>Data quality cleanup: cleared 638 garbled author entries (ISBNs, publisher names, page counts in author fields) and recovered 345 via Crossref re-parsing</li>
-            <li>Fixed 388 book titles containing HTML entities and cleaned 500+ titles with embedded bibliographic metadata (publisher info, ISBNs, page counts, prices)</li>
+            <li>Added two new journals via direct website scraping: Cosmos + Taxis (73 reviews + 141 symposium contributions) and Constitutional Political Economy (16 reviews)</li>
+            <li>Removed ~1,500 false positive entries (research articles, editorials) across 20+ journals</li>
+            <li>Data quality cleanup: fixed ~1,400 garbled author entries and 900+ book titles with HTML entities or embedded bibliographic metadata</li>
             <li>Made the Sources section collapsible to reduce page clutter</li>
         </ul>
     </div>
@@ -88,51 +65,37 @@
     <div class="changelog-entry">
         <h2>February 21, 2026</h2>
         <ul>
-            <li>Massively expanded journal coverage with 37 new journals including: Journal of the History of Philosophy (3,100 reviews), Dialectica (199), The Journal of Speculative Philosophy (149), Philosophia Mathematica (128), Studies in Philosophy and Education (105), The Southern Journal of Philosophy (91), The Journal of Nietzsche Studies (89), Educational Philosophy and Theory (88), International Journal of Philosophical Studies (85), Journal of the British Society for Phenomenology (84), Archiv f&uuml;r Geschichte der Philosophie (76), Philosophical Investigations (65), Theoria (55), Journal of Philosophy of Education (56), Critical Review of International Social and Political Philosophy (47), The Philosophical Forum (46), Asian Philosophy (46), Mind &amp; Language (45), Metaphilosophy (43), Kant-Studien (42), Transactions of the Charles S. Peirce Society (40), Vivarium (36), Journal of Social Philosophy (35), Hegel Bulletin (32), Philosophia (31), Journal of Moral Education (31), Apeiron (27), Minds and Machines (27), Developing World Bioethics (25), Res Publica (19), Dao (16), Grazer Philosophische Studien (15), Foundations of Science (14), Ratio (11), The Monist (11), Acta Analytica (10), Journal of Indian Philosophy (8), and Thought and Practice (5)</li>
+            <li>Added 37 new journals including Journal of the History of Philosophy (3,100 reviews), Dialectica (199), The Journal of Speculative Philosophy (149), Philosophia Mathematica (128), and 33 others</li>
+            <li>Added Open Library as a new data source for book author lookup, fixing 1,800+ missing authors</li>
+            <li>Fixed 450+ additional missing book authors via OpenAlex and Crossref</li>
             <li>Data integrity cleanup: removed 64 false positive entries, fixed hundreds of garbled author names</li>
-            <li>Fixed 450+ missing book authors via OpenAlex lookup and Crossref re-parsing</li>
-            <li>Added Open Library as a new data source for book author lookup, fixing 1,800+ additional missing authors</li>
         </ul>
     </div>
 
     <div class="changelog-entry">
         <h2>February 20, 2026</h2>
         <ul>
-            <li>Added nine new journals: Philosophy of the Social Sciences (641 reviews), The Review of Politics (220 reviews), Philosophical Psychology (65 reviews), Phenomenology and the Cognitive Sciences (59 reviews), European Journal of Political Theory (49 reviews), Public Choice (27 reviews), Bioethics (22 reviews), Studies in History and Philosophy of Science (18 reviews), and Law and Philosophy (9 reviews)</li>
-            <li>Fixed 575+ missing book authors via Crossref re-parsing and OpenAlex lookup</li>
-            <li>Removed ~2,900 research articles that were misidentified as book reviews across all journals</li>
-            <li>Added 5 missing second reviews from HOPE multi-review entries</li>
-            <li>Added multi-review detection to parser (HOPE dual-review format)</li>
-            <li>Tightened book review detection heuristics to prevent future false positives</li>
+            <li>Added 9 new journals including Philosophy of the Social Sciences (641 reviews), The Review of Politics (220), and Philosophical Psychology (65)</li>
+            <li>Removed ~2,900 misidentified research articles across all journals</li>
+            <li>Fixed 575+ missing book authors via Crossref and OpenAlex</li>
+            <li>Added multi-review detection for journals with dual-review formats</li>
         </ul>
     </div>
 
     <div class="changelog-entry">
         <h2>February 19, 2026</h2>
         <ul>
-            <li>Added sixteen new journals: Erasmus Journal for Philosophy and Economics (136 reviews), Philosophy in Review (6,682 reviews, full 1981&ndash;2025 archive), Ancient Philosophy (39 reviews), Reason Papers (33 reviews), History of Political Economy (572 reviews), Business Ethics Quarterly (538 reviews), The Review of Austrian Economics (169 reviews), Quarterly Journal of Austrian Economics (126 reviews), The Independent Review (1,030 reviews, full 1996&ndash;2025 archive), Radical Philosophy (48 reviews, 2018&ndash;present), Political Theory (773 reviews), Journal of Moral Philosophy (387 reviews), Ethical Theory and Moral Practice (426 reviews), Journal of Markets and Morality (583 reviews), Hypatia (1,050 reviews), and Hypatia Reviews Online (122 reviews)</li>
-            <li>Fixed earliest Ethics entries (1890&ndash;1937) with malformed titles and incorrect author names</li>
-            <li>Removed misidentified research articles (not book reviews) from the database</li>
-            <li>Fixed bibliographic metadata (publisher, ISBN, page counts) appearing in book titles across Journal of Value Inquiry entries</li>
-            <li>Promoted journal and year filters to always-visible filter bar</li>
-            <li>Added multi-select journal dropdown with checkboxes</li>
-            <li>Added URL persistence for bookmarking and sharing filtered views</li>
-            <li>Fixed 1,187 missing book authors via improved parser and Crossref re-fetch</li>
-            <li>Cleaned bibliographic metadata from 222 book titles</li>
-            <li>Added clickable title linking back to home page</li>
-            <li>Moved search panel above sources section for easier access</li>
-            <li>Added footer links: author website, contact email, update log</li>
-            <li>Added GoatCounter analytics for privacy-friendly click tracking</li>
-            <li>Created this update log page</li>
+            <li>Added 16 new journals including Philosophy in Review (6,682 reviews), The Independent Review (1,030), Hypatia (1,050), Political Theory (773), History of Political Economy (572), and Business Ethics Quarterly (538)</li>
+            <li>New UI features: always-visible filter bar, multi-select journal dropdown, URL persistence for sharing filtered views</li>
+            <li>Fixed 1,187 missing book authors and cleaned 222 book titles with embedded bibliographic metadata</li>
+            <li>Added footer links, GoatCounter analytics, and this update log page</li>
         </ul>
     </div>
 
     <div class="changelog-entry">
         <h2>February 18, 2026</h2>
         <ul>
-            <li>Expanded journal coverage with additional philosophy review sources</li>
-            <li>Bug fixes and data quality improvements</li>
-            <li>Improved static site build process</li>
+            <li>Initial journal coverage and static site build</li>
         </ul>
     </div>
 
