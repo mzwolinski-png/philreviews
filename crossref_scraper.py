@@ -1779,6 +1779,8 @@ class CrossrefReviewScraper:
                 timeout=15,
             )
             if resp.status_code != 200:
+                if resp.status_code == 429:
+                    self.log(f"  OpenAlex rate limited (429)", "WARNING")
                 return None
 
             results = resp.json().get('results', [])
@@ -1845,6 +1847,8 @@ class CrossrefReviewScraper:
 
         self.log(f"Looking up {len(needs_author)} book authors via OpenAlex...")
         found = 0
+        consecutive_failures = 0
+        max_consecutive_failures = 30
         for i, record in enumerate(needs_author):
             if i > 0 and i % 100 == 0:
                 self.log(f"  OpenAlex progress: {i}/{len(needs_author)} ({found} found)")
@@ -1862,6 +1866,12 @@ class CrossrefReviewScraper:
                 record['Book Author First Name'] = author[0]
                 record['Book Author Last Name'] = author[1]
                 found += 1
+                consecutive_failures = 0
+            else:
+                consecutive_failures += 1
+                if consecutive_failures >= max_consecutive_failures:
+                    self.log(f"  OpenAlex: {max_consecutive_failures} consecutive misses — likely rate limited, aborting", "WARNING")
+                    break
 
             time.sleep(0.2)  # Rate limit
 
@@ -1968,6 +1978,8 @@ class CrossrefReviewScraper:
 
         self.log(f"Looking up {len(needs_enrichment)} reviews via Semantic Scholar...")
         found = 0
+        consecutive_failures = 0
+        max_consecutive_failures = 5
 
         # Process in batches of 20 (smaller batches = fewer 400 errors from bad DOIs)
         for batch_start in range(0, len(needs_enrichment), 20):
@@ -1986,30 +1998,25 @@ class CrossrefReviewScraper:
                     json={'ids': [f'DOI:{doi}' for _, doi in valid_pairs]},
                     timeout=30,
                 )
+                if resp.status_code == 429:
+                    consecutive_failures += 1
+                    if consecutive_failures >= max_consecutive_failures:
+                        self.log(f"  S2: {max_consecutive_failures} consecutive rate limits — aborting", "WARNING")
+                        break
+                    wait = min(30, 5 * consecutive_failures)
+                    self.log(f"  S2 rate limited, waiting {wait}s ({consecutive_failures}/{max_consecutive_failures})", "WARNING")
+                    time.sleep(wait)
+                    continue
                 if resp.status_code != 200:
                     self.log(f"  S2 batch error: {resp.status_code}", "WARNING")
-                    # Fall back to individual lookups for this batch
-                    for record, doi in valid_pairs:
-                        try:
-                            r2 = self.session.get(
-                                f'https://api.semanticscholar.org/graph/v1/paper/DOI:{doi}',
-                                params={'fields': 'title,authors'},
-                                timeout=15,
-                            )
-                            if r2.status_code == 200:
-                                s2_title = r2.json().get('title', '')
-                                parsed = self._parse_s2_title(s2_title)
-                                if parsed and parsed.get('book_author_last'):
-                                    if not record.get('Book Title') and parsed.get('book_title'):
-                                        record['Book Title'] = parsed['book_title']
-                                    record['Book Author First Name'] = parsed['book_author_first']
-                                    record['Book Author Last Name'] = parsed['book_author_last']
-                                    found += 1
-                            time.sleep(1.0)
-                        except Exception:
-                            continue
+                    consecutive_failures += 1
+                    if consecutive_failures >= max_consecutive_failures:
+                        self.log(f"  S2: {max_consecutive_failures} consecutive errors — aborting", "WARNING")
+                        break
+                    time.sleep(2.0)
                     continue
 
+                consecutive_failures = 0
                 s2_results = resp.json()
 
                 for (record, doi), s2_result in zip(valid_pairs, s2_results):
@@ -2029,6 +2036,10 @@ class CrossrefReviewScraper:
 
             except Exception as e:
                 self.log(f"  S2 batch error: {e}", "WARNING")
+                consecutive_failures += 1
+                if consecutive_failures >= max_consecutive_failures:
+                    self.log(f"  S2: {max_consecutive_failures} consecutive errors — aborting", "WARNING")
+                    break
 
         self.log(f"  Semantic Scholar enrichment: {found}/{len(needs_enrichment)} reviews enriched")
         self.stats['semantic_scholar_found'] = found
