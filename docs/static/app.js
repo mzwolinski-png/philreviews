@@ -14,6 +14,10 @@
     d.textContent = s;
     return d.innerHTML;
   };
+  const nameLink = (type, value) => {
+    if (!value) return "";
+    return '<a class="name-link" data-type="' + type + '">' + esc(value) + "</a>";
+  };
 
   /* ---------- DOM refs ---------- */
   const $ = (id) => document.getElementById(id);
@@ -399,9 +403,9 @@
       const expanded = state.expandedIdx === idx;
       html += '<tr class="review-row' + (expanded ? " expanded" : "") + '" data-idx="' + idx + '">';
       html += "<td>" + esc(r.title) + "</td>";
-      html += "<td>" + esc(r.author) + "</td>";
-      html += "<td>" + esc(r.reviewer) + "</td>";
-      html += "<td>" + esc(r.journal) + "</td>";
+      html += "<td>" + nameLink("author", r.author) + "</td>";
+      html += "<td>" + nameLink("reviewer", r.reviewer) + "</td>";
+      html += "<td>" + nameLink("journal", r.journal) + "</td>";
       html += "<td>" + esc(r.date) + "</td>";
       html += "</tr>";
       if (expanded) {
@@ -441,6 +445,28 @@
         const idx = parseInt(tr.dataset.idx, 10);
         state.expandedIdx = state.expandedIdx === idx ? null : idx;
         render();
+      });
+    });
+
+    /* name-link clicks — filter by author, reviewer, or journal */
+    els.tbody.querySelectorAll(".name-link").forEach((a) => {
+      a.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const type = a.dataset.type;
+        const value = a.textContent;
+        clearFilters();
+        if (type === "journal") {
+          selectedJournals = new Set([value]);
+          syncCheckboxes();
+          updateJournalBtnLabel();
+        } else {
+          els.globalSearch.value = value;
+        }
+        state.sortKey = "date";
+        state.sortDir = "desc";
+        state.page = 1;
+        update();
+        syncToUrl();
       });
     });
 

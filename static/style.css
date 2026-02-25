@@ -355,6 +355,8 @@ tbody td {
 .review-row { cursor: pointer; }
 .review-row:hover { background: #f5f2eb; }
 .review-row.expanded { background: #f0ece3; }
+.name-link { cursor: pointer; text-decoration: none; color: inherit; }
+.name-link:hover { text-decoration: underline; color: #1a3a5c; }
 
 /* ---------- Detail row ---------- */
 .detail-row td {
