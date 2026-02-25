@@ -6,9 +6,10 @@ Runs all scrapers to pull in new reviews, then logs a summary.
 Designed to be run unattended via cron or launchd.
 
 Usage:
-    python3 update.py              # full update (all journals + NDPR)
+    python3 update.py              # full update (all scrapers)
     python3 update.py --crossref   # Crossref journals only
     python3 update.py --ndpr       # NDPR only
+    python3 update.py --daily-nous # Daily Nous only
     python3 update.py --dry-run    # don't write to database
 """
 
@@ -86,6 +87,22 @@ def run_ndpr(dry_run=False):
         return None
 
 
+def run_daily_nous(dry_run=False):
+    """Run the Daily Nous weekly update scraper."""
+    log.info("Starting Daily Nous scraper...")
+    try:
+        from daily_nous_scraper import DailyNousScraper
+
+        scraper = DailyNousScraper()
+        stats = scraper.run_incremental(dry_run=dry_run)
+        log.info(f"Daily Nous: {stats.get('reviews_parsed', 0)} parsed, "
+                 f"{stats.get('uploaded', 0)} new")
+        return stats
+    except Exception:
+        log.exception("Daily Nous scraper failed")
+        return None
+
+
 def rebuild_and_deploy():
     """Rebuild the static site and push to GitHub if content changed."""
     log.info("Rebuilding static site...")
@@ -132,11 +149,12 @@ def main():
     parser = argparse.ArgumentParser(description="PhilReviews weekly update")
     parser.add_argument("--crossref", action="store_true", help="Run Crossref only")
     parser.add_argument("--ndpr", action="store_true", help="Run NDPR only")
+    parser.add_argument("--daily-nous", action="store_true", help="Run Daily Nous only")
     parser.add_argument("--dry-run", action="store_true", help="Don't write to database")
     args = parser.parse_args()
 
     # Default: run everything
-    run_all = not args.crossref and not args.ndpr
+    run_all = not args.crossref and not args.ndpr and not args.daily_nous
 
     log.info("=" * 60)
     log.info("PhilReviews update started")
@@ -147,12 +165,16 @@ def main():
 
     crossref_stats = None
     ndpr_stats = None
+    dn_stats = None
 
     if run_all or args.crossref:
         crossref_stats = run_crossref(dry_run=args.dry_run)
 
     if run_all or args.ndpr:
         ndpr_stats = run_ndpr(dry_run=args.dry_run)
+
+    if run_all or args.daily_nous:
+        dn_stats = run_daily_nous(dry_run=args.dry_run)
 
     after = count_reviews()
     net_new = after - before
@@ -165,6 +187,8 @@ def main():
         log.info(f"Crossref uploaded: {crossref_stats.get('uploaded', 0)}")
     if ndpr_stats:
         log.info(f"NDPR new: {ndpr_stats.get('new', 0)}")
+    if dn_stats:
+        log.info(f"Daily Nous new: {dn_stats.get('uploaded', 0)}")
 
     # Rebuild static site and deploy to GitHub Pages
     if not args.dry_run:
