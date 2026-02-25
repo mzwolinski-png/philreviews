@@ -37,8 +37,9 @@
     <div class="changelog-entry">
         <h2>February 25, 2026</h2>
         <ul>
-            <li>New data source: Daily Nous &ldquo;Online Philosophy Resources Weekly Update&rdquo; &mdash; scraped ~424 posts (June 2016&ndash;present) to import 737 reviews from non-academic media outlets including The Times Literary Supplement, Los Angeles Review of Books, Wall Street Journal, The Guardian, New York Review of Books, London Review of Books, and 50+ other venues</li>
-            <li>Added Daily Nous scraper to the automated weekly update pipeline</li>
+            <li>New data source: Daily Nous &ldquo;Online Philosophy Resources Weekly Update&rdquo; &mdash; 737 new reviews from 50+ non-academic media outlets (TLS, LARB, WSJ, The Guardian, NYRB, LRB, Kirkus, and others)</li>
+            <li>Major data cleanup: removed ~930 false positive entries (regular articles misidentified as reviews due to possessive-title parsing bug), fixed ~210 garbled review titles and bogus author fields, cleaned HTML entities</li>
+            <li>Fixed possessive-title parser to prevent future false positives (e.g., &ldquo;On Kant&rsquo;s X&rdquo; no longer misidentified as author &ldquo;On Kant&rdquo;)</li>
         </ul>
     </div>
 

@@ -835,7 +835,7 @@ def _looks_like_author_name(text: str) -> bool:
     # If most words are non-name words, this is probably a title fragment
     lower_words = [w.lower().rstrip('.,;:?!') for w in words]
     non_name_count = sum(1 for w in lower_words if w in non_name_words)
-    if non_name_count > len(words) / 2:
+    if non_name_count >= len(words) / 2:
         return False
 
     # If any word is a common title word (and not a known surname), flag as suspicious
