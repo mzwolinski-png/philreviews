@@ -3,4 +3,5 @@ reviews.db
 logs/
 __pycache__/
 scraper_progress.json
+mainstream_search_state.json
 *.pyc

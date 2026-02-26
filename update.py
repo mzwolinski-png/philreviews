@@ -103,6 +103,33 @@ def run_daily_nous(dry_run=False):
         return None
 
 
+def run_mainstream(dry_run=False):
+    """Run the mainstream media review scraper."""
+    log.info("Starting mainstream media scraper...")
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+
+        from mainstream_review_scraper import MainstreamReviewScraper
+
+        google_key = os.environ.get("GOOGLE_CSE_API_KEY")
+        google_cx = os.environ.get("GOOGLE_CSE_CX")
+        guardian_key = os.environ.get("GUARDIAN_API_KEY")
+
+        scraper = MainstreamReviewScraper(
+            google_api_key=google_key,
+            google_cx=google_cx,
+            guardian_api_key=guardian_key,
+        )
+        stats = scraper.run(dry_run=dry_run)
+        log.info(f"Mainstream: {stats.get('results_verified', 0)} verified, "
+                 f"{stats.get('uploaded', 0)} uploaded")
+        return stats
+    except Exception:
+        log.exception("Mainstream scraper failed")
+        return None
+
+
 def rebuild_and_deploy():
     """Rebuild the static site and push to GitHub if content changed."""
     log.info("Rebuilding static site...")
@@ -150,11 +177,13 @@ def main():
     parser.add_argument("--crossref", action="store_true", help="Run Crossref only")
     parser.add_argument("--ndpr", action="store_true", help="Run NDPR only")
     parser.add_argument("--daily-nous", action="store_true", help="Run Daily Nous only")
+    parser.add_argument("--mainstream", action="store_true",
+                        help="Run mainstream media scraper (uses API quota)")
     parser.add_argument("--dry-run", action="store_true", help="Don't write to database")
     args = parser.parse_args()
 
-    # Default: run everything
-    run_all = not args.crossref and not args.ndpr and not args.daily_nous
+    # Default: run everything (except mainstream, which uses API quota)
+    run_all = not args.crossref and not args.ndpr and not args.daily_nous and not args.mainstream
 
     log.info("=" * 60)
     log.info("PhilReviews update started")
@@ -176,6 +205,10 @@ def main():
     if run_all or args.daily_nous:
         dn_stats = run_daily_nous(dry_run=args.dry_run)
 
+    mainstream_stats = None
+    if args.mainstream:
+        mainstream_stats = run_mainstream(dry_run=args.dry_run)
+
     after = count_reviews()
     net_new = after - before
 
@@ -189,6 +222,8 @@ def main():
         log.info(f"NDPR new: {ndpr_stats.get('new', 0)}")
     if dn_stats:
         log.info(f"Daily Nous new: {dn_stats.get('uploaded', 0)}")
+    if mainstream_stats:
+        log.info(f"Mainstream new: {mainstream_stats.get('uploaded', 0)}")
 
     # Rebuild static site and deploy to GitHub Pages
     if not args.dry_run:
