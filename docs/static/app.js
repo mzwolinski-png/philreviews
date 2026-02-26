@@ -30,7 +30,8 @@
     /* Build journal list from data */
     const journalSet = new Set();
     allReviews.forEach((r) => journalSet.add(r.journal));
-    allJournals = Array.from(journalSet).sort((a, b) => a.localeCompare(b));
+    const sortKey = s => s.replace(/^The /i, '');
+    allJournals = Array.from(journalSet).sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
     selectedJournals = new Set(allJournals);
 
     els = {
