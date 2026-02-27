@@ -58,7 +58,7 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     # --- Format R: "Book Review:Title. Author Name" (old Ethics format, pre-1940) ---
     # Also handles "Book Review: Title" (no author, e.g. QJAE) → title-only with enrichment
     # Must check BEFORE stripping prefix, since the "Book Review:" is the signal
-    br_colon = re.match(r'^Book\s*Review\s*:\s*(.+)', title)
+    br_colon = re.match(r'^Book\s*Review\s*:\s*(.+)', title, re.IGNORECASE)
     if br_colon:
         remainder = br_colon.group(1).strip()
         # Split at the last ". AuthorName" — author is 1-5 capitalized words at end
@@ -128,8 +128,12 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
                 'format': 'review_of_title_only',
             }
 
+    # Normalize bold tags to italic (some journals use <b> instead of <i> for book titles)
+    title = re.sub(r'<b>(.*?)</b>', r'<i>\1</i>', title)
+    title = re.sub(r'<strong>(.*?)</strong>', r'<i>\1</i>', title)
+
     # Strip "Book Reviews" / "Book Review" / "Book Review:" / "Review of" prefix
-    stripped = re.sub(r'^Book\s*Reviews?\s*:?\s*', '', title)
+    stripped = re.sub(r'^Book\s*Reviews?\s*:?\s*', '', title, flags=re.IGNORECASE)
     stripped = re.sub(r'^Review\s+of\s+', '', stripped)
 
     # --- Format A/B: <i>/<em> tags present ---
@@ -166,6 +170,31 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
         post_italic = re.sub(r'[,.\s]+$', '', post_italic).strip()
 
         if not pre_italic and book_title:
+            # Check if italic text is an author name with ": Title" after it
+            # (Kant-Studien format: <b>Author</b>: Title → <i>Author</i>: Title)
+            raw_post = stripped[italic_match.end():]
+            if raw_post.lstrip().startswith(':') and _looks_like_author_name(book_title):
+                actual_title = re.sub(r'^[,.\s:;]+', '', raw_post).strip()
+                # Strip publisher/city/year/page info from end
+                actual_title = re.split(r'\.\s+(?:(?:Cambridge|Oxford|Princeton|Harvard|Yale|MIT|Springer|Routledge|Blackwell|Wiley|Penguin|Clarendon|Palgrave)\b|[A-Z][a-z]+\s+University\s+Press)', actual_title)[0].strip()
+                actual_title = re.split(r'\.\s+(?:(?:New|West|St\.|San)\s+)?(?:York|London|Cambridge|Oxford|Princeton|Chicago|Boston|Berkeley|Dordrecht|Leiden|Ithaca|Toronto|Paris|Amsterdam|Berlin|Bloomington|Indianapolis|Philadelphia|Pittsburgh)\b', actual_title)[0].strip()
+                actual_title = re.split(r',\s+\d{4}\b', actual_title)[0].strip()
+                actual_title = re.split(r'\.\s+(?:\d{4}|pp\.)', actual_title)[0].strip()
+                actual_title = re.sub(r',?\s+\d+\s*pp\.?.*$', '', actual_title).strip()
+                actual_title = re.sub(r'[,.\s]+$', '', actual_title).strip()
+                if actual_title and len(actual_title) > 10:
+                    first, last, has_multiple = _extract_first_author(book_title)
+                    if last:
+                        return {
+                            'book_title': actual_title,
+                            'book_author_first': first,
+                            'book_author_last': last,
+                            'is_edited_volume': False,
+                            'has_multiple_authors': has_multiple,
+                            'needs_doi_scrape': False,
+                            'format': 'italic_author_colon_title',
+                        }
+
             # No text before <i>, but check for author after </i>
             # Handle "Edited by Author" in post_italic (may have subtitle prefix)
             edited_by_post = re.search(r'[Ee]dited\s+by\s+(.+)', post_italic)
@@ -388,6 +417,9 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
         # Strip publisher/city/year/page info from author string
         # Split at ", City:" or ", City," or ". Publisher" or ". Year" or ". Pages"
         # Strip city/publisher after author: ", West Lafayette..." or ", Lawrence & Wishart..."
+        # Split at ": City" or ": Publisher" (Theoria: "Author: Oxford University Press, Year.")
+        author_str = re.split(r':\s+(?:(?:New|West|St\.|San|Los|La|Le|Fort|Ann|Baton|Notre)\s+)?(?:York|London|Cambridge|Oxford|Princeton|Chicago|Boston|Berkeley|Dordrecht|Leiden|Hague|Ithaca|Toronto|Paris|Amsterdam|Berlin|Florence|Bloomington|Indianapolis|Philadelphia|Pittsburgh|Dame|Lafayette|Haven|Bonaventure|Cliffs|Angeles|Francisco|Diego|Arbor|Rouge)\b', author_str)[0]
+        author_str = re.split(r':\s+(?:Lawrence|Macmillan|Routledge|Oxford|Cambridge|Princeton|Harvard|Yale|MIT|Springer|Blackwell|Wiley|Penguin|Clarendon|Duckworth|Methuen|Allen|Longman|Chapman|Academic|Humanities|Nijhoff|Reidel|Kluwer|Ltd)\b', author_str)[0]
         author_str = re.split(r',\s+(?:(?:New|West|St\.|San|Los|La|Le|Fort|Ann|Baton|Notre)\s+)?(?:York|London|Cambridge|Oxford|Princeton|Chicago|Boston|Berkeley|Dordrecht|Leiden|Hague|Ithaca|Toronto|Paris|Amsterdam|Berlin|Florence|Bloomington|Indianapolis|Philadelphia|Pittsburgh|Dame|Lafayette|Haven|Bonaventure|Cliffs|Angeles|Francisco|Diego|Arbor|Rouge)\b', author_str)[0]
         author_str = re.split(r',\s+(?:Lawrence|Macmillan|Routledge|Oxford|Cambridge|Princeton|Harvard|Yale|MIT|Springer|Blackwell|Wiley|Penguin|Clarendon|Duckworth|Methuen|Allen|Longman|Chapman|Academic|Humanities|Nijhoff|Reidel|Kluwer|Ltd)\b', author_str)[0]
         # Split at ". Publisher/Year" but not after a single initial (e.g. "R. Magliola")
@@ -927,7 +959,7 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
     # Exclude non-review items
     exclude = ['editorial:', 'announcing', 'comment on', 'response to', 'reply to',
                'correction', 'erratum', 'retraction', 'call for papers',
-               'book received', 'book notes', 'books received']
+               'book notes', 'books received']
     for pattern in exclude:
         if pattern in title:
             return False
@@ -939,6 +971,12 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
     if italic_match:
         italic_text = re.sub(r'<[^>]+>', '', italic_match.group(1)).strip()
         if len(italic_text) >= 15:
+            return True
+    # Bold tags: some journals use <b> instead of <i> for book titles (Kant-Studien, JBSP)
+    bold_match = re.search(r'<(?:b|strong)>(.*?)</(?:b|strong)>', title)
+    if bold_match:
+        bold_text = re.sub(r'<[^>]+>', '', bold_match.group(1)).strip()
+        if len(bold_text) >= 15:
             return True
     if '(review)' in title:
         return True
@@ -959,6 +997,14 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
 
     # Pattern: 'Author, "Title"' or "Author, 'Title'" (Philosophy in Review)
     if re.match(r'''^[A-Z].+?,\s*(?:\(eds?\.?\)\s*,?\s*)?["'\u201c'].{10,}["'\u201d']''', raw_title):
+        return True
+
+    # Pattern: "<b>Author</b>: Title" (Kant-Studien review format)
+    if re.match(r'^<b>[^<]{5,}</b>\s*:', raw_title):
+        return True
+
+    # Pattern: "Title. By Author: Publisher, Year. Pages."
+    if re.search(r'\d+\s*pp\b', raw_title, re.IGNORECASE):
         return True
 
     # --- Name-based heuristics (skip for italic_only mode) ---
@@ -1254,10 +1300,9 @@ class CrossrefReviewScraper:
             'crossref_parseable': False, 'semantic_scholar_enrichable': True,
             'detection_mode': 'italic_only',
         },
-        # Generic "Book Review" — Scandinavian general philosophy
+        # Mixed: "Title. By Author: Publisher, Year. pp." and "Book Received" — Scandinavian
         'Theoria': {
-            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
-            'detection_mode': 'italic_only',
+            'crossref_parseable': True, 'openalex_enrichable': True,
         },
         # Generic "Book Review" — AI/philosophy of mind
         'Minds and Machines': {
@@ -1331,10 +1376,9 @@ class CrossrefReviewScraper:
         },
 
         # ── 17th/18th Century Philosophy ──────────────────────────────
-        # "Author. <i>Title</i>" format — Kant scholarship (est. ~379 reviews)
+        # "<b>Author</b>: Title" format (bold normalized to italic) — Kant scholarship
         'Kant-Studien': {
             'crossref_parseable': True, 'openalex_enrichable': True,
-            'detection_mode': 'italic_only',
         },
         # Leibniz Review — ISSN not indexed in Crossref, skipped
 
@@ -1531,6 +1575,45 @@ class CrossrefReviewScraper:
         # ── Pragmatism ────────────────────────────────────────────────
         # European Journal of Pragmatism and American Philosophy (est. ~76 reviews)
         'European Journal of Pragmatism and American Philosophy': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── New journals (Feb 27 2026) ──────────────────────────────
+
+        # Philosophy of Biology — NOT previously configured, ~64 reviews on Crossref
+        'Biology and Philosophy': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
+        # Phenomenology — ~66 reviews, "Book review" prefix format
+        'Husserl Studies': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
+        # Philosophy of Law — ~72 reviews, italic tag format
+        'Oxford Journal of Legal Studies': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # General philosophy — ~38 reviews, "Book Notices" format
+        'International Philosophical Quarterly': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Philosophy of Law — ~15 reviews
+        'Ratio Juris': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
+        # General / interdisciplinary — ~8 reviews
+        'Topoi': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
+        # General M&E — top journal, few reviews but important
+        'Noûs': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Logic — few reviews but fills gap
+        'Journal of Philosophical Logic': {
             'crossref_parseable': True, 'openalex_enrichable': True,
             'detection_mode': 'italic_only',
         },
