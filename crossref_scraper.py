@@ -1613,10 +1613,7 @@ class CrossrefReviewScraper:
         'Ratio Juris': {
             'crossref_parseable': True, 'openalex_enrichable': True,
         },
-        # General / interdisciplinary — ~8 reviews
-        'Topoi': {
-            'crossref_parseable': True, 'openalex_enrichable': True,
-        },
+        # Topoi — removed: Crossref metadata unreliable (>95% false positive rate)
         # General M&E — top journal, few reviews but important
         'Noûs': {
             'crossref_parseable': True, 'openalex_enrichable': True,
@@ -1693,11 +1690,7 @@ class CrossrefReviewScraper:
             'crossref_parseable': True, 'openalex_enrichable': True,
             'detection_mode': 'italic_only',
         },
-        # Political philosophy — mixed (~136 est.)
-        'Social Philosophy and Policy': {
-            'crossref_parseable': True, 'openalex_enrichable': True,
-            'detection_mode': 'italic_only',
-        },
+        # Social Philosophy and Policy — does NOT publish book reviews, skipped
     }
 
     def __init__(self):
