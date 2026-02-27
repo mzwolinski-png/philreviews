@@ -66,17 +66,17 @@
 <h1>Mainstream Review Checklist</h1>
 
 <div class="stats">
-  <span><b>Total:</b> 162</span>
+  <span><b>Total:</b> 137</span>
   <span class="sep">|</span>
-  <span><b>Flagged:</b> <span style="color:#c00">50</span></span>
+  <span><b>Flagged:</b> <span style="color:#c00">31</span></span>
   <span class="sep">|</span>
-  <span><b>Unflagged:</b> 112</span>
+  <span><b>Unflagged:</b> 106</span>
 </div>
 
 <p>Click <b>Keep</b> or <b>Delete</b> for each entry (click the link to check first). When done, hit <b>Generate Summary</b> at the bottom to get text you can paste back to Claude.</p>
 
 <div class="progress-bar">
-  <span class="count" id="progress-text">0 / 162 reviewed</span>
+  <span class="count" id="progress-text">0 / 137 reviewed</span>
   <div class="bar"><div class="bar-inner" id="progress-fill" style="width:0%"></div></div>
   <span class="count" id="keep-count" style="color:#2e7d32">0 keep</span>
   <span class="count" id="delete-count" style="color:#c62828">0 delete</span>
@@ -85,57 +85,6 @@
 
 <h2>Flagged Entries (likely false positives)</h2>
 <div class="bulk-actions"><button class="bulk-btn" onclick="bulkDecide('flagged','delete')">Delete all flagged</button> <button class="bulk-btn" onclick="bulkDecide('flagged','keep')">Keep all flagged</button> <button class="bulk-btn" onclick="bulkDecide('flagged','skip')">Reset all flagged</button></div>
-<h3>Boston Review (4)</h3>
-<table><tr><th>ID</th><th>Book</th><th>Author</th><th>Link</th><th>Issue</th><th>Action</th></tr>
-<tr id="row-88548" class="flagged" data-id="88548">
-  <td>88548</td>
-  <td>Why Does Inequality Matter?</td>
-  <td>Scanlon</td>
-  <td><a href="https://bostonreview.net/books-ideas/martin-oneill-tm-scanlon-inequality" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">DUPLICATE of 88546 (same article, different URL)</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88548,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88548,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88548,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88551" class="flagged" data-id="88551">
-  <td>88551</td>
-  <td>Free Market Fairness</td>
-  <td>Tomasi</td>
-  <td><a href="https://bostonreview.net/tomasi-markets-as-fairness" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">DUPLICATE of 88549 (same article, different URL)</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88551,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88551,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88551,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88693" class="flagged" data-id="88693">
-  <td>88693</td>
-  <td>The Racial Contract</td>
-  <td>Mills</td>
-  <td><a href="https://bostonreview.net/articles/in-pursuit-of-racial-justice-the-life-and-thought-of-charles-w-mills" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">May be about a book ABOUT Mills, not &#x27;The Racial Contract&#x27; itself</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88693,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88693,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88693,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88809" class="flagged" data-id="88809">
-  <td>88809</td>
-  <td>The Wealth of Nations</td>
-  <td>Smith</td>
-  <td><a href="https://bostonreview.net/articles/the-localist" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">About localism, likely not a review of &#x27;Wealth of Nations&#x27;</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88809,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88809,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88809,'skip')">Skip</button>
-  </td>
-</tr>
-</table>
 <h3>Kirkus Reviews (1)</h3>
 <table><tr><th>ID</th><th>Book</th><th>Author</th><th>Link</th><th>Issue</th><th>Action</th></tr>
 <tr id="row-88790" class="flagged" data-id="88790">
@@ -155,7 +104,7 @@
 <table><tr><th>ID</th><th>Book</th><th>Author</th><th>Link</th><th>Issue</th><th>Action</th></tr>
 <tr id="row-88646" class="flagged" data-id="88646">
   <td>88646</td>
-  <td>Ethics and the Limits of Philosophy</td>
+  <td>Essays and Reviews 1959-2002</td>
   <td>Williams</td>
   <td><a href="https://lrb.co.uk/the-paper/v37/n13/geoffrey-hawthorn/what-philosophers-dream-of" target="_blank" rel="noopener">Open</a></td>
   <td class="reason">2015 article matched to 1985 book - 30 year gap, may be about different Williams work</td>
@@ -167,8 +116,8 @@
 </tr>
 <tr id="row-88702" class="flagged" data-id="88702">
   <td>88702</td>
-  <td>An Essay on the Foundations of Geometry</td>
-  <td>Russell</td>
+  <td>Russell&#x27;s Idealist Apprenticeship</td>
+  <td>Griffin</td>
   <td><a href="https://lrb.co.uk/the-paper/v13/n16/ray-monk/russell-and-ramsey" target="_blank" rel="noopener">Open</a></td>
   <td class="reason">About Russell AND Ramsey, may not be about &#x27;Foundations of Geometry&#x27;</td>
   <td class="btn-group">
@@ -179,8 +128,8 @@
 </tr>
 <tr id="row-88799" class="flagged" data-id="88799">
   <td>88799</td>
-  <td>The Practical Self</td>
-  <td>Gomes</td>
+  <td>I&#x27;ve Been Thinking</td>
+  <td>Dennett</td>
   <td><a href="https://lrb.co.uk/the-paper/v46/n12/anil-gomes/tillosophy" target="_blank" rel="noopener">Open</a></td>
   <td class="reason">URL shows Anil Gomes as AUTHOR - may be BY Gomes, not a review of his book</td>
   <td class="btn-group">
@@ -206,8 +155,8 @@
 </tr>
 <tr id="row-88802" class="flagged" data-id="88802">
   <td>88802</td>
-  <td>The Sovereignty of Good</td>
-  <td>Murdoch</td>
+  <td>Who Needs a World View?</td>
+  <td>Geuss</td>
   <td><a href="https://lareviewofbooks.org/article/no-blueprint-for-utopia" target="_blank" rel="noopener">Open</a></td>
   <td class="reason">May be about Murdoch generally, not specifically &#x27;Sovereignty of Good&#x27;</td>
   <td class="btn-group">
@@ -217,122 +166,11 @@
   </td>
 </tr>
 </table>
-<h3>The Atlantic (7)</h3>
+<h3>The Guardian (2)</h3>
 <table><tr><th>ID</th><th>Book</th><th>Author</th><th>Link</th><th>Issue</th><th>Action</th></tr>
-<tr id="row-88578" class="flagged" data-id="88578">
-  <td>88578</td>
-  <td>Dialogues concerning Natural Religion</td>
-  <td>Hume</td>
-  <td><a href="https://theatlantic.com/daily-dish/archive/2011/03/the-scientific-view-of-man/173768" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">Blog post (Daily Dish), about atheism generally</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88578,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88578,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88578,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88720" class="flagged" data-id="88720">
-  <td>88720</td>
-  <td>Finding Meaning in an Imperfect World</td>
-  <td>Landau</td>
-  <td><a href="https://theatlantic.com/family/archive/2022/07/set-goals-meaningless-trivial/670476" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">Family section article about goals/meaning</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88720,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88720,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88720,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88724" class="flagged" data-id="88724">
-  <td>88724</td>
-  <td>God and Philosophy</td>
-  <td>Flew</td>
-  <td><a href="https://theatlantic.com/personal/archive/2007/11/the-case-of-antony-flew/55012" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">About Flew&#x27;s conversion to deism, not a book review</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88724,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88724,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88724,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88727" class="flagged" data-id="88727">
-  <td>88727</td>
-  <td>Intellectual Trust in Oneself and Others</td>
-  <td>Foley</td>
-  <td><a href="https://theatlantic.com/family/archive/2021/11/how-stop-caring-what-other-people-think-you/620670" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">Family section article about caring what others think</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88727,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88727,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88727,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88835" class="flagged" data-id="88835">
-  <td>88835</td>
-  <td>What We Owe to Each Other*</td>
-  <td>SCANLON</td>
-  <td><a href="https://theatlantic.com/sponsored/kpmg-2020/what-companies-owe-us/3403" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">SPONSORED CONTENT (KPMG) - not a review</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88835,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88835,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88835,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88836" class="flagged" data-id="88836">
-  <td>88836</td>
-  <td>What We Owe to Each Other*</td>
-  <td>SCANLON</td>
-  <td><a href="https://theatlantic.com/culture/archive/2020/02/good-places-finale-made-heaven-look-hopeless/606001" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">About &#x27;The Good Place&#x27; TV show finale, not Scanlon&#x27;s book</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88836,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88836,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88836,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88837" class="flagged" data-id="88837">
-  <td>88837</td>
-  <td>What We Owe to Each Other*</td>
-  <td>SCANLON</td>
-  <td><a href="https://theatlantic.com/entertainment/archive/2018/09/nbcs-good-place-season-3/571504" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">About &#x27;The Good Place&#x27; TV show Season 3, not Scanlon&#x27;s book</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88837,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88837,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88837,'skip')">Skip</button>
-  </td>
-</tr>
-</table>
-<h3>The Guardian (8)</h3>
-<table><tr><th>ID</th><th>Book</th><th>Author</th><th>Link</th><th>Issue</th><th>Action</th></tr>
-<tr id="row-88574" class="flagged" data-id="88574">
-  <td>88574</td>
-  <td>Dialogues concerning Natural Religion</td>
-  <td>Hume</td>
-  <td><a href="https://theguardian.com/commentisfree/belief/2009/feb/25/religion-philosophy-hume" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">Opinion/commentisfree section about Hume</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88574,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88574,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88574,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88576" class="flagged" data-id="88576">
-  <td>88576</td>
-  <td>Dialogues concerning Natural Religion</td>
-  <td>Hume</td>
-  <td><a href="https://theguardian.com/commentisfree/2009/mar/06/religion-atheism-hume-scepticism" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">Opinion/commentisfree section about Hume</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88576,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88576,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88576,'skip')">Skip</button>
-  </td>
-</tr>
 <tr id="row-88582" class="flagged" data-id="88582">
   <td>88582</td>
-  <td>Justice for Hedgehogs</td>
+  <td>Religion Without God</td>
   <td>Dworkin</td>
   <td><a href="https://theguardian.com/books/2013/nov/28/religion-without-god-ronald-dworkin-review" target="_blank" rel="noopener">Open</a></td>
   <td class="reason">Review of &#x27;Religion without God&#x27; by Dworkin, NOT &#x27;Justice for Hedgehogs&#x27;</td>
@@ -342,64 +180,16 @@
     <button class="btn btn-skip" onclick="decide(88582,'skip')">Skip</button>
   </td>
 </tr>
-<tr id="row-88617" class="flagged" data-id="88617">
-  <td>88617</td>
-  <td>The Second Sex</td>
-  <td>Beauvoir</td>
-  <td><a href="https://theguardian.com/books/2019/aug/20/was-simone-de-beauvoir-as-feminist-as-we-thought" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">Feature article &#x27;was Beauvoir as feminist as we thought&#x27;, not a review of The Second Sex</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88617,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88617,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88617,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88647" class="flagged" data-id="88647">
-  <td>88647</td>
-  <td>Ethics and the Limits of Philosophy</td>
-  <td>Williams</td>
-  <td><a href="https://theguardian.com/books/2002/nov/30/academicexperts.highereducation" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">Higher education section, may not be a book review</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88647,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88647,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88647,'skip')">Skip</button>
-  </td>
-</tr>
 <tr id="row-88651" class="flagged" data-id="88651">
   <td>88651</td>
-  <td>Fear and trembling</td>
-  <td>Kierkegaard</td>
+  <td>Philosopher of the Heart: The Restless Life of Søren Kierkegaard</td>
+  <td>Carlisle</td>
   <td><a href="https://theguardian.com/books/2019/mar/31/philosopher-of-the-heart-restless-life-soren-kierkegaard-review" target="_blank" rel="noopener">Open</a></td>
   <td class="reason">Review of a Kierkegaard BIOGRAPHY, not &#x27;Fear and Trembling&#x27;</td>
   <td class="btn-group">
     <button class="btn btn-keep" onclick="decide(88651,'keep')">Keep</button>
     <button class="btn btn-delete" onclick="decide(88651,'delete')">Delete</button>
     <button class="btn btn-skip" onclick="decide(88651,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88664" class="flagged" data-id="88664">
-  <td>88664</td>
-  <td>Liberalism and the Limits of Justice</td>
-  <td>Sandel</td>
-  <td><a href="https://theguardian.com/books/2009/oct/31/michael-sandel-interview-oliver-burkeman" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">INTERVIEW with Sandel, not a review of his book</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88664,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88664,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88664,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88701" class="flagged" data-id="88701">
-  <td>88701</td>
-  <td>Wittgenstein on Rules and Private Language</td>
-  <td>Kripke</td>
-  <td><a href="https://theguardian.com/commentisfree/belief/2010/feb/08/wittgenstein-philosophy-religion" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">Opinion/commentisfree about Wittgenstein, not a book review</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88701,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88701,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88701,'skip')">Skip</button>
   </td>
 </tr>
 </table>
@@ -434,7 +224,7 @@
 <table><tr><th>ID</th><th>Book</th><th>Author</th><th>Link</th><th>Issue</th><th>Action</th></tr>
 <tr id="row-88588" class="flagged" data-id="88588">
   <td>88588</td>
-  <td>Philosophy and the Mirror of Nature</td>
+  <td>Consequences of Pragmatism</td>
   <td>Rorty</td>
   <td><a href="https://nybooks.com/articles/1983/04/28/auto-da-fe" target="_blank" rel="noopener">Open</a></td>
   <td class="reason">Generic title &#x27;auto-da-fe&#x27;, may not be about Rorty&#x27;s book</td>
@@ -446,7 +236,7 @@
 </tr>
 <tr id="row-88644" class="flagged" data-id="88644">
   <td>88644</td>
-  <td>Ethics and the Limits of Philosophy</td>
+  <td>Essays and Reviews, 1959-2002</td>
   <td>Williams</td>
   <td><a href="https://nybooks.com/articles/2014/07/10/case-against-moralism" target="_blank" rel="noopener">Open</a></td>
   <td class="reason">2014 article matched to 1985 book - 29 year gap, may be about different Williams work</td>
@@ -458,8 +248,8 @@
 </tr>
 <tr id="row-88805" class="flagged" data-id="88805">
   <td>88805</td>
-  <td>The Standing of Psychoanalysis</td>
-  <td>Farrell</td>
+  <td>The Dreaming Brain</td>
+  <td>Hobson</td>
   <td><a href="https://nybooks.com/articles/1989/06/15/what-dreams-are-made-of" target="_blank" rel="noopener">Open</a></td>
   <td class="reason">May review a different psychoanalysis book</td>
   <td class="btn-group">
@@ -592,12 +382,12 @@
   </td>
 </tr>
 </table>
-<h3>The New Yorker (5)</h3>
+<h3>The New Yorker (3)</h3>
 <table><tr><th>ID</th><th>Book</th><th>Author</th><th>Link</th><th>Issue</th><th>Action</th></tr>
 <tr id="row-88577" class="flagged" data-id="88577">
   <td>88577</td>
-  <td>Dialogues concerning Natural Religion</td>
-  <td>Hume</td>
+  <td>God Is Not Great: How Religion Poisons Everything</td>
+  <td>Hitchens</td>
   <td><a href="https://newyorker.com/magazine/2007/05/21/atheists-with-attitude" target="_blank" rel="noopener">Open</a></td>
   <td class="reason">About the atheist movement, matched to Hume&#x27;s Dialogues</td>
   <td class="btn-group">
@@ -608,8 +398,8 @@
 </tr>
 <tr id="row-88669" class="flagged" data-id="88669">
   <td>88669</td>
-  <td>Liberalism and the Limits of Justice</td>
-  <td>Sandel</td>
+  <td>American Shtetl</td>
+  <td>Stolzenberg</td>
   <td><a href="https://newyorker.com/books/under-review/an-extraordinary-account-of-a-hasidic-enclave" target="_blank" rel="noopener">Open</a></td>
   <td class="reason">About a Hasidic enclave, not about Sandel&#x27;s book</td>
   <td class="btn-group">
@@ -618,21 +408,9 @@
     <button class="btn btn-skip" onclick="decide(88669,'skip')">Skip</button>
   </td>
 </tr>
-<tr id="row-88670" class="flagged" data-id="88670">
-  <td>88670</td>
-  <td>Liberalism and the Limits of Justice</td>
-  <td>Sandel</td>
-  <td><a href="https://newyorker.com/magazine/2021/08/02/can-affirmative-action-survive" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">About affirmative action, not about Sandel&#x27;s book</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88670,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88670,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88670,'skip')">Skip</button>
-  </td>
-</tr>
 <tr id="row-88768" class="flagged" data-id="88768">
   <td>88768</td>
-  <td>She Came to Stay</td>
+  <td>The Inseparables</td>
   <td>Beauvoir</td>
   <td><a href="https://newyorker.com/magazine/2021/08/30/simone-de-beauvoirs-lost-novel-of-early-love" target="_blank" rel="noopener">Open</a></td>
   <td class="reason">About a DIFFERENT Beauvoir novel (lost novel of early love), not &#x27;She Came to Stay&#x27;</td>
@@ -640,18 +418,6 @@
     <button class="btn btn-keep" onclick="decide(88768,'keep')">Keep</button>
     <button class="btn btn-delete" onclick="decide(88768,'delete')">Delete</button>
     <button class="btn btn-skip" onclick="decide(88768,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88827" class="flagged" data-id="88827">
-  <td>88827</td>
-  <td>Value in Ethics and Economics</td>
-  <td>Anderson</td>
-  <td><a href="https://newyorker.com/magazine/2019/01/07/the-philosopher-redefining-equality" target="_blank" rel="noopener">Open</a></td>
-  <td class="reason">Profile of Elizabeth Anderson, not a review of her book</td>
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88827,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88827,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88827,'skip')">Skip</button>
   </td>
 </tr>
 </table>
@@ -751,7 +517,7 @@
   </td>
 </tr>
 </table>
-<h3>Boston Review (9)</h3>
+<h3>Boston Review (6)</h3>
 <table><tr><th>ID</th><th>Book</th><th>Author</th><th>Link</th><th>Action</th></tr>
 <tr id="row-88546" data-id="88546">
   <td>88546</td>
@@ -791,38 +557,14 @@
 </tr>
 <tr id="row-88616" data-id="88616">
   <td>88616</td>
-  <td>The Second Sex</td>
-  <td>Beauvoir</td>
+  <td>Sex, Love, and Letters: Writing Simone de Beauvoir</td>
+  <td>Coffin</td>
   <td><a href="https://bostonreview.net/articles/vivian-gornick-sex-love-and-letters-review" target="_blank" rel="noopener">Open</a></td>
   
   <td class="btn-group">
     <button class="btn btn-keep" onclick="decide(88616,'keep')">Keep</button>
     <button class="btn btn-delete" onclick="decide(88616,'delete')">Delete</button>
     <button class="btn btn-skip" onclick="decide(88616,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88643" data-id="88643">
-  <td>88643</td>
-  <td>Ethics and the Limits of Philosophy</td>
-  <td>Williams</td>
-  <td><a href="https://bostonreview.net/articles/martha-c-nussbaum-tragedy-and-justice" target="_blank" rel="noopener">Open</a></td>
-  
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88643,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88643,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88643,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88718" data-id="88718">
-  <td>88718</td>
-  <td>Capitalism and Social Democracy</td>
-  <td>Przeworski</td>
-  <td><a href="https://bostonreview.net/articles/democracy-or-neoliberalism" target="_blank" rel="noopener">Open</a></td>
-  
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88718,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88718,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88718,'skip')">Skip</button>
   </td>
 </tr>
 <tr id="row-88733" data-id="88733">
@@ -835,18 +577,6 @@
     <button class="btn btn-keep" onclick="decide(88733,'keep')">Keep</button>
     <button class="btn btn-delete" onclick="decide(88733,'delete')">Delete</button>
     <button class="btn btn-skip" onclick="decide(88733,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88753" data-id="88753">
-  <td>88753</td>
-  <td>Ontological Arguments and Belief in God</td>
-  <td>Oppy</td>
-  <td><a href="https://bostonreview.net/articles/alex-byrne-philosophy-god" target="_blank" rel="noopener">Open</a></td>
-  
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88753,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88753,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88753,'skip')">Skip</button>
   </td>
 </tr>
 <tr id="row-88754" data-id="88754">
@@ -1219,12 +949,12 @@
   </td>
 </tr>
 </table>
-<h3>Los Angeles Review of Books (7)</h3>
+<h3>Los Angeles Review of Books (5)</h3>
 <table><tr><th>ID</th><th>Book</th><th>Author</th><th>Link</th><th>Action</th></tr>
 <tr id="row-88572" data-id="88572">
   <td>88572</td>
-  <td>Attention, Not Self</td>
-  <td>Ganeri</td>
+  <td>Taking Back Philosophy: A Multicultural Manifesto</td>
+  <td>Van Norden</td>
   <td><a href="https://lareviewofbooks.org/article/taking-philosophy-forward" target="_blank" rel="noopener">Open</a></td>
   
   <td class="btn-group">
@@ -1235,8 +965,8 @@
 </tr>
 <tr id="row-88575" data-id="88575">
   <td>88575</td>
-  <td>Dialogues concerning Natural Religion</td>
-  <td>Hume</td>
+  <td>The Great Guide: What David Hume Can Teach Us About Being Human and Living Well</td>
+  <td>Baggini</td>
   <td><a href="https://lareviewofbooks.org/article/to-err-is-humean" target="_blank" rel="noopener">Open</a></td>
   
   <td class="btn-group">
@@ -1245,21 +975,9 @@
     <button class="btn btn-skip" onclick="decide(88575,'skip')">Skip</button>
   </td>
 </tr>
-<tr id="row-88611" data-id="88611">
-  <td>88611</td>
-  <td>Science in a Democratic Society</td>
-  <td>Kitcher</td>
-  <td><a href="https://lareviewofbooks.org/article/dangerous-bullshit" target="_blank" rel="noopener">Open</a></td>
-  
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88611,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88611,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88611,'skip')">Skip</button>
-  </td>
-</tr>
 <tr id="row-88622" data-id="88622">
   <td>88622</td>
-  <td>The Therapy of Desire</td>
+  <td>The Monarchy of Fear: A Philosopher Looks at Our Political Crisis</td>
   <td>Nussbaum</td>
   <td><a href="https://lareviewofbooks.org/article/nothing-to-fear-but" target="_blank" rel="noopener">Open</a></td>
   
@@ -1279,18 +997,6 @@
     <button class="btn btn-keep" onclick="decide(88624,'keep')">Keep</button>
     <button class="btn btn-delete" onclick="decide(88624,'delete')">Delete</button>
     <button class="btn btn-skip" onclick="decide(88624,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88649" data-id="88649">
-  <td>88649</td>
-  <td>Fear and trembling</td>
-  <td>Kierkegaard</td>
-  <td><a href="https://lareviewofbooks.org/article/fear-trembling-doom" target="_blank" rel="noopener">Open</a></td>
-  
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88649,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88649,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88649,'skip')">Skip</button>
   </td>
 </tr>
 <tr id="row-88800" data-id="88800">
@@ -1445,8 +1151,8 @@
 </tr>
 <tr id="row-88652" data-id="88652">
   <td>88652</td>
-  <td>Fear and trembling</td>
-  <td>Kierkegaard</td>
+  <td>The Humor of Kierkegaard</td>
+  <td>Oden</td>
   <td><a href="https://theguardian.com/books/2004/aug/28/philosophy" target="_blank" rel="noopener">Open</a></td>
   
   <td class="btn-group">
@@ -1457,8 +1163,8 @@
 </tr>
 <tr id="row-88767" data-id="88767">
   <td>88767</td>
-  <td>She Came to Stay</td>
-  <td>Beauvoir</td>
+  <td>A Dangerous Liaison</td>
+  <td>Seymour-Jones</td>
   <td><a href="https://theguardian.com/books/2008/apr/19/featuresreviews.guardianreview8" target="_blank" rel="noopener">Open</a></td>
   
   <td class="btn-group">
@@ -1535,7 +1241,7 @@
 <table><tr><th>ID</th><th>Book</th><th>Author</th><th>Link</th><th>Action</th></tr>
 <tr id="row-88563" data-id="88563">
   <td>88563</td>
-  <td>Reason and Rhetoric in the Philosophy of Hobbes</td>
+  <td>Hobbes and Republican Liberty</td>
   <td>Skinner</td>
   <td><a href="https://nybooks.com/articles/2009/07/16/hobbes-the-halo-of-power" target="_blank" rel="noopener">Open</a></td>
   
@@ -1571,8 +1277,8 @@
 </tr>
 <tr id="row-88615" data-id="88615">
   <td>88615</td>
-  <td>The Second Sex</td>
-  <td>Beauvoir</td>
+  <td>Becoming Beauvoir: A Life</td>
+  <td>Kirkpatrick</td>
   <td><a href="https://nybooks.com/articles/2019/11/07/simone-de-beauvoir-womans-work" target="_blank" rel="noopener">Open</a></td>
   
   <td class="btn-group">
@@ -1595,8 +1301,8 @@
 </tr>
 <tr id="row-88641" data-id="88641">
   <td>88641</td>
-  <td>Dostoevsky the Thinker</td>
-  <td>Scanlan</td>
+  <td>Dostoevsky: The Mantle of the Prophet, 1871-1881</td>
+  <td>Frank</td>
   <td><a href="https://nybooks.com/articles/2003/03/27/the-two-dostoevskys" target="_blank" rel="noopener">Open</a></td>
   
   <td class="btn-group">
@@ -1981,7 +1687,7 @@
   </td>
 </tr>
 </table>
-<h3>The New Yorker (4)</h3>
+<h3>The New Yorker (3)</h3>
 <table><tr><th>ID</th><th>Book</th><th>Author</th><th>Link</th><th>Action</th></tr>
 <tr id="row-88507" data-id="88507">
   <td>88507</td>
@@ -1993,18 +1699,6 @@
     <button class="btn btn-keep" onclick="decide(88507,'keep')">Keep</button>
     <button class="btn btn-delete" onclick="decide(88507,'delete')">Delete</button>
     <button class="btn btn-skip" onclick="decide(88507,'skip')">Skip</button>
-  </td>
-</tr>
-<tr id="row-88586" data-id="88586">
-  <td>88586</td>
-  <td>Justice for Hedgehogs</td>
-  <td>Dworkin</td>
-  <td><a href="https://newyorker.com/magazine/2012/01/30/the-ring-and-the-bar" target="_blank" rel="noopener">Open</a></td>
-  
-  <td class="btn-group">
-    <button class="btn btn-keep" onclick="decide(88586,'keep')">Keep</button>
-    <button class="btn btn-delete" onclick="decide(88586,'delete')">Delete</button>
-    <button class="btn btn-skip" onclick="decide(88586,'skip')">Skip</button>
   </td>
 </tr>
 <tr id="row-88654" data-id="88654">
@@ -2021,8 +1715,8 @@
 </tr>
 <tr id="row-88789" data-id="88789">
   <td>88789</td>
-  <td>The Harm in Hate Speech</td>
-  <td>Waldron</td>
+  <td>End of Discussion</td>
+  <td>Ham</td>
   <td><a href="https://newyorker.com/magazine/2015/08/10/the-hell-you-say" target="_blank" rel="noopener">Open</a></td>
   
   <td class="btn-group">
@@ -2125,8 +1819,8 @@
 </div>
 
 <script>
-const FLAGGED_IDS = [88548,88551,88693,88809,88790,88646,88702,88799,88685,88802,88578,88720,88724,88727,88835,88836,88837,88574,88576,88582,88617,88647,88651,88664,88701,88657,88668,88588,88644,88805,88619,88661,88713,88714,88716,88745,88781,88782,88797,88826,88577,88669,88670,88768,88827,88769,88600,88635,88636,88746];
-const CLEAN_IDS = [88554,88680,88546,88549,88603,88616,88643,88718,88733,88753,88754,88511,88553,88614,88620,88762,88765,88594,88814,88510,88514,88517,88530,88556,88557,88562,88604,88642,88674,88689,88694,88699,88748,88760,88764,88770,88786,88830,88831,88839,88572,88575,88611,88622,88624,88649,88800,88505,88534,88780,88508,88538,88539,88540,88541,88542,88543,88544,88652,88767,88587,88655,88656,88667,88729,88563,88565,88573,88615,88628,88641,88650,88665,88671,88695,88763,88777,88784,88810,88513,88568,88595,88618,88631,88632,88648,88703,88710,88711,88712,88721,88744,88771,88773,88783,88788,88793,88813,88824,88825,88828,88833,88507,88586,88654,88789,88524,88531,88707,88503,88509,88516];
+const FLAGGED_IDS = [88790,88646,88702,88799,88685,88802,88582,88651,88657,88668,88588,88644,88805,88619,88661,88713,88714,88716,88745,88781,88782,88797,88826,88577,88669,88768,88769,88600,88635,88636,88746];
+const CLEAN_IDS = [88554,88680,88546,88549,88603,88616,88733,88754,88511,88553,88614,88620,88762,88765,88594,88814,88510,88514,88517,88530,88556,88557,88562,88604,88642,88674,88689,88694,88699,88748,88760,88764,88770,88786,88830,88831,88839,88572,88575,88622,88624,88800,88505,88534,88780,88508,88538,88539,88540,88541,88542,88543,88544,88652,88767,88587,88655,88656,88667,88729,88563,88565,88573,88615,88628,88641,88650,88665,88671,88695,88763,88777,88784,88810,88513,88568,88595,88618,88631,88632,88648,88703,88710,88711,88712,88721,88744,88771,88773,88783,88788,88793,88813,88824,88825,88828,88833,88507,88654,88789,88524,88531,88707,88503,88509,88516];
 const ALL_IDS = [...FLAGGED_IDS, ...CLEAN_IDS];
 const TOTAL = ALL_IDS.length;
 
