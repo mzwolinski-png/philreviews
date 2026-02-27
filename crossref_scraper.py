@@ -1176,6 +1176,11 @@ class CrossrefReviewScraper:
         'Quarterly Journal of Austrian Economics': {
             'crossref_parseable': True, 'openalex_enrichable': True,
         },
+        # "Book Review: Title" and italic tags — small Crossref footprint (43 DOIs)
+        'Journal of Libertarian Studies': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
         # "<i>Title</i> by Author" format — standard italic detection
         'History of Political Economy': {
             'crossref_parseable': True, 'openalex_enrichable': True,
