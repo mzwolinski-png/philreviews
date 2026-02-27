@@ -990,10 +990,7 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
     if re.match(r'^review:\s', title):
         return True
 
-    # Pattern: "Author's Title..." (EJPE possessive format)
     raw_title = (crossref_item.get('title', ['']) or [''])[0]
-    if re.match(r"^(?:Review of )?[A-Z][a-z]+(?:\s[A-Z]\.?)* [A-Z][a-zA-Z-]+['\u2019]s\s", raw_title):
-        return True
 
     # Pattern: 'Author, "Title"' or "Author, 'Title'" (Philosophy in Review)
     if re.match(r'''^[A-Z].+?,\s*(?:\(eds?\.?\)\s*,?\s*)?["'\u201c'].{10,}["'\u201d']''', raw_title):
@@ -1003,13 +1000,21 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
     if re.match(r'^<b>[^<]{5,}</b>\s*:', raw_title):
         return True
 
-    # Pattern: "Title. By Author: Publisher, Year. Pages."
-    if re.search(r'\d+\s*pp\b', raw_title, re.IGNORECASE):
+    # Pattern: "Title. By AuthorName." (Heythrop Journal review format)
+    if re.search(r'\.\s+By\s+[A-Z][a-z]', raw_title):
         return True
 
     # --- Name-based heuristics (skip for italic_only mode) ---
     if detection_mode == 'italic_only':
         return False
+
+    # Pattern: "Author's Title..." (EJPE possessive format)
+    if re.match(r"^(?:Review of )?[A-Z][a-z]+(?:\s[A-Z]\.?)* [A-Z][a-zA-Z-]+['\u2019]s\s", raw_title):
+        return True
+
+    # Pattern: "Title. By Author: Publisher, Year. Pages."
+    if re.search(r'\d+\s*pp\b', raw_title, re.IGNORECASE):
+        return True
 
     # Pattern: starts with "LastName, First. <i>Title</i>" (common Crossref book review format)
     author_comma_match = re.match(r'^([A-Z][a-zA-Z-]+),\s+([A-Z][a-z])', raw_title)
@@ -1619,6 +1624,77 @@ class CrossrefReviewScraper:
         },
         # Logic — few reviews but fills gap
         'Journal of Philosophical Logic': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+
+        # ── New journals (Feb 27 2026, batch 2) ─────────────────────
+
+        # Environmental philosophy — "Book Review: <i>Title</i>" format (~765 est.)
+        'Environmental Values': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
+        # Theology/philosophy of religion — "Title. By Author. Publisher, Year" format
+        # Use italic_only to block possessive/colon false positives; ". By " pattern still fires
+        'The Heythrop Journal': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Leibniz scholarship — "Review of Author, Title. Publisher, Year" format (~143 est.)
+        'The Leibniz Review': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
+        # Legal philosophy — "Author, <i>Title</i>" format (~50 est.)
+        'Jurisprudence': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Ethics — "Book Reviews" section (~75 est.)
+        'Ethical Perspectives': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
+        # Social epistemology — mixed formats (~437 est.)
+        'Social Epistemology': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Logic — "Author, Title. Publisher, Year" format (~229 est. new beyond 29 in DB)
+        'Studia Logica': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Neuroethics — mixed formats (~131 est. new beyond 9 in DB)
+        'Neuroethics': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Ancient/classical philosophy — some reviews (~32 est. new beyond 140 in DB)
+        'Phronesis': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Agricultural/environmental ethics — mixed formats (~280 est.)
+        'Journal of Agricultural and Environmental Ethics': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Ethics — "Author, <i>Title</i>" format (~152 est.)
+        'The Journal of Ethics': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Legal philosophy — mixed (~52 est.)
+        'Legal Theory': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Consciousness studies — mixed (~84 est.)
+        'Journal of Consciousness Studies': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Political philosophy — mixed (~136 est.)
+        'Social Philosophy and Policy': {
             'crossref_parseable': True, 'openalex_enrichable': True,
             'detection_mode': 'italic_only',
         },
