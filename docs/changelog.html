@@ -37,9 +37,11 @@
     <div class="changelog-entry">
         <h2>February 28, 2026</h2>
         <ul>
-            <li>New subfield filter: browse reviews by philosophical subfield (ethics, epistemology, political philosophy, etc.) &mdash; 15 subfields, 99% of entries classified via journal mapping and LLM</li>
+            <li>New subfield filter: browse reviews by philosophical subfield (ethics, epistemology, political philosophy, etc.) &mdash; 15 subfields, 99.6% of entries classified via journal mapping and LLM</li>
             <li>Subfield badges now shown in expanded review details</li>
             <li>Added 6 new journals: Political Studies Review (2,980), The Thomist (2,037), The Journal of Symbolic Logic (1,810), Metascience (1,542), History of European Ideas (261), Contemporary Political Theory (189)</li>
+            <li>Data cleanup: fixed 180 ALL CAPS titles, 36 leading punctuation artifacts, 27 HTML entities, 25 HTML tags, 10 editor annotations in author fields, 41 swapped first/last names; deleted 26 empty &ldquo;Book review&rdquo; entries</li>
+            <li>Backfilled 601 missing reviewer names: 576 for Journal of Markets &amp; Morality via API, 25 for mainstream outlets (TLS, The Guardian, The Nation, and others) via page scraping</li>
         </ul>
     </div>
 
