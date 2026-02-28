@@ -16,6 +16,7 @@ Usage:
     python3 mainstream_review_scraper.py --status            # show scan progress
     python3 mainstream_review_scraper.py --reset             # reset state, start over
     python3 mainstream_review_scraper.py --guardian-only      # skip Google CSE
+    python3 mainstream_review_scraper.py --nyt-only           # NYT Article Search only
 """
 
 import argparse
@@ -192,9 +193,17 @@ def get_candidate_books(min_reviews=3):
 # ── URL normalization ─────────────────────────────────────────────
 
 def normalize_url(url):
-    """Strip query parameters and fragments from a URL."""
+    """Strip query parameters and fragments, normalize to https."""
     parsed = urlparse(url)
-    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, "", "", ""))
+    # Normalize http to https
+    scheme = "https" if parsed.scheme in ("http", "https") else parsed.scheme
+    # Strip www. from netloc
+    netloc = parsed.netloc
+    if netloc.startswith("www."):
+        netloc = netloc[4:]
+    # Strip trailing slash from path
+    path = parsed.path.rstrip("/")
+    return urlunparse((scheme, netloc, path, "", "", ""))
 
 
 def domain_from_url(url):
@@ -204,6 +213,39 @@ def domain_from_url(url):
     if hostname.startswith("www."):
         hostname = hostname[4:]
     return hostname
+
+
+# URL path patterns that indicate non-review pages
+NON_REVIEW_URL_PATTERNS = [
+    "/authors/", "/contributors/", "/contributor/",
+    "/author/", "/topics/", "/tags/",
+    "/category/", "/series/",
+    "/obituaries/", "/obituary/",
+    "/highereducation",
+]
+
+# URL patterns + title patterns that indicate obituaries/profiles
+OBITUARY_TITLE_SIGNALS = [
+    "obituary", "obituaries", "dies at", "died",
+    "has died", "1920-", "1921-", "1922-", "1923-", "1924-",
+    "1925-", "1926-", "1927-", "1928-", "1929-", "1930-",
+    "1931-", "1932-", "1933-", "1934-", "1935-", "1936-",
+    "1937-", "1938-", "1939-", "1940-", "1941-", "1942-",
+    "1943-", "1944-", "1945-", "1946-", "1947-", "1948-",
+    "1949-", "1950-",
+]
+
+
+def is_non_review_url(url):
+    """Check if a URL points to a non-review page (author page, obituary, etc.)."""
+    path = urlparse(url).path.lower()
+    return any(pat in path for pat in NON_REVIEW_URL_PATTERNS)
+
+
+def is_obituary_or_profile(title, url):
+    """Check if a result is an obituary or profile rather than a review."""
+    combined = f"{title} {url}".lower()
+    return any(sig in combined for sig in OBITUARY_TITLE_SIGNALS)
 
 
 # ── Verification pipeline ─────────────────────────────────────────
@@ -258,17 +300,43 @@ def verify_result(result_title, result_snippet, result_url, book_title, author_l
 def extract_reviewer_from_snippet(snippet):
     """Try to extract a reviewer name from a search snippet.
 
-    Looks for patterns like "By Name" or "by Name" at the start.
+    Looks for patterns like "By Name" or "by Name" anywhere in the text.
     Returns (first_name, last_name) or ("", "").
     """
     if not snippet:
         return ("", "")
 
-    # Common patterns: "By First Last ...", "By First Last |"
-    m = re.match(r"^[Bb]y\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)", snippet)
+    # Match "By First Last" or "by First Last" anywhere in snippet
+    # Handles hyphenated names (Wallace-Wells), middle initials (A.), apostrophes (O'Brien)
+    m = re.search(
+        r"[Bb]y\s+([A-Z][a-zA-Z'-]+(?:\s+[A-Z]\.?\s+)?(?:\s+[A-Z][a-zA-Z'-]+)+)",
+        snippet,
+    )
     if m:
         parts = m.group(1).strip().split()
-        if 2 <= len(parts) <= 3:
+        if 2 <= len(parts) <= 4:
+            return (" ".join(parts[:-1]), parts[-1])
+
+    return ("", "")
+
+
+def extract_reviewer_from_url(url):
+    """Try to extract reviewer name from the URL path.
+
+    Some outlets encode the reviewer name in the URL:
+    - LRB: /the-paper/v43/n03/freya-johnston/article-slug
+    Returns (first_name, last_name) or ("", "").
+    """
+    if not url:
+        return ("", "")
+
+    # LRB: /the-paper/v{vol}/n{num}/{reviewer-slug}/{article-slug}
+    # Also older format: /v{vol}/n{num}/{reviewer-slug}/{article-slug}
+    m = re.search(r'lrb\.co\.uk/(?:the-paper/)?v\d+/n\d+/([a-z][\w.-]+)/', url)
+    if m:
+        slug = m.group(1)
+        parts = [p.capitalize() for p in slug.split('-')]
+        if 2 <= len(parts) <= 4:
             return (" ".join(parts[:-1]), parts[-1])
 
     return ("", "")
@@ -356,6 +424,95 @@ class GoogleCSESearcher:
         except requests.RequestException as e:
             print(f"  Google CSE error: {e}")
             return []
+
+
+# ── Brave Search API ─────────────────────────────────────────────
+
+# Split outlets into 2 batches to stay under 400-char query limit
+BRAVE_SITE_BATCHES = [
+    [
+        "the-tls.co.uk", "lareviewofbooks.org", "wsj.com",
+        "theguardian.com", "nybooks.com", "lrb.co.uk",
+        "kirkusreviews.com", "bostonreview.net",
+    ],
+    [
+        "nytimes.com", "literaryreview.co.uk", "washingtonpost.com",
+        "newyorker.com", "telegraph.co.uk", "thenation.com",
+        "theatlantic.com", "australianbookreview.com.au",
+    ],
+]
+
+
+class BraveSearcher:
+    """Search Brave Web Search API across all target outlets."""
+
+    API_URL = "https://api.search.brave.com/res/v1/web/search"
+
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.session = requests.Session()
+        self.session.headers.update({
+            "Accept": "application/json",
+            "Accept-Encoding": "gzip",
+            "X-Subscription-Token": api_key,
+        })
+        self.queries_used = 0
+
+    def search(self, book_title, author_last):
+        """Search all target outlets for reviews of a book.
+
+        Makes 2 API calls (one per site batch) to stay under 400-char limit.
+        Returns list of result dicts with title, url, description fields.
+        Returns None if rate limited.
+        """
+        clean_title = re.sub(r'[:\?\!\*\[\]]', "", book_title)
+        all_results = []
+
+        for batch in BRAVE_SITE_BATCHES:
+            site_clause = " OR ".join(f"site:{d}" for d in batch)
+            query = f'"{clean_title}" {author_last} review ({site_clause})'
+
+            # Truncate if still over 400 chars (very long titles)
+            if len(query) > 400:
+                # Drop "review" and shorten title
+                query = f'"{clean_title[:80]}" {author_last} ({site_clause})'
+            if len(query) > 400:
+                continue  # Skip this batch for extremely long titles
+
+            try:
+                resp = self.session.get(
+                    self.API_URL,
+                    params={"q": query, "count": 10},
+                    timeout=30,
+                )
+                self.queries_used += 1
+
+                if resp.status_code == 429:
+                    print("  Brave: rate limited (429)")
+                    return None  # Sentinel: rate limited
+                if resp.status_code == 402:
+                    print("  Brave: quota exceeded (402)")
+                    return None  # Sentinel: quota exceeded
+
+                resp.raise_for_status()
+                data = resp.json()
+                web_results = data.get("web", {}).get("results", [])
+
+                for r in web_results:
+                    all_results.append({
+                        "title": r.get("title", ""),
+                        "url": r.get("url", ""),
+                        "description": r.get("description", ""),
+                        "age": r.get("age", ""),
+                    })
+
+            except requests.RequestException as e:
+                print(f"  Brave API error: {e}")
+
+            # Small delay between batch requests
+            time.sleep(0.5)
+
+        return all_results
 
 
 # ── Guardian API ──────────────────────────────────────────────────
@@ -513,24 +670,179 @@ class GuardianSearcher:
         return matches
 
 
+# ── NYT Article Search API ────────────────────────────────────────
+
+class NYTSearcher:
+    """Search NYT Article Search API for book reviews."""
+
+    API_URL = "https://api.nytimes.com/svc/search/v2/articlesearch.json"
+
+    def __init__(self, api_key):
+        self.api_key = api_key
+        self.session = requests.Session()
+        self.session.headers.update({"User-Agent": USER_AGENT})
+        self.queries_today = 0
+
+    def search(self, book_title, author_last):
+        """Search for NYT book reviews of a specific book.
+
+        Returns list of article dicts from the API.
+        """
+        # Clean title for query
+        clean_title = re.sub(r"[:\?\!\*]", "", book_title)
+        query = f'"{clean_title}" {author_last}'
+
+        params = {
+            "api-key": self.api_key,
+            "q": query,
+            "fq": "typeOfMaterials:Review AND section.name:Books",
+            "sort": "relevance",
+        }
+
+        try:
+            resp = self.session.get(self.API_URL, params=params, timeout=30)
+            self.queries_today += 1
+
+            if resp.status_code == 429:
+                print("  NYT: rate limited (429)")
+                return None  # Sentinel: rate limited
+            if resp.status_code == 403:
+                print("  NYT: quota exceeded (403)")
+                return None  # Sentinel: quota exceeded
+
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("response", {}).get("docs", [])
+
+        except requests.RequestException as e:
+            print(f"  NYT API error: {e}")
+            return []
+
+    def verify_and_extract(self, doc, book_title, author_last):
+        """Verify a NYT result is a review of this book and extract fields.
+
+        Uses NYT structured keywords (Person, Title tags) and
+        abstract/snippet for matching — NYT headlines are creative
+        and rarely contain the book title.
+
+        Returns a review dict or None.
+        """
+        headline = doc.get("headline", {}).get("main", "")
+        url = doc.get("web_url", "")
+
+        if not url:
+            return None
+
+        author_lower = author_last.lower()
+        keywords = doc.get("keywords", [])
+
+        # Strategy 1: Check structured keyword tags
+        # Look for author in Person keywords
+        has_author_tag = any(
+            k.get("name") == "Person"
+            and author_lower in k.get("value", "").lower()
+            for k in keywords
+        )
+
+        # Look for book title in Title keywords
+        title_keywords = [
+            k.get("value", "") for k in keywords
+            if k.get("name") == "Title"
+        ]
+
+        if has_author_tag and title_keywords:
+            # Check if any Title keyword matches our book title
+            strong_words = [w for w in get_significant_words(book_title) if len(w) >= 4]
+            if strong_words:
+                for tk in title_keywords:
+                    tk_lower = tk.lower()
+                    matched = sum(1 for w in strong_words if w.lower() in tk_lower)
+                    if matched / len(strong_words) >= 0.50:
+                        return self._extract_nyt_fields(doc, headline)
+
+        # Strategy 2: Check abstract/snippet for book title + author
+        abstract = doc.get("abstract", "")
+        snippet = doc.get("snippet", "")
+        combined = f"{headline} {abstract} {snippet}".lower()
+
+        # Author must appear
+        if not re.search(r'\b' + re.escape(author_lower) + r'\b', combined):
+            return None
+
+        # Title word matching against combined text
+        strong_words = [w for w in get_significant_words(book_title) if len(w) >= 4]
+        if not strong_words:
+            return None
+
+        matched = sum(1 for w in strong_words if w.lower() in combined)
+        ratio = matched / len(strong_words)
+
+        # Require high match since abstract/snippet are short and specific
+        if ratio >= 0.75:
+            return self._extract_nyt_fields(doc, headline)
+
+        return None
+
+    def _extract_nyt_fields(self, doc, headline):
+        """Extract reviewer, date, URL from a verified NYT doc."""
+        url = doc.get("web_url", "")
+
+        # Extract reviewer from byline
+        byline = doc.get("byline", {}).get("original", "")
+        r_first, r_last = ("", "")
+        if byline:
+            # Strip "By " prefix
+            name = re.sub(r'^[Bb]y\s+', '', byline).strip()
+            parts = name.split()
+            if 2 <= len(parts) <= 3:
+                r_first = " ".join(parts[:-1])
+                r_last = parts[-1]
+
+        # Publication date
+        pub_date = ""
+        date_str = doc.get("firstPublished", doc.get("pub_date", ""))
+        if date_str:
+            pub_date = date_str[:10]
+
+        url = normalize_url(url)
+
+        return {
+            "headline": headline,
+            "review_link": url,
+            "reviewer_first_name": r_first,
+            "reviewer_last_name": r_last,
+            "publication_date": pub_date,
+        }
+
+
 # ── Main scraper ──────────────────────────────────────────────────
 
 class MainstreamReviewScraper:
     """Orchestrates searching and verification for mainstream reviews."""
 
-    def __init__(self, google_api_key=None, google_cx=None, guardian_api_key=None):
+    def __init__(self, google_api_key=None, google_cx=None,
+                 guardian_api_key=None, nyt_api_key=None,
+                 brave_api_key=None):
         self.google = None
         self.guardian = None
+        self.nyt = None
+        self.brave = None
 
         if google_api_key and google_cx:
             self.google = GoogleCSESearcher(google_api_key, google_cx)
         if guardian_api_key:
             self.guardian = GuardianSearcher(guardian_api_key)
+        if nyt_api_key:
+            self.nyt = NYTSearcher(nyt_api_key)
+        if brave_api_key:
+            self.brave = BraveSearcher(brave_api_key)
 
         self.stats = {
             "books_searched": 0,
             "google_queries": 0,
             "guardian_queries": 0,
+            "nyt_queries": 0,
+            "brave_queries": 0,
             "results_checked": 0,
             "results_verified": 0,
             "duplicates_skipped": 0,
@@ -582,6 +894,8 @@ class MainstreamReviewScraper:
                 venue_name, access_type = DOMAIN_TO_VENUE[domain]
                 pub_date = extract_date_from_snippet(snippet)
                 r_first, r_last = extract_reviewer_from_snippet(snippet)
+                if not r_last:
+                    r_first, r_last = extract_reviewer_from_url(url)
 
                 verified.append({
                     "book_title": title,
@@ -666,20 +980,31 @@ class MainstreamReviewScraper:
 
         return verified
 
-    def run(self, min_reviews=3, limit=None, dry_run=False, guardian_only=False):
+    def run(self, min_reviews=3, limit=None, dry_run=False,
+            guardian_only=False, nyt_only=False, brave_only=False):
         """Run the mainstream review scan.
 
         Args:
             min_reviews: Minimum academic reviews a book must have.
             limit: Max number of books to search (for testing).
             dry_run: If True, don't insert into DB.
-            guardian_only: If True, skip Google CSE.
+            guardian_only: If True, only run Guardian.
+            nyt_only: If True, only run NYT.
+            brave_only: If True, only run Brave Search.
         """
         if guardian_only and not self.guardian:
             self.log("Guardian API key not configured — nothing to do", "ERROR")
             return self.stats
 
-        if not guardian_only and not self.google and not self.guardian:
+        if nyt_only and not self.nyt:
+            self.log("NYT API key not configured — nothing to do", "ERROR")
+            return self.stats
+
+        if brave_only and not self.brave:
+            self.log("Brave API key not configured — nothing to do", "ERROR")
+            return self.stats
+
+        if not guardian_only and not nyt_only and not brave_only and not self.google and not self.guardian and not self.nyt and not self.brave:
             self.log("No API keys configured", "ERROR")
             return self.stats
 
@@ -690,7 +1015,7 @@ class MainstreamReviewScraper:
         all_reviews = []
 
         # ── Guardian bulk approach ──────────────────────────────
-        if self.guardian:
+        if self.guardian and not nyt_only and not brave_only:
             self.log("Downloading all Guardian book reviews for bulk matching...")
             g_reviews = self.guardian.fetch_all_reviews()
             self.log(f"Downloaded {len(g_reviews)} Guardian reviews")
@@ -750,8 +1075,173 @@ class MainstreamReviewScraper:
                     f"\n         {g_url}"
                 )
 
+        # ── NYT per-book approach ─────────────────────────────
+        if self.nyt and (nyt_only or (not guardian_only and not brave_only)):
+            state = load_state()
+            nyt_completed = set(state.get("nyt_completed", []))
+
+            remaining = [b for b in candidates if b["key"] not in nyt_completed]
+            self.log(f"NYT: {len(remaining)} books remaining")
+
+            if limit:
+                remaining = remaining[:limit]
+                self.log(f"Limited to {limit} books")
+
+            for i, book in enumerate(remaining):
+                title = book["book_title"]
+                author = book["book_author_last_name"]
+                self.log(
+                    f"[{i + 1}/{len(remaining)}] NYT: "
+                    f'"{title}" by {author}'
+                )
+
+                docs = self.nyt.search(title, author)
+                self.stats["nyt_queries"] += 1
+
+                # None means rate-limited — stop scan, don't mark as done
+                if docs is None:
+                    self.log("  NYT daily quota hit — stopping scan. "
+                             "Resume tomorrow to continue.")
+                    break
+
+                for doc in docs:
+                    self.stats["results_checked"] += 1
+                    result = self.nyt.verify_and_extract(doc, title, author)
+                    if not result:
+                        continue
+
+                    url = result["review_link"]
+                    if db.review_link_exists(url):
+                        self.stats["duplicates_skipped"] += 1
+                        continue
+                    if any(r["review_link"] == url for r in all_reviews):
+                        continue
+
+                    review = {
+                        "book_title": title,
+                        "book_author_first_name": book["book_author_first_name"],
+                        "book_author_last_name": author,
+                        "reviewer_first_name": result["reviewer_first_name"],
+                        "reviewer_last_name": result["reviewer_last_name"],
+                        "publication_source": "The New York Times",
+                        "publication_date": result["publication_date"],
+                        "review_link": url,
+                        "review_summary": "",
+                        "access_type": "Restricted",
+                        "doi": "",
+                        "entry_type": "review",
+                        "symposium_group": "",
+                    }
+                    all_reviews.append(review)
+                    self.stats["results_verified"] += 1
+                    self.log(
+                        f"  FOUND: {result['headline'][:70]}"
+                        f"\n         {url}"
+                    )
+
+                # Only mark as completed if we actually searched
+                nyt_completed.add(book["key"])
+                state["nyt_completed"] = list(nyt_completed)
+                state["last_run"] = datetime.now().isoformat()
+                save_state(state)
+
+                # NYT rate limit: 5 requests/minute
+                time.sleep(12)
+
+        # ── Brave Search per-book approach ─────────────────────
+        if self.brave and (brave_only or (not guardian_only and not nyt_only)):
+            state = load_state()
+            brave_completed = set(state.get("brave_completed", []))
+
+            remaining = [b for b in candidates if b["key"] not in brave_completed]
+            self.log(f"Brave: {len(remaining)} books remaining")
+
+            if limit:
+                remaining = remaining[:limit]
+                self.log(f"Limited to {limit} books")
+
+            for i, book in enumerate(remaining):
+                title = book["book_title"]
+                author = book["book_author_last_name"]
+                self.log(
+                    f"[{i + 1}/{len(remaining)}] Brave: "
+                    f'"{title}" by {author}'
+                )
+
+                results = self.brave.search(title, author)
+                self.stats["brave_queries"] += 2  # 2 batches per book
+
+                # None means rate-limited — stop scan
+                if results is None:
+                    self.log("  Brave quota hit — stopping scan. "
+                             "Resume later to continue.")
+                    break
+
+                for item in results:
+                    self.stats["results_checked"] += 1
+                    r_title = item.get("title", "")
+                    r_url = item.get("url", "")
+                    r_desc = item.get("description", "")
+
+                    if not r_url:
+                        continue
+
+                    # Skip author/tag/category/obituary pages
+                    if is_non_review_url(r_url):
+                        continue
+                    if is_obituary_or_profile(r_title, r_url):
+                        continue
+
+                    if not verify_result(r_title, r_desc, r_url, title, author):
+                        continue
+
+                    r_url = normalize_url(r_url)
+                    if db.review_link_exists(r_url):
+                        self.stats["duplicates_skipped"] += 1
+                        continue
+                    if any(r["review_link"] == r_url for r in all_reviews):
+                        continue
+
+                    domain = domain_from_url(r_url)
+                    if domain not in DOMAIN_TO_VENUE:
+                        continue
+                    venue_name, access_type = DOMAIN_TO_VENUE[domain]
+
+                    pub_date = extract_date_from_snippet(r_desc)
+                    r_first, r_last = extract_reviewer_from_snippet(r_desc)
+
+                    all_reviews.append({
+                        "book_title": title,
+                        "book_author_first_name": book["book_author_first_name"],
+                        "book_author_last_name": author,
+                        "reviewer_first_name": r_first,
+                        "reviewer_last_name": r_last,
+                        "publication_source": venue_name,
+                        "publication_date": pub_date,
+                        "review_link": r_url,
+                        "review_summary": "",
+                        "access_type": access_type,
+                        "doi": "",
+                        "entry_type": "review",
+                        "symposium_group": "",
+                    })
+                    self.stats["results_verified"] += 1
+                    self.log(
+                        f"  FOUND: {venue_name} — {r_title[:70]}"
+                        f"\n         {r_url}"
+                    )
+
+                # Only mark as completed if we actually searched
+                brave_completed.add(book["key"])
+                state["brave_completed"] = list(brave_completed)
+                state["last_run"] = datetime.now().isoformat()
+                save_state(state)
+
+                # Brave rate limit: ~1 req/sec is safe
+                time.sleep(1)
+
         # ── Google CSE per-book approach ────────────────────────
-        if self.google and not guardian_only:
+        if self.google and not guardian_only and not nyt_only and not brave_only:
             state = load_state()
             completed_keys = set(state.get("books_completed", []))
 
@@ -842,6 +1332,8 @@ class MainstreamReviewScraper:
         print(f"  Books searched:     {self.stats['books_searched']}")
         print(f"  Google queries:     {self.stats['google_queries']}")
         print(f"  Guardian queries:   {self.stats['guardian_queries']}")
+        print(f"  NYT queries:        {self.stats['nyt_queries']}")
+        print(f"  Brave queries:      {self.stats['brave_queries']}")
         print(f"  Results checked:    {self.stats['results_checked']}")
         print(f"  Results verified:   {self.stats['results_verified']}")
         print(f"  Duplicates skipped: {self.stats['duplicates_skipped']}")
@@ -876,6 +1368,14 @@ def main():
         "--guardian-only", action="store_true",
         help="Skip Google CSE, use Guardian API only",
     )
+    parser.add_argument(
+        "--nyt-only", action="store_true",
+        help="Use NYT Article Search API only",
+    )
+    parser.add_argument(
+        "--brave-only", action="store_true",
+        help="Use Brave Search API only",
+    )
     args = parser.parse_args()
 
     if args.status:
@@ -893,25 +1393,35 @@ def main():
     google_key = os.environ.get("GOOGLE_CSE_API_KEY")
     google_cx = os.environ.get("GOOGLE_CSE_CX")
     guardian_key = os.environ.get("GUARDIAN_API_KEY")
+    nyt_key = os.environ.get("NYT_API_KEY")
+    brave_key = os.environ.get("BRAVE_API_KEY")
 
-    if not args.guardian_only and (not google_key or not google_cx):
+    if not args.guardian_only and not args.nyt_only and not args.brave_only and (not google_key or not google_cx):
         print("Error: GOOGLE_CSE_API_KEY and GOOGLE_CSE_CX must be set in .env")
-        print("Use --guardian-only to skip Google CSE, or add keys to .env")
+        print("Use --guardian-only, --nyt-only, or --brave-only to use a specific API")
         return
 
     if not guardian_key:
         print("Warning: GUARDIAN_API_KEY not set — Guardian search disabled")
+    if not nyt_key:
+        print("Warning: NYT_API_KEY not set — NYT search disabled")
+    if not brave_key:
+        print("Warning: BRAVE_API_KEY not set — Brave search disabled")
 
     scraper = MainstreamReviewScraper(
         google_api_key=google_key,
         google_cx=google_cx,
         guardian_api_key=guardian_key,
+        nyt_api_key=nyt_key,
+        brave_api_key=brave_key,
     )
     scraper.run(
         min_reviews=args.min_reviews,
         limit=args.limit,
         dry_run=args.dry_run,
         guardian_only=args.guardian_only,
+        nyt_only=args.nyt_only,
+        brave_only=args.brave_only,
     )
 
 
