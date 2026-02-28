@@ -150,6 +150,7 @@ JOURNAL_SUBFIELD_MAP = {
     "Studia Logica": ("metaphysics", None),
     "Journal of Philosophical Logic": ("metaphysics", None),
     "The Bulletin of Symbolic Logic": ("metaphysics", None),
+    "The Journal of Symbolic Logic": ("metaphysics", None),
     "Philosophia Mathematica": ("metaphysics", None),
     "History and Philosophy of Logic": ("metaphysics", "history"),
 
