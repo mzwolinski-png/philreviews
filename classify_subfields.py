@@ -124,6 +124,8 @@ JOURNAL_SUBFIELD_MAP = {
     "Quarterly Journal of Austrian Economics": ("political", None),
     "The Review of Austrian Economics": ("political", None),
     "Reason Papers": ("political", None),
+    "Political Studies Review": ("political", None),
+    "Contemporary Political Theory": ("political", None),
 
     # Philosophy of Law
     "Ratio Juris": ("legal", None),
@@ -165,6 +167,7 @@ JOURNAL_SUBFIELD_MAP = {
     "HOPOS: The Journal of the International Society for the History of Philosophy of Science": ("science", "history"),
     "Arabic Sciences and Philosophy": ("science", "non-western"),
     "The New Atlantis": ("science", None),
+    "Metascience": ("science", None),
 
     # Aesthetics & Philosophy of Art
     "The Journal of Aesthetics and Art Criticism": ("aesthetics", None),
@@ -182,6 +185,8 @@ JOURNAL_SUBFIELD_MAP = {
     "Process Studies": ("religion", "metaphysics"),
     "Max Weber Studies": ("religion", "political"),
     "Journal of the Society of Christian Ethics": ("religion", "ethics"),
+    "The Thomist: A Speculative Quarterly Review": ("religion", None),
+    "Neue Zeitschrift für Systematische Theologie und Religionsphilosophie": ("religion", None),
 
     # History of Philosophy (general)
     "Journal of the History of Philosophy": ("history", None),
@@ -191,6 +196,7 @@ JOURNAL_SUBFIELD_MAP = {
     "History of Philosophy & Logical Analysis": ("history", None),
     "History of Philosophy and Legal Analysis": ("history", None),
     "Intellectual History Review": ("history", None),
+    "History of European Ideas": ("history", None),
 
     # Ancient & Medieval Philosophy
     "Phronesis": ("ancient", None),

@@ -55,10 +55,86 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     title = _normalize(title)
     subtitle = _normalize(subtitle) if subtitle else ''
 
+    # --- Format SUB-A: Subtitle contains "Author: Title. City: Publisher, Year" (Metascience) ---
+    if subtitle:
+        sub_a = re.match(
+            r'^(.+?):\s+(.+?)\.\s+(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?:\s+)?'
+            r'(.+?),\s+(\d{4})',
+            subtitle
+        )
+        if sub_a:
+            author_str = sub_a.group(1).strip()
+            book_title_str = sub_a.group(2).strip()
+            if len(book_title_str) > 5 and _looks_like_author_name(author_str):
+                first, last, has_multiple = _extract_first_author(author_str)
+                if last:
+                    return {
+                        'book_title': book_title_str,
+                        'book_author_first': first,
+                        'book_author_last': last,
+                        'is_edited_volume': bool(re.search(r'\b[Ee]ds?\b\.?', author_str)),
+                        'has_multiple_authors': has_multiple,
+                        'needs_doi_scrape': False,
+                        'format': 'SUB-A',
+                    }
+
+        # --- Format SUB-B: Subtitle contains "Author, Publisher, Year, pages, ISBN" (CPT) ---
+        # Subtitle may start with book subtitle: "[Subtitle,] Author, Publisher, Year..."
+        # Strategy: find publisher segment, take the segment immediately before it as author.
+        _pub_kw = (r'Press|University|Books|Publishing|Verlag|Routledge|Springer|Polity|'
+                   r'Palgrave|Bloomsbury|MIT|Verso|Penguin|Harper|Edinburgh')
+        parts_sub = [p.strip() for p in subtitle.split(',')]
+        pub_idx = None
+        for i, part in enumerate(parts_sub):
+            if re.search(_pub_kw, part, re.IGNORECASE):
+                pub_idx = i
+                break
+        if pub_idx is not None:
+            author_str = None
+            is_edited = False
+            if pub_idx >= 1:
+                # Author is the segment immediately before the publisher
+                candidate = parts_sub[pub_idx - 1].strip()
+                edited_match = re.match(r'^[Ee]dited\s+by\s+(.+)', candidate)
+                if edited_match:
+                    candidate = edited_match.group(1).strip()
+                    is_edited = True
+                if _looks_like_author_name(candidate):
+                    author_str = candidate
+            elif pub_idx == 0:
+                # "Author Publisher" without comma: extract name before publisher keyword
+                name_match = re.match(r'^(.+?)\s+(?:' + _pub_kw + r')', parts_sub[0])
+                if name_match and _looks_like_author_name(name_match.group(1).strip()):
+                    author_str = name_match.group(1).strip()
+            book_title_clean = re.sub(r'<[^>]+>', '', title).strip()
+            if author_str:
+                first, last, has_multiple = _extract_first_author(author_str)
+                if last:
+                    return {
+                        'book_title': book_title_clean,
+                        'book_author_first': first,
+                        'book_author_last': last,
+                        'is_edited_volume': is_edited,
+                        'has_multiple_authors': has_multiple,
+                        'needs_doi_scrape': False,
+                        'format': 'SUB-B',
+                    }
+            # Have a subtitle with publisher but couldn't parse author — use title as book title
+            if book_title_clean and len(book_title_clean) > 3:
+                return {
+                    'book_title': book_title_clean,
+                    'book_author_first': '',
+                    'book_author_last': '',
+                    'is_edited_volume': False,
+                    'has_multiple_authors': False,
+                    'needs_doi_scrape': True,
+                    'format': 'SUB-B',
+                }
+
     # --- Format R: "Book Review:Title. Author Name" (old Ethics format, pre-1940) ---
     # Also handles "Book Review: Title" (no author, e.g. QJAE) → title-only with enrichment
     # Must check BEFORE stripping prefix, since the "Book Review:" is the signal
-    br_colon = re.match(r'^Book\s*Review\s*:\s*(.+)', title, re.IGNORECASE)
+    br_colon = re.match(r'^(?:Commissioned\s+)?Book\s*Review\s*:\s*(.+)', title, re.IGNORECASE)
     if br_colon:
         remainder = br_colon.group(1).strip()
         # Split at the last ". AuthorName" — author is 1-5 capitalized words at end
@@ -80,9 +156,11 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
                             'needs_doi_scrape': False,
                             'format': 'book_review_colon',
                         }
-        # No author found — treat remainder as title-only (QJAE "Book Review: Title" format)
-        if remainder and len(remainder) > 3:
-            # Strip trailing italic markup if present
+        # No author found — if remainder has italic tags or "Author, Title" pattern,
+        # let other formats (italic handler, Format N) try after prefix stripping
+        if remainder and ('<i>' in remainder or '<em>' in remainder):
+            pass  # Fall through to italic/other format handlers
+        elif remainder and len(remainder) > 3:
             clean_remainder = re.sub(r'<[^>]+>', '', remainder).strip().rstrip('.')
             if clean_remainder:
                 return {
@@ -133,7 +211,7 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     title = re.sub(r'<strong>(.*?)</strong>', r'<i>\1</i>', title)
 
     # Strip "Book Reviews" / "Book Review" / "Book Review:" / "Review of" prefix
-    stripped = re.sub(r'^Book\s*Reviews?\s*:?\s*', '', title, flags=re.IGNORECASE)
+    stripped = re.sub(r'^(?:Commissioned\s+)?Book\s*Reviews?\s*:?\s*', '', title, flags=re.IGNORECASE)
     stripped = re.sub(r'^Review\s+of\s+', '', stripped)
 
     # --- Format A/B: <i>/<em> tags present ---
@@ -959,7 +1037,8 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
     # Exclude non-review items
     exclude = ['editorial:', 'announcing', 'comment on', 'response to', 'reply to',
                'correction', 'erratum', 'retraction', 'call for papers',
-               'book notes', 'books received']
+               'book notes', 'books received', 'brief notices', 'notes on our contributors',
+               'general index']
     for pattern in exclude:
         if pattern in title:
             return False
@@ -1000,8 +1079,14 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
     if re.match(r'^<b>[^<]{5,}</b>\s*:', raw_title):
         return True
 
-    # Pattern: "Title. By AuthorName." (Heythrop Journal review format)
-    if re.search(r'\.\s+By\s+[A-Z][a-z]', raw_title):
+    # Pattern: "Title. By/by AuthorName." (Heythrop Journal / Thomist review format)
+    if re.search(r'\.\s+[Bb]y\s+[A-Z][a-z]', raw_title):
+        return True
+
+    # Pattern: "Title by PersonName" at end (Thomist pre-2023 format)
+    # Requires " by " followed by text that looks like a person's name, at end of title
+    by_end = re.search(r'\s+by\s+(.+?)\s*$', raw_title)
+    if by_end and by_end.start() > 10 and _looks_like_author_name(by_end.group(1).strip()):
         return True
 
     # --- Name-based heuristics (skip for italic_only mode) ---
@@ -1691,6 +1776,33 @@ class CrossrefReviewScraper:
             'detection_mode': 'italic_only',
         },
         # Social Philosophy and Policy — does NOT publish book reviews, skipped
+
+        # --- Expansion (2026-02-28) ---
+
+        # Thomistic/medieval philosophy — "Title by Author (review)" format (~2,200 est.)
+        'The Thomist: A Speculative Quarterly Review': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Political science reviews — "Book Review: Category: Title" or italic tags (~500-800 est.)
+        'Political Studies Review': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Dedicated review journal for HPS — subtitle has "Author: Title. Publisher, Year" (~2,400 est.)
+        'Metascience': {
+            'crossref_parseable': True,
+            'all_reviews': True,
+        },
+        # Political theory reviews — subtitle has "Author, Publisher, Year, ISBN" (~500-700 est.)
+        'Contemporary Political Theory': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
+        # Intellectual history — generic "Book review" titles (~87 est.)
+        'History of European Ideas': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
     }
 
     def __init__(self):
