@@ -41,6 +41,23 @@
             <input type="text" id="global-search" placeholder="Search all reviews&hellip;" autocomplete="off">
         </div>
         <div class="filter-bar">
+            <div class="filter-bar-group subfield-filter-wrap">
+                <label>Subfield</label>
+                <button id="subfield-select-btn" type="button">All Subfields</button>
+                <div id="subfield-dropdown" class="journal-dropdown subfield-dropdown">
+                    <div class="journal-dropdown-actions">
+                        <button type="button" id="subfield-select-all">Select All</button>
+                        <button type="button" id="subfield-select-none">Clear</button>
+                    </div>
+                    <div class="journal-dropdown-list">
+                        {% for code, name in subfields %}
+                        <label class="journal-option">
+                            <input type="checkbox" value="{{ code }}" checked> {{ name }}
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
             <div class="filter-bar-group journal-filter-wrap">
                 <label>Journals</label>
                 <button id="journal-select-btn" type="button">All Journals</button>

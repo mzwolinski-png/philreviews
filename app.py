@@ -31,6 +31,8 @@ def normalize(record):
         "access": record.get("access_type", ""),
         "type": record.get("entry_type", "review") or "review",
         "symposium_group": record.get("symposium_group", ""),
+        "subfield": record.get("subfield_primary") or "",
+        "subfield2": record.get("subfield_secondary") or "",
     }
 
 
@@ -49,12 +51,17 @@ def index():
     source_counts = Counter(r["journal"] for r in reviews if r["journal"])
     sources = sorted(source_counts.items(), key=lambda x: -x[1])
 
+    # Subfield display names
+    from classify_subfields import SUBFIELD_DISPLAY
+    subfields = sorted(SUBFIELD_DISPLAY.items(), key=lambda x: x[1])
+
     return render_template(
         "index.html",
         reviews_json=json.dumps(reviews, ensure_ascii=False),
         total=len(reviews),
         journals=journals,
         sources=sources,
+        subfields=subfields,
         min_year=min_year,
         max_year=max_year,
     )

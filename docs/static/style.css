@@ -391,6 +391,59 @@ tbody td {
 .symposium-peers ul { margin: 0.25rem 0 0 1.2rem; padding: 0; }
 .symposium-peers li { margin-bottom: 0.2rem; }
 
+/* Subfield badges */
+.subfield-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.12rem 0.45rem;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+  margin-right: 0.2rem;
+}
+.subfield-ethics { background: #d4edda; color: #155724; }
+.subfield-applied-ethics { background: #c3e6cb; color: #155724; }
+.subfield-political { background: #cce5ff; color: #004085; }
+.subfield-legal { background: #b8daff; color: #004085; }
+.subfield-epistemology { background: #e2d5f1; color: #3d1a78; }
+.subfield-metaphysics { background: #d6ccf0; color: #3d1a78; }
+.subfield-science { background: #fff3cd; color: #856404; }
+.subfield-aesthetics { background: #fce4ec; color: #880e4f; }
+.subfield-religion { background: #f5e6cc; color: #7a4f01; }
+.subfield-history { background: #e8e4dc; color: #5d4e37; }
+.subfield-ancient { background: #e0d8c8; color: #5d4e37; }
+.subfield-modern { background: #d9ceb8; color: #5d4e37; }
+.subfield-continental { background: #d1ecf1; color: #0c5460; }
+.subfield-feminist { background: #f3d9fa; color: #6a1b9a; }
+.subfield-non-western { background: #dcedc8; color: #33691e; }
+
+/* Subfield filter dropdown */
+.subfield-filter-wrap {
+  min-width: 180px;
+}
+#subfield-select-btn {
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  color: #222;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#subfield-select-btn:focus {
+  outline: none;
+  border-color: #1a3a5c;
+  box-shadow: 0 0 0 2px rgba(26, 58, 92, 0.15);
+}
+
 .read-link {
   color: #1a3a5c;
   font-weight: 600;

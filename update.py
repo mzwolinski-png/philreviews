@@ -225,6 +225,15 @@ def main():
     if mainstream_stats:
         log.info(f"Mainstream new: {mainstream_stats.get('uploaded', 0)}")
 
+    # Classify new reviews into subfields
+    if not args.dry_run:
+        try:
+            from classify_subfields import classify_new_reviews
+            classified = classify_new_reviews()
+            log.info(f"Subfield classification: {classified} entries classified")
+        except Exception:
+            log.exception("Subfield classification failed")
+
     # Rebuild static site and deploy to GitHub Pages
     if not args.dry_run:
         rebuild_and_deploy()

@@ -45,6 +45,11 @@ def _migrate(conn):
         conn.execute("ALTER TABLE reviews ADD COLUMN entry_type TEXT DEFAULT 'review'")
     if 'symposium_group' not in existing_cols:
         conn.execute("ALTER TABLE reviews ADD COLUMN symposium_group TEXT")
+    if 'subfield_primary' not in existing_cols:
+        conn.execute("ALTER TABLE reviews ADD COLUMN subfield_primary TEXT")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_subfield ON reviews(subfield_primary)")
+    if 'subfield_secondary' not in existing_cols:
+        conn.execute("ALTER TABLE reviews ADD COLUMN subfield_secondary TEXT")
 
 
 def init_db():
@@ -60,7 +65,7 @@ def insert_review(fields: dict):
         "book_title", "book_author_first_name", "book_author_last_name",
         "reviewer_first_name", "reviewer_last_name", "publication_source",
         "publication_date", "review_link", "review_summary", "access_type", "doi",
-        "entry_type", "symposium_group",
+        "entry_type", "symposium_group", "subfield_primary", "subfield_secondary",
     ]
     values = [fields.get(c, "") for c in cols]
     placeholders = ", ".join("?" for _ in cols)
@@ -78,7 +83,7 @@ def insert_reviews(records: list[dict]):
         "book_title", "book_author_first_name", "book_author_last_name",
         "reviewer_first_name", "reviewer_last_name", "publication_source",
         "publication_date", "review_link", "review_summary", "access_type", "doi",
-        "entry_type", "symposium_group",
+        "entry_type", "symposium_group", "subfield_primary", "subfield_secondary",
     ]
     placeholders = ", ".join("?" for _ in cols)
     col_names = ", ".join(cols)

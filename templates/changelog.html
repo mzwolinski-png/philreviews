@@ -35,15 +35,18 @@
 <div class="container changelog">
 
     <div class="changelog-entry">
+        <h2>February 28, 2026</h2>
+        <ul>
+            <li>New subfield filter: browse reviews by philosophical subfield (ethics, epistemology, political philosophy, etc.) &mdash; 15 subfields, 98.9% of entries classified via journal mapping and LLM</li>
+            <li>Subfield badges now shown in expanded review details</li>
+        </ul>
+    </div>
+
+    <div class="changelog-entry">
         <h2>February 27, 2026</h2>
         <ul>
-            <li>Added 8 new journals: Husserl Studies (183), Topoi (348), No&ucirc;s (231), Ratio Juris (210), International Philosophical Quarterly (60), Biology and Philosophy (53), Oxford Journal of Legal Studies (19), and Journal of Philosophical Logic (7)</li>
-            <li>Fixed scraper detection for 3 severely undercounted journals: Kant-Studien (2 &rarr; 788), Journal of the British Society for Phenomenology (6 &rarr; 763), and Theoria (42 &rarr; 309) &mdash; added bold-tag and case-insensitive parsing</li>
-            <li>Data quality sweep: removed ~400 non-review entries, recovered 795 missing book authors via Crossref DOI re-parsing, fixed 50 reviewer names with HTML encoding artifacts, normalized 12 journal name variants</li>
-            <li>Database-wide cleanup pass: normalized 12,500+ whitespace-only fields, stripped 1,600+ trailing commas from names, cleaned 560 editor markers (eds./ed.), blanked 130+ garbled metadata entries in name fields, removed 10 duplicates</li>
-            <li>Expanded journal coverage: added 8 new journals &mdash; The Heythrop Journal (3,358), Environmental Values (798), Jurisprudence (58), The Leibniz Review (38), Ethical Perspectives (25), and 8 others &mdash; plus expanded 6 existing journals with additional Crossref data</li>
-            <li>Extensive false-positive cleanup: removed ~2,200 non-review entries across Topoi, Kant-Studien, Studia Logica, Social Epistemology, Legal Theory, Phronesis, and other journals; fixed 500+ Heythrop entries with unparsed bibliographic data; cleaned corrupted author fields in Environmental Values</li>
-            <li>Data presentation cleanup: converted ~800 ALL CAPS titles and ~4,500 ALL CAPS author/reviewer names to proper case, fixed 824 misplaced editor markers (eds./ed.), stripped publisher metadata from ~120 titles, decoded HTML entities, corrected 250 name suffixes (Jr., III, Sr.), fixed 61 Dialogue entries with garbled bibliographic data</li>
+            <li>Added 16 new journals including The Heythrop Journal (3,358), Topoi (348), No&ucirc;s (231), Ratio Juris (210), Husserl Studies (183), and 11 others; fixed detection for 3 undercounted journals: Kant-Studien (2 &rarr; 788), Journal of the British Society for Phenomenology (6 &rarr; 763), Theoria (42 &rarr; 309)</li>
+            <li>Extensive data cleanup: removed ~2,600 false positives, recovered 795 missing book authors, normalized 12,500+ whitespace fields, fixed ~5,300 ALL CAPS titles/names, cleaned 1,380+ editor markers and trailing commas, decoded HTML entities, corrected 250 name suffixes</li>
         </ul>
     </div>
 

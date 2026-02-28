@@ -6,7 +6,27 @@
   let filtered = [];
   let allJournals = [];
   let selectedJournals = new Set();
+  let allSubfields = [];
+  let selectedSubfields = new Set();
   let state = { page: 1, perPage: 25, sortKey: "date", sortDir: "desc", expandedIdx: null };
+
+  const SUBFIELD_NAMES = {
+    "ethics": "Ethics & Moral Philosophy",
+    "applied-ethics": "Applied & Professional Ethics",
+    "political": "Political & Social Philosophy",
+    "legal": "Philosophy of Law",
+    "epistemology": "Epistemology & Philosophy of Mind",
+    "metaphysics": "Metaphysics & Logic",
+    "science": "Philosophy of Science",
+    "aesthetics": "Aesthetics & Philosophy of Art",
+    "religion": "Philosophy of Religion & Theology",
+    "history": "History of Philosophy",
+    "ancient": "Ancient & Medieval Philosophy",
+    "modern": "Early Modern Philosophy",
+    "continental": "Continental & Phenomenological",
+    "feminist": "Feminist Philosophy",
+    "non-western": "Non-Western & Comparative",
+  };
 
   const esc = (s) => {
     if (!s) return "";
@@ -34,6 +54,12 @@
     allJournals = Array.from(journalSet).sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
     selectedJournals = new Set(allJournals);
 
+    /* Build subfield list from dropdown checkboxes */
+    document.querySelectorAll("#subfield-dropdown .journal-option input").forEach((cb) => {
+      allSubfields.push(cb.value);
+    });
+    selectedSubfields = new Set(allSubfields);
+
     els = {
       globalSearch: $("global-search"),
       titleFilter: $("filter-title"),
@@ -54,6 +80,10 @@
       journalDropdown: $("journal-dropdown"),
       journalSelectAll: $("journal-select-all"),
       journalSelectNone: $("journal-select-none"),
+      subfieldBtn: $("subfield-select-btn"),
+      subfieldDropdown: $("subfield-dropdown"),
+      subfieldSelectAll: $("subfield-select-all"),
+      subfieldSelectNone: $("subfield-select-none"),
       filterIndicator: $("filter-indicator"),
     };
 
@@ -89,14 +119,51 @@
       (el) => el.addEventListener("change", () => { state.page = 1; update(); syncToUrl(); })
     );
 
+    /* subfield multi-select dropdown */
+    els.subfieldBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      els.subfieldDropdown.classList.toggle("open");
+    });
+    els.subfieldSelectAll.addEventListener("click", () => {
+      selectedSubfields = new Set(allSubfields);
+      syncSubfieldCheckboxes();
+      updateSubfieldBtnLabel();
+      state.page = 1;
+      update();
+      syncToUrl();
+    });
+    els.subfieldSelectNone.addEventListener("click", () => {
+      selectedSubfields.clear();
+      syncSubfieldCheckboxes();
+      updateSubfieldBtnLabel();
+      state.page = 1;
+      update();
+      syncToUrl();
+    });
+    els.subfieldDropdown.querySelectorAll(".journal-option input").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        if (cb.checked) {
+          selectedSubfields.add(cb.value);
+        } else {
+          selectedSubfields.delete(cb.value);
+        }
+        updateSubfieldBtnLabel();
+        state.page = 1;
+        update();
+        syncToUrl();
+      });
+    });
+
     /* journal multi-select dropdown */
     els.journalBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       els.journalDropdown.classList.toggle("open");
     });
     document.addEventListener("click", (e) => {
-      if (!els.journalDropdown.contains(e.target) && e.target !== els.journalBtn) {
+      if (!els.journalDropdown.contains(e.target) && e.target !== els.journalBtn
+          && !els.subfieldDropdown.contains(e.target) && e.target !== els.subfieldBtn) {
         els.journalDropdown.classList.remove("open");
+        els.subfieldDropdown.classList.remove("open");
       }
     });
     els.journalSelectAll.addEventListener("click", () => {
@@ -224,6 +291,29 @@
     }
   }
 
+  /* ---------- Subfield multi-select helpers ---------- */
+  function syncSubfieldCheckboxes() {
+    els.subfieldDropdown.querySelectorAll(".journal-option input").forEach((cb) => {
+      cb.checked = selectedSubfields.has(cb.value);
+    });
+  }
+
+  function updateSubfieldBtnLabel() {
+    if (selectedSubfields.size === 0) {
+      els.subfieldBtn.textContent = "No subfields selected";
+    } else if (selectedSubfields.size === allSubfields.length) {
+      els.subfieldBtn.textContent = "All Subfields";
+    } else if (selectedSubfields.size === 1) {
+      const code = Array.from(selectedSubfields)[0];
+      els.subfieldBtn.textContent = SUBFIELD_NAMES[code] || code;
+    } else if (selectedSubfields.size === 2) {
+      els.subfieldBtn.textContent = Array.from(selectedSubfields).map(c => SUBFIELD_NAMES[c] || c).join(", ");
+    } else {
+      const first = Array.from(selectedSubfields)[0];
+      els.subfieldBtn.textContent = (SUBFIELD_NAMES[first] || first) + " +" + (selectedSubfields.size - 1) + " more";
+    }
+  }
+
   /* ---------- URL persistence ---------- */
   function syncToUrl() {
     const params = new URLSearchParams();
@@ -239,6 +329,10 @@
 
     const fr = els.reviewerFilter.value.trim();
     if (fr) params.set("reviewer", fr);
+
+    if (selectedSubfields.size > 0 && selectedSubfields.size < allSubfields.length) {
+      params.set("subfield", Array.from(selectedSubfields).join(","));
+    }
 
     if (selectedJournals.size > 0 && selectedJournals.size < allJournals.length) {
       params.set("journals", Array.from(selectedJournals).join(","));
@@ -276,6 +370,13 @@
     if (params.has("title")) els.titleFilter.value = params.get("title");
     if (params.has("author")) els.authorFilter.value = params.get("author");
     if (params.has("reviewer")) els.reviewerFilter.value = params.get("reviewer");
+
+    if (params.has("subfield")) {
+      const codes = params.get("subfield").split(",");
+      selectedSubfields = new Set(codes.filter((c) => allSubfields.includes(c)));
+      syncSubfieldCheckboxes();
+      updateSubfieldBtnLabel();
+    }
 
     if (params.has("journals")) {
       const names = params.get("journals").split(",");
@@ -317,16 +418,21 @@
     const fac = els.accessFilter.value.toLowerCase();
     const ftype = els.typeFilter.value;
     const filterByJournal = selectedJournals.size < allJournals.length;
+    const filterBySubfield = selectedSubfields.size < allSubfields.length;
 
     filtered = allReviews.filter((r) => {
       if (g) {
-        const blob = (r.title + " " + r.author + " " + r.reviewer + " " + r.journal + " " + r.date).toLowerCase();
+        const subfieldName = (SUBFIELD_NAMES[r.subfield] || "").toLowerCase();
+        const blob = (r.title + " " + r.author + " " + r.reviewer + " " + r.journal + " " + r.date + " " + subfieldName).toLowerCase();
         if (!blob.includes(g)) return false;
       }
       if (ft && !r.title.toLowerCase().includes(ft)) return false;
       if (fa && !r.author.toLowerCase().includes(fa)) return false;
       if (fr && !r.reviewer.toLowerCase().includes(fr)) return false;
       if (filterByJournal && !selectedJournals.has(r.journal)) return false;
+      if (filterBySubfield) {
+        if (!selectedSubfields.has(r.subfield) && !selectedSubfields.has(r.subfield2)) return false;
+      }
       if (fac && r.access.toLowerCase() !== fac) return false;
       if (ftype && (r.type || "review") !== ftype) return false;
       if (fy1 || fy2) {
@@ -347,6 +453,7 @@
     if (els.titleFilter.value.trim()) active.push("title");
     if (els.authorFilter.value.trim()) active.push("author");
     if (els.reviewerFilter.value.trim()) active.push("reviewer");
+    if (selectedSubfields.size < allSubfields.length) active.push("subfield");
     if (selectedJournals.size < allJournals.length) active.push("journals");
     if (els.yearFrom.value || els.yearTo.value) active.push("year");
     if (els.accessFilter.value) active.push("access");
@@ -412,6 +519,12 @@
       if (expanded) {
         html += '<tr class="detail-row"><td colspan="5"><div class="detail-content">';
         if (r.summary) html += '<p class="summary">' + esc(r.summary) + "</p>";
+        if (r.subfield) {
+          html += '<span class="subfield-badge subfield-' + r.subfield + '">' + esc(SUBFIELD_NAMES[r.subfield] || r.subfield) + '</span> ';
+        }
+        if (r.subfield2) {
+          html += '<span class="subfield-badge subfield-' + r.subfield2 + '">' + esc(SUBFIELD_NAMES[r.subfield2] || r.subfield2) + '</span> ';
+        }
         if (r.type === "symposium") {
           html += '<span class="access-badge badge-symposium">Symposium</span> ';
         }
@@ -529,6 +642,9 @@
     els.yearTo.value = "";
     els.accessFilter.value = "";
     els.typeFilter.value = "";
+    selectedSubfields = new Set(allSubfields);
+    syncSubfieldCheckboxes();
+    updateSubfieldBtnLabel();
     selectedJournals = new Set(allJournals);
     syncCheckboxes();
     updateJournalBtnLabel();
