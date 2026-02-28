@@ -2,12 +2,14 @@
 """
 PhilReviews weekly update script.
 
-Runs all scrapers to pull in new reviews, then logs a summary.
+Runs NDPR + Daily Nous scrapers, classifies new entries, and rebuilds the site.
+Crossref is handled separately by scripts/weekly_update.py (delta check).
 Designed to be run unattended via cron or launchd.
 
 Usage:
-    python3 update.py              # full update (all scrapers)
-    python3 update.py --crossref   # Crossref journals only
+    python3 update.py              # default: NDPR + Daily Nous + classify + rebuild
+    python3 update.py --crossref   # also run full Crossref scraper
+    python3 update.py --mainstream # also run mainstream media scraper (uses API quota)
     python3 update.py --ndpr       # NDPR only
     python3 update.py --daily-nous # Daily Nous only
     python3 update.py --dry-run    # don't write to database
@@ -115,11 +117,15 @@ def run_mainstream(dry_run=False):
         google_key = os.environ.get("GOOGLE_CSE_API_KEY")
         google_cx = os.environ.get("GOOGLE_CSE_CX")
         guardian_key = os.environ.get("GUARDIAN_API_KEY")
+        nyt_key = os.environ.get("NYT_API_KEY")
+        brave_key = os.environ.get("BRAVE_API_KEY")
 
         scraper = MainstreamReviewScraper(
             google_api_key=google_key,
             google_cx=google_cx,
             guardian_api_key=guardian_key,
+            nyt_api_key=nyt_key,
+            brave_api_key=brave_key,
         )
         stats = scraper.run(dry_run=dry_run)
         log.info(f"Mainstream: {stats.get('results_verified', 0)} verified, "
@@ -182,7 +188,8 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Don't write to database")
     args = parser.parse_args()
 
-    # Default: run everything (except mainstream, which uses API quota)
+    # Default: run NDPR + Daily Nous (Crossref is handled by weekly_update.py,
+    # mainstream uses API quota — both require explicit flags)
     run_all = not args.crossref and not args.ndpr and not args.daily_nous and not args.mainstream
 
     log.info("=" * 60)
@@ -196,7 +203,7 @@ def main():
     ndpr_stats = None
     dn_stats = None
 
-    if run_all or args.crossref:
+    if args.crossref:
         crossref_stats = run_crossref(dry_run=args.dry_run)
 
     if run_all or args.ndpr:

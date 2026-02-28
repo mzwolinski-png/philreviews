@@ -148,8 +148,8 @@ def check_journal(scraper: CrossrefReviewScraper, journal_name: str,
     return new_count
 
 
-def rebuild_site():
-    """Run build.py to regenerate the static site."""
+def rebuild_and_deploy():
+    """Rebuild the static site and push to GitHub if content changed."""
     log.info("Rebuilding static site...")
     try:
         result = subprocess.run(
@@ -161,11 +161,33 @@ def rebuild_site():
         )
         if result.returncode == 0:
             log.info("Site rebuilt successfully.")
-            log.info(result.stdout)
         else:
             log.error(f"Build failed: {result.stderr}")
+            return
     except Exception as e:
         log.error(f"Build error: {e}")
+        return
+
+    # Only commit and push if docs/ actually changed
+    try:
+        diff = subprocess.run(
+            ["git", "diff", "--quiet", "docs/"],
+            cwd=ROOT, capture_output=True,
+        )
+        if diff.returncode == 0:
+            log.info("No changes in docs/ — skipping deploy")
+            return
+
+        log.info("Deploying updated site to GitHub Pages...")
+        subprocess.run(["git", "add", "docs/"], cwd=ROOT, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Weekly update: new reviews"],
+            cwd=ROOT, check=True,
+        )
+        subprocess.run(["git", "push"], cwd=ROOT, check=True)
+        log.info("Deploy complete")
+    except Exception:
+        log.exception("Git deploy failed")
 
 
 def main():
@@ -195,7 +217,15 @@ def main():
     log.info(f"\nTotal new reviews added: {total_new}")
 
     if total_new > 0 and not dry_run:
-        rebuild_site()
+        # Classify new entries into subfields
+        try:
+            from classify_subfields import classify_new_reviews
+            classified = classify_new_reviews()
+            log.info(f"Subfield classification: {classified} entries classified")
+        except Exception:
+            log.exception("Subfield classification failed")
+
+        rebuild_and_deploy()
 
     if not dry_run:
         state["last_run"] = datetime.now().isoformat()
