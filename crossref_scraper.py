@@ -813,9 +813,17 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     if ee_colon_match:
         cand_author = ee_colon_match.group(1).strip()
         cand_title = ee_colon_match.group(2).strip()
-        # Only treat as author:title if the pre-colon part is a short name
+        # Only treat as author:title if the pre-colon part is a short name.
+        # Extra guard: reject if the candidate author contains function words
+        # (prepositions, articles, conjunctions) — real author names don't have
+        # "to", "for", "the", etc. unless they're name particles like "de"/"von".
+        _function_words = {'the', 'a', 'an', 'of', 'on', 'in', 'for', 'and', 'to',
+                           'from', 'with', 'at', 'by', 'or', 'nor', 'but', 'is',
+                           'are', 'was', 'not', 'no', 'its', 'their', 'our', 'all'}
+        cand_lower = {w.lower() for w in cand_author.split()}
+        has_function_word = bool(cand_lower & _function_words)
         if (_looks_like_author_name(cand_author) and 2 <= len(cand_author.split()) <= 6
-                and len(cand_title) > 5):
+                and len(cand_title) > 5 and not has_function_word):
             is_edited = bool(re.search(r'\beds?\.?\b|\beditors?\b', cand_author, re.IGNORECASE))
             author_clean = re.sub(r',?\s*\beds?\.?\s*$', '', cand_author,
                                   flags=re.IGNORECASE).strip()
@@ -1881,6 +1889,9 @@ class CrossrefReviewScraper:
                 self.stats['errors'] += 1
                 break
 
+        # Store unfiltered items for post-processing (e.g. symposium detection)
+        self._last_all_items = all_items
+
         # Filter to book reviews client-side
         if self.JOURNALS.get(journal_name, {}).get('all_reviews'):
             reviews = all_items
@@ -1959,10 +1970,12 @@ class CrossrefReviewScraper:
             record['_format'] = parsed.get('format', '')
 
         # Filter: if the book author and reviewer are the same person,
-        # this is likely a symposium piece or research article, not a review
+        # this is likely a symposium piece or research article, not a review.
+        # Exception: Analysis precis entries are written by the book author.
         if (record.get('Book Author Last Name') and record.get('Reviewer Last Name')
                 and record['Book Author Last Name'].lower() == record['Reviewer Last Name'].lower()
-                and record['Book Author First Name'].lower() == record['Reviewer First Name'].lower()):
+                and record['Book Author First Name'].lower() == record['Reviewer First Name'].lower()
+                and container != 'Analysis'):
             return None
 
         self.stats['parsed_from_crossref'] += 1
@@ -2338,6 +2351,332 @@ class CrossrefReviewScraper:
         self.stats['uploaded'] += len(db_records)
         return len(db_records)
 
+    # --- Analysis symposium detection ---
+
+    def _detect_analysis_symposia(self, raw_items: List[dict],
+                                   all_records: List[Dict]) -> List[Dict]:
+        """Detect book symposia in Analysis issues and create symposium entries.
+
+        Analysis runs ~2 book symposia per issue. Format:
+          1. Précis/Summary by book author (start)
+          2. 2-4 response papers by other philosophers
+          3. Reply/Defending by book author (end)
+
+        Scans ALL raw Crossref items for anchor patterns, then takes all papers
+        between the first and last anchor (by page number) in each issue.
+
+        Args:
+            raw_items: All Crossref items fetched for Analysis (unfiltered).
+            all_records: Records already extracted by extract_review().
+
+        Returns:
+            List of new symposium records to append to all_records.
+        """
+        # Index raw items by (volume, issue)
+        items_by_vol_iss = {}
+        for item in raw_items:
+            vol = item.get('volume', '')
+            iss = item.get('issue', '')
+            if vol and iss:
+                items_by_vol_iss.setdefault((vol, iss), []).append(item)
+
+        def _norm_title(title):
+            """Collapse whitespace for pattern matching."""
+            return re.sub(r'\s+', ' ', title).strip()
+
+        def _family_surname(family_name):
+            """Extract the actual surname from a Crossref family name.
+
+            Crossref encodes Asian names inconsistently: the family field
+            may be just "Nguyen" or "Thi Nguyen".  Use the last word.
+            Also strip Jr/Sr suffixes.
+            """
+            name = re.sub(r',?\s*(Jr|Sr|III|IV|II)\.?\s*$', '', family_name,
+                          flags=re.IGNORECASE).strip()
+            parts = name.split()
+            return parts[-1].lower() if parts else ''
+
+        # Step 1: Find symposium start anchors
+        start_anchors = []  # Précis / Summary entries
+
+        for item in raw_items:
+            title = (item.get('title', ['']) or [''])[0]
+            norm = _norm_title(title)
+            vol = item.get('volume', '')
+            iss = item.get('issue', '')
+            if not vol or not iss:
+                continue
+
+            clean = re.sub(r'<[^>]+>', '', norm).strip()
+
+            # Start: standalone "Summary" / "Précis" / "Precis"
+            if clean.lower() in ('précis', 'precis', 'summary'):
+                start_anchors.append(item)
+                continue
+
+            # Start: "<i>BookTitle</i> , By AuthorName" where Crossref
+            # author matches the "By" author (= book author writing precis)
+            precis_m = re.search(
+                r'<i>.+?</i>\s*,\s*[Bb]y\s+(.+?)$', norm
+            )
+            if precis_m:
+                by_author = precis_m.group(1).strip()
+                # Strip Jr/Sr before parsing
+                by_author_clean = re.sub(
+                    r',?\s*(Jr|Sr|III|IV|II)\.?\s*$', '', by_author,
+                    flags=re.IGNORECASE
+                ).strip()
+                cr_authors = item.get('author', [])
+                if cr_authors:
+                    cr_surname = _family_surname(
+                        cr_authors[0].get('family', '')
+                    )
+                    _, by_last, _ = _extract_first_author(by_author_clean)
+                    if by_last and cr_surname and (
+                        by_last.lower() == cr_surname
+                    ):
+                        start_anchors.append(item)
+                        continue
+
+            # Start: "<i>Title: Précis</i>" pattern
+            if re.search(r'<i>[^<]*[Pp]r[eé]cis[^<]*</i>', norm):
+                start_anchors.append(item)
+                continue
+
+        if not start_anchors:
+            self.log("  Analysis: no symposium anchors found")
+            return []
+
+        # Step 1b: Find end anchors only in issues that have start anchors
+        start_vol_iss_set = {
+            (a.get('volume', ''), a.get('issue', '')) for a in start_anchors
+        }
+        end_anchors = []    # Defending / Reply entries
+
+        for item in raw_items:
+            vol = item.get('volume', '')
+            iss = item.get('issue', '')
+            if (vol, iss) not in start_vol_iss_set:
+                continue
+
+            title = (item.get('title', ['']) or [''])[0]
+            norm = _norm_title(title)
+            clean = re.sub(r'<[^>]+>', '', norm).strip()
+
+            # End: "Defending <i>...</i>"
+            if re.match(r'(?i)defending\b', norm) and '<i>' in norm.lower():
+                end_anchors.append(item)
+                continue
+
+            # End: title contains "Replies to" or "Reply to"
+            if re.search(r'\bRepl(?:y|ies)\s+to\b', clean):
+                end_anchors.append(item)
+                continue
+
+        self.log(f"  Analysis: found {len(start_anchors)} start + "
+                 f"{len(end_anchors)} end symposium anchor(s)")
+
+        # Build DOI index from already-extracted records for dedup/upgrade
+        existing_by_doi = {r['DOI']: r for r in all_records if r.get('DOI')}
+
+        # Step 2: Group anchors by (vol, issue) and find clusters
+        # Only process issues that have at least one start anchor
+        start_vol_iss = {}
+        for a in start_anchors:
+            key = (a.get('volume', ''), a.get('issue', ''))
+            start_vol_iss.setdefault(key, []).append(a)
+
+        end_vol_iss = {}
+        for a in end_anchors:
+            key = (a.get('volume', ''), a.get('issue', ''))
+            end_vol_iss.setdefault(key, []).append(a)
+
+        def _page_start(item):
+            """Extract numeric start page from Crossref page field."""
+            page = item.get('page', '')
+            if page:
+                start = page.split('-')[0].strip()
+                try:
+                    return int(start)
+                except ValueError:
+                    pass
+            return None
+
+        def _page_end(item):
+            """Extract numeric end page."""
+            page = item.get('page', '')
+            if page and '-' in page:
+                end = page.split('-')[-1].strip()
+                try:
+                    return int(end)
+                except ValueError:
+                    pass
+            return _page_start(item)
+
+        new_records = []
+
+        for group_key, starts in start_vol_iss.items():
+            vol, iss = group_key
+            ends = end_vol_iss.get(group_key, [])
+
+            # Sort issue items by page number
+            issue_items = items_by_vol_iss.get(group_key, [])
+            paged = [(ps, item) for item in issue_items
+                     if (ps := _page_start(item)) is not None]
+            paged.sort(key=lambda x: x[0])
+            if not paged:
+                continue
+
+            # Find symposium boundaries: start page → end page
+            # There may be multiple symposia per issue, so pair each start
+            # with the closest matching end by the same author
+            used_end_dois = set()
+            symposia_ranges = []
+
+            for s_anchor in starts:
+                s_page = _page_start(s_anchor)
+                if s_page is None:
+                    continue
+
+                # Find the matching end anchor (same surname, later pages)
+                s_authors = s_anchor.get('author', [])
+                s_surname = _family_surname(
+                    s_authors[0].get('family', '') if s_authors else ''
+                )
+
+                best_end = None
+                best_end_page = None
+                for e_anchor in ends:
+                    if e_anchor.get('DOI', '') in used_end_dois:
+                        continue
+                    e_page = _page_end(e_anchor)
+                    if e_page is None or e_page <= s_page:
+                        continue
+                    e_authors = e_anchor.get('author', [])
+                    e_surname = _family_surname(
+                        e_authors[0].get('family', '') if e_authors else ''
+                    )
+                    if s_surname and e_surname and s_surname == e_surname:
+                        if best_end_page is None or e_page < best_end_page:
+                            best_end = e_anchor
+                            best_end_page = e_page
+
+                if best_end is not None:
+                    used_end_dois.add(best_end.get('DOI', ''))
+                    end_page = _page_end(best_end)
+                    symposia_ranges.append((s_page, end_page))
+                else:
+                    # No matching end anchor — look for same author later
+                    fallback_end = None
+                    for _, item in paged:
+                        item_start = _page_start(item)
+                        if item_start is None or item_start <= s_page:
+                            continue
+                        i_authors = item.get('author', [])
+                        i_surname = _family_surname(
+                            i_authors[0].get('family', '') if i_authors else ''
+                        )
+                        if s_surname and i_surname and s_surname == i_surname:
+                            fallback_end = item
+                    if fallback_end:
+                        symposia_ranges.append(
+                            (s_page, _page_end(fallback_end))
+                        )
+
+            # Collect cluster items for each symposium range
+            for range_start, range_end in symposia_ranges:
+                cluster = [
+                    item for p, item in paged
+                    if p >= range_start and p <= range_end
+                ]
+                if len(cluster) < 2:
+                    continue
+
+                symposium_group = f"Analysis|{vol}|{iss}"
+                cluster_titles = []
+
+                for item in cluster:
+                    doi = item.get('DOI', '')
+
+                    # Skip if already in DB
+                    if doi and db.doi_exists(doi):
+                        continue
+
+                    title = (item.get('title', ['']) or [''])[0]
+                    clean_title = re.sub(r'<[^>]+>', '', title).strip()
+                    clean_title = re.sub(r'\s+', ' ', clean_title)
+
+                    # Get Crossref author
+                    authors = item.get('author', [])
+                    reviewer_first = authors[0].get('given', '') if authors else ''
+                    reviewer_last = authors[0].get('family', '') if authors else ''
+
+                    # Publication date
+                    pub_date = ''
+                    issued = item.get('issued', {})
+                    if issued.get('date-parts'):
+                        parts = issued['date-parts'][0]
+                        year = parts[0] if len(parts) >= 1 else 0
+                        month = parts[1] if len(parts) > 1 else 1
+                        day = parts[2] if len(parts) > 2 else 1
+                        if year:
+                            pub_date = f"{year:04d}-{month:02d}-{day:02d}"
+
+                    review_link = item.get('URL', '')
+                    if review_link and not review_link.startswith('http'):
+                        review_link = 'https://' + review_link
+
+                    access_type = 'Open' if item.get('license') else 'Restricted'
+
+                    # For precis entries, extract book author from title
+                    book_author_first = ''
+                    book_author_last = ''
+                    norm = re.sub(r'\s+', ' ', title)
+                    precis_match = re.search(
+                        r'<i>.+?</i>\s*,\s*[Bb]y\s+(.+?)$', norm
+                    )
+                    if precis_match:
+                        author_str = precis_match.group(1).strip()
+                        first, last, _ = _extract_first_author(author_str)
+                        book_author_first = first
+                        book_author_last = last
+
+                    # If DOI was already extracted as a regular review,
+                    # upgrade it to symposium type
+                    if doi in existing_by_doi:
+                        existing_by_doi[doi]['entry_type'] = 'symposium'
+                        existing_by_doi[doi]['symposium_group'] = symposium_group
+                        cluster_titles.append(clean_title)
+                        continue
+
+                    record = {
+                        'Book Title': _normalize(clean_title),
+                        'Book Author First Name': _normalize(book_author_first),
+                        'Book Author Last Name': _normalize(book_author_last),
+                        'Reviewer First Name': _normalize(reviewer_first),
+                        'Reviewer Last Name': _normalize(reviewer_last),
+                        'Publication Source': 'Analysis',
+                        'Publication Date': pub_date,
+                        'Review Link': review_link,
+                        'Review Summary': '',
+                        'Access Type': access_type,
+                        'DOI': doi,
+                        'entry_type': 'symposium',
+                        'symposium_group': symposium_group,
+                    }
+                    new_records.append(record)
+                    cluster_titles.append(clean_title)
+
+                if cluster_titles:
+                    self.log(f"  Analysis symposium v{vol}i{iss}: "
+                             f"{len(cluster_titles)} papers")
+                    for t in cluster_titles:
+                        self.log(f"    - {t[:80]}")
+
+        if new_records:
+            self.log(f"  Analysis symposia: {len(new_records)} new records")
+        return new_records
+
     # --- Main pipeline ---
 
     def run(self, journals: List[str] = None, max_per_journal: int = 0,
@@ -2358,9 +2697,14 @@ class CrossrefReviewScraper:
 
         self.log(f"Starting multi-journal scraper for {len(journals)} journals")
         all_records = []
+        analysis_raw_items = None
 
         for journal in journals:
             items = self.search_journal(journal, max_results=max_per_journal)
+
+            # Save raw (unfiltered) items for Analysis symposium detection
+            if journal == 'Analysis':
+                analysis_raw_items = self._last_all_items
 
             journal_records = []
             for item in items:
@@ -2369,6 +2713,13 @@ class CrossrefReviewScraper:
                     journal_records.append(record)
 
             all_records.extend(journal_records)
+
+        # Detect Analysis book symposia from raw Crossref items
+        if analysis_raw_items is not None:
+            symposium_records = self._detect_analysis_symposia(
+                analysis_raw_items, all_records
+            )
+            all_records.extend(symposium_records)
 
         if not skip_enrichment:
             # OpenAlex: look up book authors for Category B (have title, need author)
@@ -2422,6 +2773,8 @@ def _to_db_fields(record: dict) -> dict:
         'review_summary': record.get('Review Summary', ''),
         'access_type': record.get('Access Type', ''),
         'doi': record.get('DOI', ''),
+        'entry_type': record.get('entry_type', ''),
+        'symposium_group': record.get('symposium_group', ''),
     }
 
 
