@@ -1811,6 +1811,52 @@ class CrossrefReviewScraper:
             'crossref_parseable': False, 'semantic_scholar_enrichable': True,
             'detection_mode': 'italic_only',
         },
+
+        # ── New journals from PI import (Mar 2026) ────────────────────
+
+        # Teaching philosophy — "Title, by Author" format (~1,600 reviews, very active)
+        'Teaching Philosophy': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
+        # Top generalist — "Review of <i>Title</i>" or "Review of Author, Title" format
+        'Philosophy and Phenomenological Research': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Top generalist — "Review of Author: Title" format
+        'The Journal of Philosophy': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
+        # History of philosophy of science — italic tags with full biblio info
+        'HOPOS: The Journal of the International Society for the History of Philosophy of Science': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Kant scholarship — italic tags, some reviews detectable
+        'Kantian Review': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Phenomenology — "Review Articles" section, Brill publisher
+        'Research in Phenomenology': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # General philosophy of science — "BOOK REVIEW" generic titles
+        'Journal for General Philosophy of Science': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Argumentation theory — "Book review" generic titles
+        'Argumentation': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Rhetoric/philosophy — reviews with various formats
+        'Philosophy & Rhetoric': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
     }
 
     def __init__(self):

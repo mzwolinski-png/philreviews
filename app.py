@@ -7,6 +7,12 @@ import db
 app = Flask(__name__)
 
 
+@app.template_filter("strip_the")
+def strip_the_filter(s):
+    """Remove leading 'The ' from journal names for display."""
+    return s[4:] if s.startswith("The ") else s
+
+
 def normalize(record):
     author = " ".join(
         filter(None, [record.get("book_author_first_name", ""),
@@ -41,7 +47,8 @@ def index():
     records = db.get_all_reviews()
     reviews = [normalize(r) for r in records]
 
-    journals = sorted({r["journal"] for r in reviews if r["journal"]})
+    strip_the = lambda s: s[4:] if s.startswith("The ") else s
+    journals = sorted({r["journal"] for r in reviews if r["journal"]}, key=strip_the)
     years = [int(r["date"][:4]) for r in reviews if r["date"] and len(r["date"]) >= 4 and r["date"][:4].isdigit()]
     min_year = min(years) if years else 2000
     max_year = max(years) if years else 2026

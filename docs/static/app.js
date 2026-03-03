@@ -34,9 +34,11 @@
     d.textContent = s;
     return d.innerHTML;
   };
+  const stripThe = (s) => s && (s.startsWith("The ") || s.startsWith("the ")) ? s.slice(4) : s;
   const nameLink = (type, value) => {
     if (!value) return "";
-    return '<a class="name-link" data-type="' + type + '">' + esc(value) + "</a>";
+    const display = type === "journal" ? stripThe(value) : value;
+    return '<a class="name-link" data-type="' + type + '" data-value="' + esc(value) + '">' + esc(display) + "</a>";
   };
 
   /* ---------- DOM refs ---------- */
@@ -282,11 +284,11 @@
     } else if (selectedJournals.size === allJournals.length) {
       els.journalBtn.textContent = "All Journals";
     } else if (selectedJournals.size === 1) {
-      els.journalBtn.textContent = Array.from(selectedJournals)[0];
+      els.journalBtn.textContent = stripThe(Array.from(selectedJournals)[0]);
     } else if (selectedJournals.size <= 2) {
-      els.journalBtn.textContent = Array.from(selectedJournals).join(", ");
+      els.journalBtn.textContent = Array.from(selectedJournals).map(stripThe).join(", ");
     } else {
-      const first = Array.from(selectedJournals)[0];
+      const first = stripThe(Array.from(selectedJournals)[0]);
       els.journalBtn.textContent = first + " +" + (selectedJournals.size - 1) + " more";
     }
   }
@@ -471,8 +473,9 @@
     const key = state.sortKey;
     const dir = state.sortDir === "asc" ? 1 : -1;
     filtered.sort((a, b) => {
-      const va = (a[key] || "").toLowerCase();
-      const vb = (b[key] || "").toLowerCase();
+      let va = (a[key] || "").toLowerCase();
+      let vb = (b[key] || "").toLowerCase();
+      if (key === "journal") { va = stripThe(va); vb = stripThe(vb); }
       return dir * va.localeCompare(vb);
     });
   }
@@ -567,7 +570,7 @@
       a.addEventListener("click", (e) => {
         e.stopPropagation();
         const type = a.dataset.type;
-        const value = a.textContent;
+        const value = a.dataset.value || a.textContent;
         clearFilters();
         if (type === "journal") {
           selectedJournals = new Set([value]);

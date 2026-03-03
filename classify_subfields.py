@@ -28,6 +28,9 @@ import urllib.error
 ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
+from dotenv import load_dotenv
+load_dotenv(os.path.join(ROOT, ".env"))
+
 import db
 
 logging.basicConfig(
@@ -136,6 +139,7 @@ JOURNAL_SUBFIELD_MAP = {
     "The Canadian Journal of Law and Jurisprudence": ("legal", None),
 
     # Epistemology & Philosophy of Mind
+    "Argumentation": ("epistemology", None),
     "Philosophical Psychology": ("epistemology", None),
     "Minds and Machines": ("epistemology", None),
     "Mind & Language": ("epistemology", None),
@@ -166,6 +170,7 @@ JOURNAL_SUBFIELD_MAP = {
     "Journal of the History of Biology": ("science", "history"),
     "Philosophy of the Social Sciences": ("science", None),
     "HOPOS: The Journal of the International Society for the History of Philosophy of Science": ("science", "history"),
+    "Journal for General Philosophy of Science": ("science", None),
     "Arabic Sciences and Philosophy": ("science", "non-western"),
     "The New Atlantis": ("science", None),
     "Metascience": ("science", None),
@@ -206,6 +211,7 @@ JOURNAL_SUBFIELD_MAP = {
     "Apeiron": ("ancient", None),
 
     # Early Modern Philosophy (17th-19th c.)
+    "Kantian Review": ("modern", None),
     "Kant-Studien": ("modern", None),
     "Studia Leibnitiana": ("modern", None),
     "The Leibniz Review": ("modern", None),
@@ -279,6 +285,7 @@ GENERALIST_JOURNALS = {
     "Analysis",
     "Dialectica",
     "Inquiry",
+    "Teaching Philosophy",
     "The Philosophical Quarterly",
     "Philosophical Studies",
     "International Journal of Philosophical Studies",

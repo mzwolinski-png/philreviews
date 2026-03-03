@@ -69,7 +69,7 @@
                     <div class="journal-dropdown-list">
                         {% for j in journals %}
                         <label class="journal-option">
-                            <input type="checkbox" value="{{ j }}" checked> {{ j }}
+                            <input type="checkbox" value="{{ j }}" checked> {{ j | strip_the }}
                         </label>
                         {% endfor %}
                     </div>
@@ -134,7 +134,7 @@
         <div class="sources-grid" id="sources-grid" style="display:none;">
             {% for name, count in sources %}
             <button class="source-card" data-journal="{{ name }}">
-                <span class="source-name">{{ name }}</span>
+                <span class="source-name">{{ name | strip_the }}</span>
                 <span class="source-count">{{ "{:,}".format(count) }}</span>
             </button>
             {% endfor %}
