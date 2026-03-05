@@ -648,6 +648,18 @@ def check_and_apply_batch(batch_id):
                 text = re.sub(r"\n?```$", "", text)
                 text = text.strip()
 
+            # Extract first JSON object if model appended extra text
+            brace = text.find("{")
+            if brace != -1:
+                depth, end = 0, brace
+                for i, ch in enumerate(text[brace:], brace):
+                    if ch == "{": depth += 1
+                    elif ch == "}": depth -= 1
+                    if depth == 0:
+                        end = i + 1
+                        break
+                text = text[brace:end]
+
             data = json.loads(text)
             primary = data.get("primary", "")
             secondary = data.get("secondary") or None
@@ -700,6 +712,18 @@ def classify_single(title, journal, abstract=None):
             text = re.sub(r"^```\w*\n?", "", text)
             text = re.sub(r"\n?```$", "", text)
             text = text.strip()
+
+        # Extract first JSON object if model appended extra text
+        brace = text.find("{")
+        if brace != -1:
+            depth, end = 0, brace
+            for i, ch in enumerate(text[brace:], brace):
+                if ch == "{": depth += 1
+                elif ch == "}": depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+            text = text[brace:end]
 
         data = json.loads(text)
         primary = data.get("primary", "")
