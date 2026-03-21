@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ journal_name | strip_the }} — Philosophy Book Reviews | PhilReviews</title>
+    <meta name="description" content="{{ "{:,}".format(total) }} philosophy book reviews published in {{ journal_name }}, {{ min_year }}–{{ max_year }}. Searchable index on PhilReviews.">
+    <link rel="canonical" href="{{ BASE_URL }}/journal/{{ journal_name | url_encode }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{{ journal_name | strip_the }} — Book Reviews">
+    <meta property="og:description" content="{{ "{:,}".format(total) }} philosophy book reviews from {{ journal_name }}.">
+    <meta property="og:url" content="{{ BASE_URL }}/journal/{{ journal_name | url_encode }}">
+    <meta property="og:image" content="https://raw.githubusercontent.com/mzwolinski-png/philreviews/main/static/og-image.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script data-goatcounter="https://philreviews.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        "name": "Philosophy Book Reviews from {{ journal_name }}",
+        "url": "{{ BASE_URL }}/journal/{{ journal_name | url_encode }}",
+        "description": "{{ "{:,}".format(total) }} philosophy book reviews published in {{ journal_name }} ({{ min_year }}–{{ max_year }}).",
+        "isPartOf": {
+            "@type": "WebSite",
+            "name": "PhilReviews",
+            "url": "{{ BASE_URL }}/"
+        }
+    }
+    </script>
+</head>
+<body>
+
+<header class="site-header">
+    <a href="/" class="site-logo"><img src="{{ url_for('static', filename='logo.svg') }}" alt="PhilReviews" height="44"></a>
+    <p class="tagline">A comprehensive index of philosophy book reviews</p>
+</header>
+
+<div class="container">
+    <nav class="breadcrumb"><a href="/">Home</a> &rsaquo; <a href="/journals">Journals</a> &rsaquo; {{ journal_name | strip_the }}</nav>
+
+    <h1 class="page-title">{{ journal_name }}</h1>
+    <p class="page-stats">{{ "{:,}".format(total) }} reviews &middot; {{ min_year }}&ndash;{{ max_year }}</p>
+
+    <p class="page-cta"><a href="/#journals={{ journal_name | url_encode }}" class="quick-action-btn">Search reviews from {{ journal_name | strip_the }}</a></p>
+
+    <div class="table-wrap">
+        <table class="seo-table">
+            <thead>
+                <tr>
+                    <th>Book Title</th>
+                    <th>Author</th>
+                    <th>Reviewer</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in reviews %}
+                <tr>
+                    <td>{% if r.link %}<a href="{{ r.link }}">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}</td>
+                    <td>{{ r.author }}</td>
+                    <td>{{ r.reviewer }}</td>
+                    <td>{{ r.date }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if total_pages > 1 %}
+    <div class="server-pagination">
+        {% if page > 1 %}
+        <a href="?page={{ page - 1 }}" class="page-btn">&laquo; Prev</a>
+        {% endif %}
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == page %}
+            <span class="page-btn active">{{ p }}</span>
+            {% elif p <= 3 or p > total_pages - 3 or (p >= page - 2 and p <= page + 2) %}
+            <a href="?page={{ p }}" class="page-btn">{{ p }}</a>
+            {% elif p == 4 or p == total_pages - 3 %}
+            <span class="page-btn ellipsis">&hellip;</span>
+            {% endif %}
+        {% endfor %}
+        {% if page < total_pages %}
+        <a href="?page={{ page + 1 }}" class="page-btn">Next &raquo;</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<footer class="site-footer">
+    PhilReviews &mdash; built by <a href="https://mzwolinski.com" target="_blank" rel="noopener">Matt Zwolinski</a> &middot; <a href="mailto:mzwolinski@sandiego.edu">Contact</a> &middot; <a href="/changelog">Update Log</a>
+    <br><small>&copy; 2026 Matt Zwolinski. PhilReviews is a bibliographic index. All review content is hosted by the original publishers.</small>
+</footer>
+
+</body>
+</html>

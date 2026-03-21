@@ -10,7 +10,7 @@
     <meta property="og:type" content="website">
     <meta property="og:title" content="Update Log &mdash; PhilReviews">
     <meta property="og:description" content="Update log for PhilReviews, a comprehensive index of philosophy book reviews.">
-    <meta property="og:url" content="https://philreviews.org/changelog.html">
+    <meta property="og:url" content="https://philreviews.org/changelog">
     <meta property="og:image" content="https://philreviews.org/static/og-image.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -28,11 +28,52 @@
 <body>
 
 <header class="site-header">
-    <a href="index.html" class="site-logo"><img src="{{ url_for('static', filename='logo.svg') }}" alt="PhilReviews" height="44"></a>
+    <a href="/" class="site-logo"><img src="{{ url_for('static', filename='logo.svg') }}" alt="PhilReviews" height="44"></a>
     <p class="tagline">Update Log</p>
 </header>
 
 <div class="container changelog">
+
+    <div class="changelog-entry">
+        <h2>March 21, 2026</h2>
+        <ul>
+            <li>New browsable pages for each of 1,200+ journals and 15 subfields &mdash; <a href="/journals">browse all journals</a> or <a href="/subfields">browse by subfield</a></li>
+            <li>Added XML sitemap and Google Search Console integration for better discoverability</li>
+            <li>Clicking an author or reviewer name now filters by that name without clearing other active filters</li>
+            <li>New &ldquo;Share&rdquo; button copies a link to your current search</li>
+            <li>Improved search: possessive terms (Kant&rsquo;s, Hume&rsquo;s) now match correctly</li>
+            <li>Added /health endpoint and HTTP health checks on Fly.io</li>
+            <li>Infrastructure: consolidated deployment code, added automated weekly backups, standardized logging across all scrapers</li>
+        </ul>
+    </div>
+
+    <div class="changelog-entry">
+        <h2>March 16, 2026</h2>
+        <ul>
+            <li>New navigation: book titles now link directly to the review; new &ldquo;Info&rdquo; button expands detail panel with subfield, access badges, and related reviews</li>
+            <li>&ldquo;Other reviews of this book&rdquo; link in the detail panel lets you quickly find all reviews of the same book</li>
+            <li>New source: The Unpopulist book reviews, integrated into weekly update pipeline</li>
+            <li>Performance fix: symposia queries reduced from 19s to under 200ms</li>
+        </ul>
+    </div>
+
+    <div class="changelog-entry">
+        <h2>March 8, 2026</h2>
+        <ul>
+            <li>Added 2,676 reviews from mainstream outlets including the New York Times, Washington Post, Wall Street Journal, Guardian, New Yorker, Atlantic, and 100+ other publications</li>
+            <li>History of Political Economy gap fill: added 861 reviews that were missing due to inconsistent Crossref metadata formatting</li>
+            <li>Database now at 212,600+ reviews</li>
+        </ul>
+    </div>
+
+    <div class="changelog-entry">
+        <h2>March 5, 2026</h2>
+        <ul>
+            <li>Migrated from GitHub Pages to a dynamic Flask app on Fly.io &mdash; page load dropped from 81 MB to ~15 KB, with server-side full-text search via SQLite FTS5</li>
+            <li>All filtering, sorting, and pagination now handled server-side; search results returned in milliseconds</li>
+            <li>Weekly automated updates resumed (had been blocked by GitHub Pages build size limits)</li>
+        </ul>
+    </div>
 
     <div class="changelog-entry">
         <h2>March 2, 2026</h2>
@@ -162,7 +203,7 @@
 </div>
 
 <footer class="site-footer">
-    PhilReviews &mdash; built by <a href="https://mzwolinski.com" target="_blank" rel="noopener">Matt Zwolinski</a> &middot; <a href="mailto:mzwolinski@sandiego.edu">Contact</a> &middot; <a href="index.html">Back to PhilReviews</a>
+    PhilReviews &mdash; built by <a href="https://mzwolinski.com" target="_blank" rel="noopener">Matt Zwolinski</a> &middot; <a href="mailto:mzwolinski@sandiego.edu">Contact</a> &middot; <a href="/">Back to PhilReviews</a>
     <br><small>&copy; 2026 Matt Zwolinski. PhilReviews is a bibliographic index. All review content is hosted by the original publishers.</small>
 </footer>
 

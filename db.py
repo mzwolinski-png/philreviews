@@ -588,6 +588,64 @@ def _fts_escape(q: str) -> str:
     return " ".join(escaped)
 
 
+def get_journal_reviews(journal_name, page=1, per_page=50):
+    """Return reviews for a specific journal with pagination and year stats."""
+    conn = _get_read_conn()
+    total = conn.execute(
+        "SELECT COUNT(*) FROM reviews WHERE publication_source = ?",
+        (journal_name,)
+    ).fetchone()[0]
+    if total == 0:
+        return None
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+    offset = (page - 1) * per_page
+    rows = conn.execute(
+        "SELECT * FROM reviews WHERE publication_source = ? "
+        "ORDER BY publication_date DESC, id DESC LIMIT ? OFFSET ?",
+        (journal_name, per_page, offset)
+    ).fetchall()
+    year_row = conn.execute(
+        "SELECT MIN(CAST(SUBSTR(publication_date,1,4) AS INTEGER)), "
+        "MAX(CAST(SUBSTR(publication_date,1,4) AS INTEGER)) "
+        "FROM reviews WHERE publication_source = ? "
+        "AND LENGTH(publication_date) >= 4",
+        (journal_name,)
+    ).fetchone()
+    return {
+        "reviews": [dict(r) for r in rows],
+        "total": total, "page": page, "per_page": per_page,
+        "total_pages": total_pages,
+        "min_year": year_row[0] or 0, "max_year": year_row[1] or 0,
+    }
+
+
+def get_subfield_reviews(subfield_code, page=1, per_page=50):
+    """Return reviews for a specific subfield with pagination."""
+    conn = _get_read_conn()
+    total = conn.execute(
+        "SELECT COUNT(*) FROM reviews "
+        "WHERE subfield_primary = ? OR subfield_secondary = ?",
+        (subfield_code, subfield_code)
+    ).fetchone()[0]
+    if total == 0:
+        return None
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+    offset = (page - 1) * per_page
+    rows = conn.execute(
+        "SELECT * FROM reviews "
+        "WHERE subfield_primary = ? OR subfield_secondary = ? "
+        "ORDER BY publication_date DESC, id DESC LIMIT ? OFFSET ?",
+        (subfield_code, subfield_code, per_page, offset)
+    ).fetchall()
+    return {
+        "reviews": [dict(r) for r in rows],
+        "total": total, "page": page, "per_page": per_page,
+        "total_pages": total_pages,
+    }
+
+
 # Auto-init on import
 init_db()
 

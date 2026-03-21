@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>All Journals — PhilReviews</title>
+    <meta name="description" content="Browse {{ "{:,}".format(journals | length) }} philosophy journals indexed on PhilReviews, the most comprehensive database of philosophy book reviews.">
+    <link rel="canonical" href="{{ BASE_URL }}/journals">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="All Journals — PhilReviews">
+    <meta property="og:description" content="Browse {{ "{:,}".format(journals | length) }} philosophy journals indexed on PhilReviews.">
+    <meta property="og:url" content="{{ BASE_URL }}/journals">
+    <meta property="og:image" content="https://raw.githubusercontent.com/mzwolinski-png/philreviews/main/static/og-image.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script data-goatcounter="https://philreviews.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+    <a href="/" class="site-logo"><img src="{{ url_for('static', filename='logo.svg') }}" alt="PhilReviews" height="44"></a>
+    <p class="tagline">A comprehensive index of philosophy book reviews</p>
+</header>
+
+<div class="container">
+    <nav class="breadcrumb"><a href="/">Home</a> &rsaquo; Journals</nav>
+
+    <h1 class="page-title">All Journals</h1>
+    <p class="page-stats">{{ "{:,}".format(journals | length) }} journals indexed</p>
+
+    {% set ns = namespace(current_letter='') %}
+    <div class="journal-index">
+        {% for j in journals %}
+            {% set letter = j.name.replace('The ', '')[0] | upper %}
+            {% if letter != ns.current_letter %}
+                {% set ns.current_letter = letter %}
+                <h2 class="letter-heading" id="letter-{{ letter }}">{{ letter }}</h2>
+            {% endif %}
+            <div class="journal-index-item">
+                <a href="/journal/{{ j.name | url_encode }}">{{ j.name | strip_the }}</a>
+                <span class="journal-count">{{ "{:,}".format(j.count) }}</span>
+            </div>
+        {% endfor %}
+    </div>
+</div>
+
+<footer class="site-footer">
+    PhilReviews &mdash; built by <a href="https://mzwolinski.com" target="_blank" rel="noopener">Matt Zwolinski</a> &middot; <a href="mailto:mzwolinski@sandiego.edu">Contact</a> &middot; <a href="/changelog">Update Log</a>
+    <br><small>&copy; 2026 Matt Zwolinski. PhilReviews is a bibliographic index. All review content is hosted by the original publishers.</small>
+</footer>
+
+</body>
+</html>

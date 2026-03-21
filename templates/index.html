@@ -6,6 +6,8 @@
     <title>PhilReviews</title>
     <meta name="description" content="A comprehensive, searchable database of {{ "{:,}".format(total // 1000 * 1000) }}+ philosophy book reviews across {{ "{:,}".format(journal_count) }} academic journals.">
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link rel="canonical" href="https://philreviews.org/">
+    <meta name="google-site-verification" content="Q5lISUSkIFC8zIj8E7Ox3GD3ZIbLUpv81kTNkAiI1ME">
     <!-- Open Graph -->
     <meta property="og:type" content="website">
     <meta property="og:title" content="PhilReviews">
@@ -24,6 +26,20 @@
     <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script data-goatcounter="https://philreviews.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "PhilReviews",
+        "url": "https://philreviews.org/",
+        "description": "A comprehensive, searchable database of philosophy book reviews across academic journals.",
+        "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://philreviews.org/#q={search_term_string}",
+            "query-input": "required name=search_term_string"
+        }
+    }
+    </script>
 </head>
 <body>
 

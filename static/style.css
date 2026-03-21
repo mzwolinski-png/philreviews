@@ -596,6 +596,119 @@ tbody td {
   text-decoration: underline;
 }
 
+/* ---------- SEO pages (journal, subfield, index) ---------- */
+.breadcrumb {
+  font-size: 0.85rem;
+  color: #888;
+  margin-bottom: 0.5rem;
+}
+.breadcrumb a { color: #1a3a5c; text-decoration: none; }
+.breadcrumb a:hover { text-decoration: underline; }
+.page-title {
+  font-family: "Libre Baskerville", Georgia, serif;
+  font-size: 1.6rem;
+  color: #1a3a5c;
+  margin: 0.25rem 0 0.25rem;
+}
+.page-stats {
+  font-size: 0.95rem;
+  color: #8b6914;
+  margin-bottom: 1rem;
+}
+.page-cta { margin-bottom: 1.5rem; }
+.seo-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.seo-table th {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid #1a3a5c;
+  color: #1a3a5c;
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.seo-table td {
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid #eee;
+  vertical-align: top;
+}
+.seo-table tr:nth-child(even) { background: #faf9f6; }
+.seo-table a { color: #1a3a5c; text-decoration: none; }
+.seo-table a:hover { text-decoration: underline; }
+.server-pagination {
+  display: flex;
+  gap: 0.25rem;
+  justify-content: center;
+  margin: 1.5rem 0;
+  flex-wrap: wrap;
+}
+.server-pagination .page-btn {
+  display: inline-block;
+  padding: 0.4rem 0.7rem;
+  min-width: 2rem;
+  text-align: center;
+  border: 1px solid #d0cdc6;
+  border-radius: 4px;
+  color: #1a3a5c;
+  text-decoration: none;
+  font-size: 0.85rem;
+  background: white;
+}
+.server-pagination .page-btn.active {
+  background: #1a3a5c;
+  color: white;
+  border-color: #1a3a5c;
+}
+.server-pagination .page-btn:hover:not(.active):not(.ellipsis) {
+  background: #f0ece4;
+}
+.server-pagination .page-btn.ellipsis {
+  border: none;
+  background: none;
+}
+.journal-index-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.3rem 0;
+  border-bottom: 1px solid #f0ece4;
+}
+.journal-index-item a { color: #1a3a5c; text-decoration: none; }
+.journal-index-item a:hover { text-decoration: underline; }
+.journal-count { color: #888; font-size: 0.85rem; }
+.letter-heading {
+  font-family: "Libre Baskerville", Georgia, serif;
+  font-size: 1.2rem;
+  color: #8b6914;
+  margin: 1.5rem 0 0.5rem;
+  border-bottom: 1px solid #e0dcd4;
+  padding-bottom: 0.25rem;
+}
+.subfield-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0;
+}
+.subfield-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 1rem;
+  border: 1px solid #e0dcd4;
+  border-radius: 6px;
+  text-decoration: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.subfield-card:hover {
+  border-color: #8b6914;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+.subfield-card-count {
+  font-size: 0.85rem;
+  color: #888;
+}
+
 /* ---------- Changelog ---------- */
 .changelog {
   max-width: 720px;
