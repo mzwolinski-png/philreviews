@@ -17,7 +17,6 @@ Usage:
 """
 
 import json
-import logging
 import os
 import re
 import sys
@@ -31,9 +30,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 import db
+from scraper_base import setup_logging
 
 STATE_FILE = os.path.join(ROOT, "scripts", "springer_state.json")
-LOG_FILE = os.path.join(ROOT, "scripts", "springer_scan.log")
 
 META_API_KEY = "37c3af4d34efb70c709ab050579d4f8c"
 META_API_URL = "https://api.springernature.com/meta/v2/json"
@@ -68,15 +67,7 @@ SPRINGER_JOURNALS = {
     "Theoria": "0040-5825",
 }
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_FILE),
-        logging.StreamHandler(),
-    ],
-)
-log = logging.getLogger(__name__)
+log = setup_logging("springer_scan", os.path.join(ROOT, "scripts", "springer_scan.log"))
 
 
 def load_state() -> dict:
@@ -385,6 +376,9 @@ def show_status(state: dict):
     print(f"\n{done_count}/{len(SPRINGER_JOURNALS)} journals complete")
 
 
+from deploy import sync_to_fly
+
+
 def main():
     if "--reset" in sys.argv:
         if os.path.exists(STATE_FILE):
@@ -417,16 +411,7 @@ def main():
     log.info(f"New reviews found: {total_new}")
 
     if total_new > 0 and not dry_run:
-        log.info("Rebuilding static site...")
-        import subprocess
-        result = subprocess.run(
-            [sys.executable, os.path.join(ROOT, "build.py")],
-            cwd=ROOT, capture_output=True, text=True, timeout=300,
-        )
-        if result.returncode == 0:
-            log.info("Site rebuilt successfully.")
-        else:
-            log.error(f"Build failed: {result.stderr}")
+        sync_to_fly()
 
     if not dry_run:
         state["last_run"] = datetime.now().isoformat()

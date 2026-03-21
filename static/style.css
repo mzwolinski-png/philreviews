@@ -287,6 +287,26 @@ body {
   border-color: #1a3a5c;
   box-shadow: 0 0 0 2px rgba(26, 58, 92, 0.15);
 }
+.type-checkboxes {
+  display: flex;
+  gap: 1rem;
+  padding-top: 0.35rem;
+}
+.type-checkboxes label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.9rem;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #222;
+  cursor: pointer;
+}
+.type-checkboxes input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
 
 /* ---------- Results bar ---------- */
 .results-bar {
@@ -300,6 +320,24 @@ body {
 #result-count {
   font-size: 0.95rem;
   color: #555;
+}
+.share-btn {
+  background: none;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.85rem;
+  color: #555;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.share-btn:hover {
+  border-color: #8b6914;
+  color: #8b6914;
+}
+.share-btn.copied {
+  border-color: #3a7d3a;
+  color: #3a7d3a;
 }
 .per-page-wrap {
   display: flex;
@@ -337,7 +375,8 @@ thead th {
   white-space: nowrap;
   user-select: none;
 }
-th[data-sort] { cursor: pointer; }
+th[data-sort] { cursor: pointer; transition: background-color 0.15s; }
+th[data-sort]:hover { background-color: #e8dcd0; }
 th[data-sort]::after {
   content: " \2195";
   font-size: 0.7em;
@@ -355,6 +394,35 @@ tbody td {
 .review-row { cursor: pointer; }
 .review-row:hover { background: #f5f2eb; }
 .review-row.expanded { background: #f0ece3; }
+.info-btn {
+  background: none;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.72rem;
+  font-family: inherit;
+  font-weight: 600;
+  color: #888;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  vertical-align: middle;
+  margin-left: 0.35rem;
+  transition: border-color 0.15s, color 0.15s;
+}
+.info-btn:hover {
+  border-color: #1a3a5c;
+  color: #1a3a5c;
+}
+.review-row.expanded .info-btn {
+  border-color: #8b6914;
+  color: #8b6914;
+}
+.title-link {
+  color: #1a3a5c;
+  text-decoration: none;
+}
+.title-link:hover { text-decoration: underline; }
 .name-link { cursor: pointer; text-decoration: none; color: inherit; }
 .name-link:hover { text-decoration: underline; color: #1a3a5c; }
 
@@ -450,6 +518,10 @@ tbody td {
   text-decoration: none;
 }
 .read-link:hover { text-decoration: underline; }
+.find-book-link {
+  margin-left: 0.75rem;
+  cursor: pointer;
+}
 
 /* ---------- Pagination ---------- */
 #pagination {
@@ -496,6 +568,14 @@ tbody td {
 }
 .site-header h1 a:hover {
   text-decoration: underline;
+}
+
+/* ---------- Loading indicator ---------- */
+.loading {
+  text-align: center;
+  padding: 2rem;
+  color: #666;
+  font-style: italic;
 }
 
 /* ---------- Footer ---------- */

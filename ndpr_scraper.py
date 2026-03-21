@@ -4,32 +4,31 @@ PhilReviews NDPR Scraper
 Scrapes recent Notre Dame Philosophical Reviews and adds new reviews to the database.
 """
 
-import requests
-from bs4 import BeautifulSoup
 import time
+from bs4 import BeautifulSoup
 from ndpr_extraction import extract_review_data, is_review_page, is_valid_review_url
 
 import db
+from scraper_base import BaseScraper
 
 
-class NDPRScraper:
+class NDPRScraper(BaseScraper):
+    name = "ndpr"
+    default_delay = 1.0
+
     def __init__(self):
+        super().__init__()
         self.base_url = "https://ndpr.nd.edu"
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'PhilReviews/2.0 (academic research aggregator)'
-        })
 
     def get_recent_reviews(self, limit=10):
         """Get recent review URLs from NDPR and scrape each one."""
         reviews = []
 
         try:
-            print("Getting recent review URLs from NDPR...")
+            self.log.info("Getting recent review URLs from NDPR...")
             review_urls = []
 
-            # Get links from the main page
-            response = self.session.get(self.base_url)
+            response = self.get(self.base_url)
             response.raise_for_status()
             soup = BeautifulSoup(response.content, 'html.parser')
 
@@ -41,32 +40,31 @@ class NDPRScraper:
                     if is_valid_review_url(href):
                         review_urls.append(href)
 
-            # Deduplicate and limit
             review_urls = list(dict.fromkeys(review_urls))[:limit]
-            print(f"Found {len(review_urls)} review URLs to process")
+            self.log.info(f"Found {len(review_urls)} review URLs to process")
 
             for i, url in enumerate(review_urls):
-                print(f"Processing review {i+1}/{len(review_urls)}: {url}")
+                self.log.info(f"Processing review {i+1}/{len(review_urls)}: {url}")
                 try:
                     review_data = self._scrape_one(url)
                     if review_data:
                         reviews.append(review_data)
-                        print(f"  OK: {review_data.get('book_title', 'Unknown')}")
+                        self.log.info(f"  OK: {review_data.get('book_title', 'Unknown')}")
                     else:
-                        print(f"  SKIP: not a valid review page")
-                    time.sleep(1)
+                        self.log.info(f"  SKIP: not a valid review page")
+                    self.sleep()
                 except Exception as e:
-                    print(f"  ERROR: {e}")
+                    self.log.error(f"  ERROR: {e}")
                     continue
 
         except Exception as e:
-            print(f"Error getting review URLs: {e}")
+            self.log.error(f"Error getting review URLs: {e}")
 
         return reviews
 
     def _scrape_one(self, url):
         """Scrape a single review page and return structured data."""
-        response = self.session.get(url, timeout=15)
+        response = self.get(url, timeout=15)
         response.raise_for_status()
         soup = BeautifulSoup(response.content, 'html.parser')
         return extract_review_data(soup, url)
@@ -74,12 +72,12 @@ class NDPRScraper:
     def add_to_db(self, reviews):
         """Add reviews to the SQLite database."""
         if not reviews:
-            print("No reviews to add")
+            self.log.info("No reviews to add")
             return
 
         records = [_to_db_fields(r) for r in reviews]
         db.insert_reviews(records)
-        print(f"Inserted {len(records)} reviews into database")
+        self.log.info(f"Inserted {len(records)} reviews into database")
 
     def check_for_duplicates(self, new_reviews):
         """Filter out reviews that already exist in the database."""
@@ -89,7 +87,7 @@ class NDPRScraper:
             if link and not db.review_link_exists(link):
                 filtered.append(review)
             else:
-                print(f"Skipping duplicate: {review.get('book_title', 'Unknown')}")
+                self.log.info(f"Skipping duplicate: {review.get('book_title', 'Unknown')}")
         return filtered
 
 

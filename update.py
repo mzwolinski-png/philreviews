@@ -16,9 +16,7 @@ Usage:
 """
 
 import argparse
-import logging
 import os
-import subprocess
 import sys
 from datetime import datetime
 
@@ -27,20 +25,10 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, ROOT)
 
 import db
+from scraper_base import setup_logging
 
-LOG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
-os.makedirs(LOG_DIR, exist_ok=True)
-
-log_file = os.path.join(LOG_DIR, f"update_{datetime.now():%Y-%m-%d_%H%M%S}.log")
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-    handlers=[
-        logging.FileHandler(log_file),
-        logging.StreamHandler(),
-    ],
-)
-log = logging.getLogger("update")
+log_file = f"update_{datetime.now():%Y-%m-%d_%H%M%S}.log"
+log = setup_logging("update", log_file)
 
 
 def count_reviews():
@@ -105,6 +93,21 @@ def run_daily_nous(dry_run=False):
         return None
 
 
+def run_unpopulist(dry_run=False):
+    """Run The Unpopulist book review scraper."""
+    log.info("Starting Unpopulist scraper...")
+    try:
+        from unpopulist_scraper import UnpopulistScraper
+
+        scraper = UnpopulistScraper()
+        stats = scraper.run(dry_run=dry_run)
+        log.info(f"Unpopulist: {stats.get('found', 0)} found, {stats.get('new', 0)} new")
+        return stats
+    except Exception:
+        log.exception("Unpopulist scraper failed")
+        return None
+
+
 def run_mainstream(dry_run=False):
     """Run the mainstream media review scraper."""
     log.info("Starting mainstream media scraper...")
@@ -136,46 +139,7 @@ def run_mainstream(dry_run=False):
         return None
 
 
-def rebuild_and_deploy():
-    """Rebuild the static site and push to GitHub if content changed."""
-    log.info("Rebuilding static site...")
-    try:
-        from build import build
-        build()
-    except Exception:
-        log.exception("Static site build failed")
-        return
-
-    # Only commit and push if docs/ actually changed
-    try:
-        result = subprocess.run(
-            ["git", "diff", "--quiet", "docs/"],
-            cwd=ROOT,
-            capture_output=True,
-        )
-        if result.returncode == 0:
-            # Also check for untracked files in docs/
-            untracked = subprocess.run(
-                ["git", "ls-files", "--others", "--exclude-standard", "docs/"],
-                cwd=ROOT,
-                capture_output=True,
-                text=True,
-            )
-            if not untracked.stdout.strip():
-                log.info("No changes in docs/ — skipping deploy")
-                return
-
-        log.info("Deploying updated site to GitHub Pages...")
-        subprocess.run(["git", "add", "docs/"], cwd=ROOT, check=True)
-        subprocess.run(
-            ["git", "commit", "-m", "Update static site"],
-            cwd=ROOT,
-            check=True,
-        )
-        subprocess.run(["git", "push"], cwd=ROOT, check=True)
-        log.info("Deploy complete")
-    except Exception:
-        log.exception("Git deploy failed")
+from deploy import sync_to_fly
 
 
 def main():
@@ -212,6 +176,10 @@ def main():
     if run_all or args.daily_nous:
         dn_stats = run_daily_nous(dry_run=args.dry_run)
 
+    unpop_stats = None
+    if run_all:
+        unpop_stats = run_unpopulist(dry_run=args.dry_run)
+
     mainstream_stats = None
     if args.mainstream:
         mainstream_stats = run_mainstream(dry_run=args.dry_run)
@@ -229,6 +197,8 @@ def main():
         log.info(f"NDPR new: {ndpr_stats.get('new', 0)}")
     if dn_stats:
         log.info(f"Daily Nous new: {dn_stats.get('uploaded', 0)}")
+    if unpop_stats:
+        log.info(f"Unpopulist new: {unpop_stats.get('new', 0)}")
     if mainstream_stats:
         log.info(f"Mainstream new: {mainstream_stats.get('uploaded', 0)}")
 
@@ -241,9 +211,9 @@ def main():
         except Exception:
             log.exception("Subfield classification failed")
 
-    # Rebuild static site and deploy to GitHub Pages
+    # Sync database to Fly.io
     if not args.dry_run:
-        rebuild_and_deploy()
+        sync_to_fly()
 
     log.info("Update finished")
     log.info("=" * 60)

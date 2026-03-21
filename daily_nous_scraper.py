@@ -26,12 +26,10 @@ import requests
 from bs4 import BeautifulSoup, Tag
 
 import db
+from scraper_base import BaseScraper
 
 WP_API = "https://dailynous.com/wp-json/wp/v2/posts"
 SLUG_PREFIX = "online-philosophy-resources-weekly-update"
-USER_AGENT = (
-    "PhilReviews/2.0 (academic research aggregator; mailto:mzwolinski@sandiego.edu)"
-)
 
 # Patterns for the section header
 HEADER_PATTERNS = [
@@ -42,12 +40,14 @@ HEADER_PATTERNS = [
 ]
 
 
-class DailyNousScraper:
+class DailyNousScraper(BaseScraper):
     """Scrapes book review listings from Daily Nous weekly update posts."""
 
+    name = "daily_nous"
+    default_delay = 1.0
+
     def __init__(self):
-        self.session = requests.Session()
-        self.session.headers.update({"User-Agent": USER_AGENT})
+        super().__init__()
         self.stats = {
             "posts_fetched": 0,
             "posts_with_reviews": 0,
@@ -57,10 +57,6 @@ class DailyNousScraper:
             "uploaded": 0,
             "duplicates_skipped": 0,
         }
-
-    def log(self, msg, level="INFO"):
-        ts = datetime.now().strftime("%H:%M:%S")
-        print(f"[{ts}] {level}: {msg}")
 
     # ── Post discovery via WP REST API ─────────────────────────────
 
@@ -90,7 +86,7 @@ class DailyNousScraper:
 
     def fetch_all_posts(self):
         """Fetch all Weekly Update posts (bulk import)."""
-        self.log("Fetching all Weekly Update posts via WP API...")
+        self.log.info("Fetching all Weekly Update posts via WP API...")
         posts = self._api_get(
             {
                 "search": "online philosophy resources weekly update",
@@ -102,12 +98,12 @@ class DailyNousScraper:
         )
         # Filter to only weekly update slugs
         posts = [p for p in posts if p.get("slug", "").startswith(SLUG_PREFIX)]
-        self.log(f"Found {len(posts)} Weekly Update posts")
+        self.log.info(f"Found {len(posts)} Weekly Update posts")
         return posts
 
     def fetch_recent_posts(self, count=5):
         """Fetch the N most recent Weekly Update posts (incremental)."""
-        self.log(f"Fetching {count} most recent Weekly Update posts...")
+        self.log.info(f"Fetching {count} most recent Weekly Update posts...")
         posts = self._api_get(
             {
                 "search": "online philosophy resources weekly update",
@@ -644,7 +640,7 @@ class DailyNousScraper:
                 records.extend(parsed)
             except Exception as e:
                 self.stats["parse_errors"] += 1
-                self.log(f"  Parse error in {slug}: {e}", "WARNING")
+                self.log.warning(f"  Parse error in {slug}: {e}")
 
         return records
 
@@ -676,22 +672,22 @@ class DailyNousScraper:
             records = self.process_post(post)
             if records:
                 all_records.extend(records)
-                self.log(
+                self.log.info(
                     f"  [{i + 1}/{len(posts)}] {slug}: {len(records)} reviews"
                 )
 
         self.stats["reviews_parsed"] = len(all_records)
-        self.log(
+        self.log.info(
             f"Parsed {len(all_records)} reviews from "
             f"{self.stats['posts_with_reviews']}/{len(posts)} posts"
         )
 
         if dry_run:
-            self.log("Dry run — skipping database upload")
+            self.log.info("Dry run — skipping database upload")
             self._print_sample(all_records)
         else:
             uploaded = self.upload_to_db(all_records)
-            self.log(f"Uploaded {uploaded} new reviews, "
+            self.log.info(f"Uploaded {uploaded} new reviews, "
                      f"skipped {self.stats['duplicates_skipped']} duplicates")
 
         return self.stats
@@ -711,7 +707,7 @@ class DailyNousScraper:
         if all_records and not dry_run:
             self.upload_to_db(all_records)
 
-        self.log(
+        self.log.info(
             f"Incremental: {len(all_records)} reviews from {len(posts)} posts, "
             f"{self.stats['uploaded']} new"
         )
@@ -719,7 +715,7 @@ class DailyNousScraper:
 
     def _print_sample(self, records, n=10):
         """Print a sample of parsed records for dry-run review."""
-        self.log(f"Sample of first {min(n, len(records))} records:")
+        self.log.info(f"Sample of first {min(n, len(records))} records:")
         for r in records[:n]:
             author = f"{r['book_author_first_name']} {r['book_author_last_name']}".strip()
             reviewer = f"{r['reviewer_first_name']} {r['reviewer_last_name']}".strip()

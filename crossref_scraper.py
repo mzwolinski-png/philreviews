@@ -26,6 +26,7 @@ from urllib.parse import quote, quote_plus
 from dotenv import load_dotenv
 
 import db
+from scraper_base import BaseScraper
 
 load_dotenv()
 
@@ -929,7 +930,10 @@ def _looks_like_author_name(text: str) -> bool:
         return False
 
     words = text.split()
-    if len(words) < 1 or len(words) > 6:
+    if len(words) < 2 or len(words) > 6:
+        # Require at least 2 words (first + last name). Single-word "names"
+        # like "Convention", "Pragmaticism", "Logicians" are almost always
+        # title fragments, not author names.
         return False
 
     # Author names are short and mostly capitalized words
@@ -938,7 +942,8 @@ def _looks_like_author_name(text: str) -> bool:
                       'review', 'book', 'symposium', 'critical', 'reflections',
                       'commentary', 'response', 'reply', 'essay', 'matter', 'body',
                       'special', 'is', 'what', 'how', 'why', 'case', 'against',
-                      'beyond', 'toward', 'towards', 'between'}
+                      'beyond', 'toward', 'towards', 'between', 'its', 'or',
+                      'not', 'with', 'this', 'that', 'their', 'some', 'all'}
 
     # Common nouns/adjectives that appear in titles but not as surnames
     title_words = {'nature', 'ethics', 'justice', 'ecology', 'environmental',
@@ -948,7 +953,13 @@ def _looks_like_author_name(text: str) -> bool:
                    'connection', 'sustainability', 'change', 'world', 'earth',
                    'value', 'morality', 'resources', 'rights', 'land',
                    'marxism', 'stoic', 'african', 'desiring', 'inherent',
-                   'intrinsic', 'social', 'disclosive', 'food'}
+                   'intrinsic', 'social', 'disclosive', 'food',
+                   'convention', 'science', 'cognitive', 'moral', 'political',
+                   'philosophical', 'nations', 'century', 'logicians', 'early',
+                   'reasoners', 'modern', 'ancient', 'classical', 'theory',
+                   'philosophy', 'metaphysics', 'epistemology', 'logic',
+                   'consciousness', 'knowledge', 'language', 'pragmatism',
+                   'canada', 'europe', 'america', 'asia', 'first', 'second'}
 
     # If most words are non-name words, this is probably a title fragment
     lower_words = [w.lower().rstrip('.,;:?!') for w in words]
@@ -1041,34 +1052,54 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
                            (safe for journals whose article titles use colons/subtitles)
     """
     title = (crossref_item.get('title', ['']) or [''])[0].lower()
+    subtitle = ((crossref_item.get('subtitle') or [''])[0] or '').lower()
+    title_plus_sub = title + ' ' + subtitle
 
-    # Exclude non-review items
+    # Exclude non-review items (check both title and subtitle)
     exclude = ['editorial:', 'announcing', 'comment on', 'response to', 'reply to',
                'correction', 'erratum', 'retraction', 'call for papers',
                'book notes', 'books received', 'brief notices', 'notes on our contributors',
-               'general index']
+               'general index', 'author responds']
     for pattern in exclude:
-        if pattern in title:
+        if pattern in title_plus_sub:
             return False
 
     # Positive indicators
-    # Italic tags suggest a book title, but only if the italic text is substantial
-    # (short italic fragments are likely emphasis, variables, or foreign words)
-    italic_match = re.search(r'<(?:i|em)>(.*?)</(?:i|em)>', title)
-    if italic_match:
-        italic_text = re.sub(r'<[^>]+>', '', italic_match.group(1)).strip()
-        if len(italic_text) >= 15:
-            return True
-    # Bold tags: some journals use <b> instead of <i> for book titles (Kant-Studien, JBSP)
-    bold_match = re.search(r'<(?:b|strong)>(.*?)</(?:b|strong)>', title)
-    if bold_match:
-        bold_text = re.sub(r'<[^>]+>', '', bold_match.group(1)).strip()
-        if len(bold_text) >= 15:
-            return True
+    # Italic/bold tags suggest a book title, but only if they dominate the title
+    # or appear in a review-like framing context. An italic phrase embedded in a
+    # longer article title might just be a mention, not a review.
+    raw_title_for_tags = (crossref_item.get('title', ['']) or [''])[0]
+    plain_text = re.sub(r'<[^>]+>', '', raw_title_for_tags).strip()
+    for tag_re in [r'<(?:i|em)>(.*?)</(?:i|em)>', r'<(?:b|strong)>(.*?)</(?:b|strong)>']:
+        tag_match = re.search(tag_re, title)
+        if tag_match:
+            tag_text = re.sub(r'<[^>]+>', '', tag_match.group(1)).strip()
+            if len(tag_text) >= 15:
+                tag_ratio = len(tag_text) / max(len(plain_text), 1)
+                starts_with_tag = raw_title_for_tags.lstrip().startswith(('<i>', '<em>', '<b>', '<strong>'))
+                # Detect if tagged text is dominant or title starts with tag
+                if tag_ratio > 0.5 or (starts_with_tag and tag_ratio > 0.3):
+                    return True
+                # Detect review-like framing: possessive before italic ("Author's <i>Title</i>")
+                # or review verbs ("reading", "re-reading", "reviewing")
+                # Only trigger if pre-tag text is short (< 60 chars of plain text),
+                # to avoid matching articles that just mention "Author's <i>Book</i>" in passing
+                pre_tag = raw_title_for_tags[:tag_match.start()].rstrip()
+                pre_tag_plain = re.sub(r'<[^>]+>', '', pre_tag).strip()
+                if re.search(r"['\u2019]s\s*$", pre_tag) and len(pre_tag_plain) < 60:
+                    return True
+                if re.search(r'\b(?:re-?reading|reviewing|review of)\s*$', pre_tag, re.IGNORECASE):
+                    return True
+                # Italic text at end of title (nothing substantial after closing tag)
+                post_tag = raw_title_for_tags[tag_match.end():].strip()
+                post_plain = re.sub(r'<[^>]+>', '', post_tag).strip()
+                if len(post_plain) < 5 and tag_ratio > 0.25:
+                    return True
     if '(review)' in title:
         return True
 
-    indicators = ['book review', 'book reviews', 'review of', 'reviewed work']
+    indicators = ['book review', 'book reviews', 'review of', 'reviewed work',
+                   'critical notice of']
     for ind in indicators:
         if ind in title:
             return True
@@ -1091,15 +1122,15 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
     if re.search(r'\.\s+[Bb]y\s+[A-Z][a-z]', raw_title):
         return True
 
+    # --- Name-based heuristics (skip for italic_only mode) ---
+    if detection_mode == 'italic_only':
+        return False
+
     # Pattern: "Title by PersonName" at end (Thomist pre-2023 format)
     # Requires " by " followed by text that looks like a person's name, at end of title
     by_end = re.search(r'\s+by\s+(.+?)\s*$', raw_title)
     if by_end and by_end.start() > 10 and _looks_like_author_name(by_end.group(1).strip()):
         return True
-
-    # --- Name-based heuristics (skip for italic_only mode) ---
-    if detection_mode == 'italic_only':
-        return False
 
     # Pattern: "Author's Title..." (EJPE possessive format)
     if re.match(r"^(?:Review of )?[A-Z][a-z]+(?:\s[A-Z]\.?)* [A-Z][a-zA-Z-]+['\u2019]s\s", raw_title):
@@ -1115,7 +1146,10 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
         surname = author_comma_match.group(1)
         if 2 <= len(surname) <= 20 and surname.lower() not in (
             'nature', 'ethics', 'justice', 'ecology', 'the', 'being', 'value',
-            'animal', 'people', 'land', 'wild', 'extinction', 'poverty', 'growth'):
+            'animal', 'people', 'land', 'wild', 'extinction', 'poverty', 'growth',
+            'criteria', 'analysis', 'freedom', 'democracy', 'knowledge',
+            'autonomy', 'causation', 'identity', 'language', 'meaning',
+            'reality', 'perception', 'inference', 'consciousness'):
             return True
 
     # Pattern: "Title, by Author"
@@ -1153,7 +1187,7 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
 
 # --- Main scraper class ---
 
-class CrossrefReviewScraper:
+class CrossrefReviewScraper(BaseScraper):
     """Scrapes book reviews from multiple philosophy journals via the Crossref API."""
 
     # Journals and their known Crossref title formats.
@@ -1859,13 +1893,19 @@ class CrossrefReviewScraper:
         },
     }
 
-    def __init__(self):
-        self.crossref_email = os.getenv('CROSSREF_EMAIL', 'user@example.com')
+    name = "crossref"
 
-        self.session = requests.Session()
+    def __init__(self):
+        super().__init__()
+        self.crossref_email = os.getenv('CROSSREF_EMAIL', 'user@example.com')
+        # Override User-Agent with Crossref polite-pool email
         self.session.headers.update({
             'User-Agent': f'PhilReviews/2.0 (mailto:{self.crossref_email})'
         })
+        # Keep self.log callable for backward compatibility with self.log("msg")
+        # while also supporting self.log.info() etc. via the _logger attribute
+        self._logger = self.log
+        self.log = self._compat_log
 
         self.stats = {
             'journals_searched': 0,
@@ -1879,9 +1919,9 @@ class CrossrefReviewScraper:
         }
         self.results = []
 
-    def log(self, msg: str, level: str = "INFO"):
-        ts = datetime.now().strftime("%H:%M:%S")
-        print(f"[{ts}] {level}: {msg}")
+    def _compat_log(self, msg: str, level: str = "INFO"):
+        """Compatibility wrapper: routes self.log("msg", "LEVEL") to the logger."""
+        getattr(self._logger, level.lower(), self._logger.info)(msg)
 
     # --- Crossref API ---
 

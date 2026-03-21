@@ -1,14 +1,14 @@
-/* PhilReviews — client-side filter / sort / paginate */
+/* PhilReviews — async API client with server-side search */
 (function () {
   "use strict";
 
-  let allReviews = [];
-  let filtered = [];
   let allJournals = [];
   let selectedJournals = new Set();
   let allSubfields = [];
   let selectedSubfields = new Set();
-  let state = { page: 1, perPage: 25, sortKey: "date", sortDir: "desc", expandedIdx: null };
+  let totalReviews = 0;
+  let state = { page: 1, perPage: 25, sortKey: "date", sortDir: "desc", expandedId: null };
+  let currentController = null;
 
   const SUBFIELD_NAMES = {
     "ethics": "Ethics & Moral Philosophy",
@@ -41,27 +41,11 @@
     return '<a class="name-link" data-type="' + type + '" data-value="' + esc(value) + '">' + esc(display) + "</a>";
   };
 
-  /* ---------- DOM refs ---------- */
   const $ = (id) => document.getElementById(id);
   let els;
 
   /* ---------- Init ---------- */
-  document.addEventListener("DOMContentLoaded", () => {
-    allReviews = JSON.parse(document.getElementById("review-data").textContent);
-
-    /* Build journal list from data */
-    const journalSet = new Set();
-    allReviews.forEach((r) => journalSet.add(r.journal));
-    const sortKey = s => s.replace(/^The /i, '');
-    allJournals = Array.from(journalSet).sort((a, b) => sortKey(a).localeCompare(sortKey(b)));
-    selectedJournals = new Set(allJournals);
-
-    /* Build subfield list from dropdown checkboxes */
-    document.querySelectorAll("#subfield-dropdown .journal-option input").forEach((cb) => {
-      allSubfields.push(cb.value);
-    });
-    selectedSubfields = new Set(allSubfields);
-
+  document.addEventListener("DOMContentLoaded", async () => {
     els = {
       globalSearch: $("global-search"),
       titleFilter: $("filter-title"),
@@ -70,7 +54,8 @@
       yearFrom: $("filter-year-from"),
       yearTo: $("filter-year-to"),
       accessFilter: $("filter-access"),
-      typeFilter: $("filter-type"),
+      typeReview: $("filter-type-review"),
+      typeSymposium: $("filter-type-symposium"),
       clearBtn: $("clear-filters"),
       advancedToggle: $("advanced-toggle"),
       advancedPanel: $("advanced-panel"),
@@ -78,18 +63,25 @@
       perPageSelect: $("per-page"),
       tbody: $("review-tbody"),
       pagination: $("pagination"),
+      loading: $("loading"),
       journalBtn: $("journal-select-btn"),
       journalDropdown: $("journal-dropdown"),
+      journalList: $("journal-list"),
       journalSelectAll: $("journal-select-all"),
       journalSelectNone: $("journal-select-none"),
       subfieldBtn: $("subfield-select-btn"),
       subfieldDropdown: $("subfield-dropdown"),
+      subfieldList: $("subfield-list"),
       subfieldSelectAll: $("subfield-select-all"),
       subfieldSelectNone: $("subfield-select-none"),
       filterIndicator: $("filter-indicator"),
+      sourcesGrid: $("sources-grid"),
+      sourceTotal: $("source-total"),
+      shareBtn: $("share-search"),
     };
 
-    /* event listeners */
+    await fetchMetadata();
+
     els.advancedToggle.addEventListener("click", () => {
       const open = els.advancedPanel.classList.toggle("open");
       els.advancedToggle.textContent = open ? "Hide Advanced Search" : "Advanced Search";
@@ -98,30 +90,42 @@
     els.clearBtn.addEventListener("click", () => {
       clearFilters();
       syncToUrl();
+      fetchAndRender();
+    });
+    els.shareBtn.addEventListener("click", () => {
+      const url = window.location.href;
+      navigator.clipboard.writeText(url).then(() => {
+        els.shareBtn.textContent = "Copied!";
+        els.shareBtn.classList.add("copied");
+        setTimeout(() => {
+          els.shareBtn.textContent = "Share";
+          els.shareBtn.classList.remove("copied");
+        }, 2000);
+      });
     });
     els.perPageSelect.addEventListener("change", () => {
       state.perPage = parseInt(els.perPageSelect.value, 10);
       state.page = 1;
-      render();
       syncToUrl();
+      fetchAndRender();
     });
 
-    /* debounced text inputs */
     let timer;
     const debounced = () => {
       clearTimeout(timer);
-      timer = setTimeout(() => { state.page = 1; update(); syncToUrl(); }, 200);
+      timer = setTimeout(() => { state.page = 1; syncToUrl(); fetchAndRender(); }, 300);
     };
     [els.globalSearch, els.titleFilter, els.authorFilter, els.reviewerFilter].forEach(
       (el) => el.addEventListener("input", debounced)
     );
 
-    /* instant selects / number inputs */
-    [els.yearFrom, els.yearTo, els.accessFilter, els.typeFilter].forEach(
-      (el) => el.addEventListener("change", () => { state.page = 1; update(); syncToUrl(); })
+    [els.yearFrom, els.yearTo, els.accessFilter].forEach(
+      (el) => el.addEventListener("change", () => { state.page = 1; syncToUrl(); fetchAndRender(); })
+    );
+    [els.typeReview, els.typeSymposium].forEach(
+      (el) => el.addEventListener("change", () => { state.page = 1; syncToUrl(); fetchAndRender(); })
     );
 
-    /* subfield multi-select dropdown */
     els.subfieldBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       els.subfieldDropdown.classList.toggle("open");
@@ -131,32 +135,18 @@
       syncSubfieldCheckboxes();
       updateSubfieldBtnLabel();
       state.page = 1;
-      update();
       syncToUrl();
+      fetchAndRender();
     });
     els.subfieldSelectNone.addEventListener("click", () => {
       selectedSubfields.clear();
       syncSubfieldCheckboxes();
       updateSubfieldBtnLabel();
       state.page = 1;
-      update();
       syncToUrl();
-    });
-    els.subfieldDropdown.querySelectorAll(".journal-option input").forEach((cb) => {
-      cb.addEventListener("change", () => {
-        if (cb.checked) {
-          selectedSubfields.add(cb.value);
-        } else {
-          selectedSubfields.delete(cb.value);
-        }
-        updateSubfieldBtnLabel();
-        state.page = 1;
-        update();
-        syncToUrl();
-      });
+      fetchAndRender();
     });
 
-    /* journal multi-select dropdown */
     els.journalBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       els.journalDropdown.classList.toggle("open");
@@ -173,32 +163,18 @@
       syncCheckboxes();
       updateJournalBtnLabel();
       state.page = 1;
-      update();
       syncToUrl();
+      fetchAndRender();
     });
     els.journalSelectNone.addEventListener("click", () => {
       selectedJournals.clear();
       syncCheckboxes();
       updateJournalBtnLabel();
       state.page = 1;
-      update();
       syncToUrl();
-    });
-    els.journalDropdown.querySelectorAll(".journal-option input").forEach((cb) => {
-      cb.addEventListener("change", () => {
-        if (cb.checked) {
-          selectedJournals.add(cb.value);
-        } else {
-          selectedJournals.delete(cb.value);
-        }
-        updateJournalBtnLabel();
-        state.page = 1;
-        update();
-        syncToUrl();
-      });
+      fetchAndRender();
     });
 
-    /* sortable headers */
     document.querySelectorAll("th[data-sort]").forEach((th) => {
       th.addEventListener("click", () => {
         const key = th.dataset.sort;
@@ -209,71 +185,192 @@
           state.sortDir = key === "date" ? "desc" : "asc";
         }
         state.page = 1;
-        render();
         syncToUrl();
+        fetchAndRender();
       });
     });
 
-    /* sources toggle — expand/collapse */
-    const sourcesToggle = document.getElementById("sources-toggle");
-    const sourcesGrid = document.getElementById("sources-grid");
-    if (sourcesToggle && sourcesGrid) {
+    const sourcesToggle = $("sources-toggle");
+    if (sourcesToggle) {
       sourcesToggle.addEventListener("click", () => {
         const icon = sourcesToggle.querySelector(".toggle-icon");
-        if (sourcesGrid.style.display === "none") {
-          sourcesGrid.style.display = "flex";
+        if (els.sourcesGrid.style.display === "none") {
+          els.sourcesGrid.style.display = "flex";
           if (icon) icon.classList.add("open");
         } else {
-          sourcesGrid.style.display = "none";
+          els.sourcesGrid.style.display = "none";
           if (icon) icon.classList.remove("open");
         }
       });
     }
 
-    /* source card clicks — filter by journal */
-    document.querySelectorAll(".source-card").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        clearFilters();
-        selectedJournals = new Set([btn.dataset.journal]);
-        syncCheckboxes();
-        updateJournalBtnLabel();
-        state.sortKey = "date";
-        state.sortDir = "desc";
-        state.page = 1;
-        update();
-        syncToUrl();
-        document.querySelector(".table-wrap").scrollIntoView({ behavior: "smooth" });
-      });
-    });
-
-    /* browse recent reviews */
-    const recentBtn = document.getElementById("browse-recent");
+    const recentBtn = $("browse-recent");
     if (recentBtn) {
       recentBtn.addEventListener("click", () => {
         clearFilters();
         state.sortKey = "date";
         state.sortDir = "desc";
         state.page = 1;
-        update();
         syncToUrl();
+        fetchAndRender();
         document.querySelector(".table-wrap").scrollIntoView({ behavior: "smooth" });
       });
     }
 
-    /* popstate for browser back/forward */
     window.addEventListener("popstate", () => {
       readFromUrl();
-      update();
+      fetchAndRender();
     });
 
-    /* Read URL state, then render */
     readFromUrl();
-    update();
+    fetchAndRender();
   });
+
+  /* ---------- API calls ---------- */
+  async function fetchMetadata() {
+    try {
+      const resp = await fetch("/api/metadata");
+      const data = await resp.json();
+      totalReviews = data.total;
+
+      // Populate journal dropdown
+      const sortKey = s => s.replace(/^The /i, '');
+      const sorted = data.journals.slice().sort((a, b) => sortKey(a.name).localeCompare(sortKey(b.name)));
+      allJournals = sorted.map(j => j.name);
+      selectedJournals = new Set(allJournals);
+
+      let journalHtml = "";
+      sorted.forEach((j) => {
+        journalHtml += '<label class="journal-option"><input type="checkbox" value="' +
+          esc(j.name) + '" checked> ' + esc(stripThe(j.name)) + '</label>';
+      });
+      els.journalList.innerHTML = journalHtml;
+
+      let checkboxTimer;
+      const debouncedCheckbox = () => {
+        clearTimeout(checkboxTimer);
+        checkboxTimer = setTimeout(() => { state.page = 1; syncToUrl(); fetchAndRender(); }, 200);
+      };
+
+      els.journalList.querySelectorAll("input").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          if (cb.checked) selectedJournals.add(cb.value);
+          else selectedJournals.delete(cb.value);
+          updateJournalBtnLabel();
+          debouncedCheckbox();
+        });
+      });
+
+      // Populate subfield dropdown
+      const subfieldsSorted = Object.keys(SUBFIELD_NAMES).sort(
+        (a, b) => SUBFIELD_NAMES[a].localeCompare(SUBFIELD_NAMES[b])
+      );
+      allSubfields = subfieldsSorted;
+      selectedSubfields = new Set(allSubfields);
+
+      let subfieldHtml = "";
+      subfieldsSorted.forEach((code) => {
+        subfieldHtml += '<label class="journal-option"><input type="checkbox" value="' +
+          code + '" checked> ' + esc(SUBFIELD_NAMES[code]) + '</label>';
+      });
+      els.subfieldList.innerHTML = subfieldHtml;
+
+      els.subfieldList.querySelectorAll("input").forEach((cb) => {
+        cb.addEventListener("change", () => {
+          if (cb.checked) selectedSubfields.add(cb.value);
+          else selectedSubfields.delete(cb.value);
+          updateSubfieldBtnLabel();
+          debouncedCheckbox();
+        });
+      });
+
+      // Populate sources grid
+      let sourcesHtml = "";
+      data.journals.forEach((j) => {
+        sourcesHtml += '<button class="source-card" data-journal="' + esc(j.name) + '">' +
+          '<span class="source-name">' + esc(stripThe(j.name)) + '</span>' +
+          '<span class="source-count">' + j.count.toLocaleString() + '</span></button>';
+      });
+      els.sourcesGrid.innerHTML = sourcesHtml;
+      els.sourceTotal.textContent = "(" + data.journals.length + " journals)";
+
+      els.sourcesGrid.querySelectorAll(".source-card").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          clearFilters();
+          selectedJournals = new Set([btn.dataset.journal]);
+          syncCheckboxes();
+          updateJournalBtnLabel();
+          state.sortKey = "date";
+          state.sortDir = "desc";
+          state.page = 1;
+          syncToUrl();
+          fetchAndRender();
+          document.querySelector(".table-wrap").scrollIntoView({ behavior: "smooth" });
+        });
+      });
+    } catch (e) {
+      console.error("Failed to fetch metadata:", e);
+    }
+  }
+
+  async function fetchAndRender() {
+    if (currentController) currentController.abort();
+    currentController = new AbortController();
+
+    els.loading.style.display = "block";
+    updateFilterIndicator();
+
+    const params = new URLSearchParams();
+    const g = els.globalSearch.value.trim();
+    if (g) params.set("q", g);
+    const ft = els.titleFilter.value.trim();
+    if (ft) params.set("title", ft);
+    const fa = els.authorFilter.value.trim();
+    if (fa) params.set("author", fa);
+    const fr = els.reviewerFilter.value.trim();
+    if (fr) params.set("reviewer", fr);
+
+    if (selectedJournals.size > 0 && selectedJournals.size < allJournals.length) {
+      params.set("journals", Array.from(selectedJournals).join(","));
+    }
+    if (selectedSubfields.size > 0 && selectedSubfields.size < allSubfields.length) {
+      params.set("subfield", Array.from(selectedSubfields).join(","));
+    }
+
+    const y1 = els.yearFrom.value;
+    if (y1) params.set("year_from", y1);
+    const y2 = els.yearTo.value;
+    if (y2) params.set("year_to", y2);
+
+    const ac = els.accessFilter.value;
+    if (ac) params.set("access", ac);
+    const showReviews = els.typeReview.checked;
+    const showSymposia = els.typeSymposium.checked;
+    if (showReviews && !showSymposia) params.set("type", "review");
+    else if (showSymposia && !showReviews) params.set("type", "symposium");
+
+    params.set("sort", state.sortKey);
+    params.set("sort_dir", state.sortDir);
+    params.set("page", state.page);
+    params.set("per_page", state.perPage);
+
+    try {
+      const resp = await fetch("/api/reviews?" + params.toString(), {
+        signal: currentController.signal,
+      });
+      const data = await resp.json();
+      els.loading.style.display = "none";
+      renderResults(data);
+    } catch (e) {
+      if (e.name === "AbortError") return;
+      console.error("Failed to fetch reviews:", e);
+      els.loading.style.display = "none";
+    }
+  }
 
   /* ---------- Journal multi-select helpers ---------- */
   function syncCheckboxes() {
-    els.journalDropdown.querySelectorAll(".journal-option input").forEach((cb) => {
+    els.journalList.querySelectorAll("input").forEach((cb) => {
       cb.checked = selectedJournals.has(cb.value);
     });
   }
@@ -295,7 +392,7 @@
 
   /* ---------- Subfield multi-select helpers ---------- */
   function syncSubfieldCheckboxes() {
-    els.subfieldDropdown.querySelectorAll(".journal-option input").forEach((cb) => {
+    els.subfieldList.querySelectorAll("input").forEach((cb) => {
       cb.checked = selectedSubfields.has(cb.value);
     });
   }
@@ -322,20 +419,16 @@
 
     const g = els.globalSearch.value.trim();
     if (g) params.set("q", g);
-
     const ft = els.titleFilter.value.trim();
     if (ft) params.set("title", ft);
-
     const fa = els.authorFilter.value.trim();
     if (fa) params.set("author", fa);
-
     const fr = els.reviewerFilter.value.trim();
     if (fr) params.set("reviewer", fr);
 
     if (selectedSubfields.size > 0 && selectedSubfields.size < allSubfields.length) {
       params.set("subfield", Array.from(selectedSubfields).join(","));
     }
-
     if (selectedJournals.size > 0 && selectedJournals.size < allJournals.length) {
       params.set("journals", Array.from(selectedJournals).join(","));
     }
@@ -348,9 +441,8 @@
 
     const ac = els.accessFilter.value;
     if (ac) params.set("access", ac);
-
-    const tp = els.typeFilter.value;
-    if (tp) params.set("type", tp);
+    if (els.typeReview.checked && !els.typeSymposium.checked) params.set("type", "review");
+    else if (els.typeSymposium.checked && !els.typeReview.checked) params.set("type", "symposium");
 
     const defaultSort = state.sortKey === "date" && state.sortDir === "desc";
     if (!defaultSort) params.set("sort", state.sortKey + "-" + state.sortDir);
@@ -394,7 +486,11 @@
     }
 
     if (params.has("access")) els.accessFilter.value = params.get("access");
-    if (params.has("type")) els.typeFilter.value = params.get("type");
+    if (params.has("type")) {
+      const tp = params.get("type");
+      els.typeReview.checked = (tp === "review");
+      els.typeSymposium.checked = (tp === "symposium");
+    }
 
     if (params.has("sort")) {
       const sp = params.get("sort").split("-");
@@ -407,48 +503,14 @@
     if (params.has("page")) {
       state.page = parseInt(params.get("page"), 10) || 1;
     }
+
+    if (params.has("per_page")) {
+      state.perPage = parseInt(params.get("per_page"), 10) || 25;
+      els.perPageSelect.value = state.perPage;
+    }
   }
 
-  /* ---------- Filtering ---------- */
-  function applyFilters() {
-    const g = els.globalSearch.value.toLowerCase().trim();
-    const ft = els.titleFilter.value.toLowerCase().trim();
-    const fa = els.authorFilter.value.toLowerCase().trim();
-    const fr = els.reviewerFilter.value.toLowerCase().trim();
-    const fy1 = els.yearFrom.value ? parseInt(els.yearFrom.value, 10) : null;
-    const fy2 = els.yearTo.value ? parseInt(els.yearTo.value, 10) : null;
-    const fac = els.accessFilter.value.toLowerCase();
-    const ftype = els.typeFilter.value;
-    const filterByJournal = selectedJournals.size < allJournals.length;
-    const filterBySubfield = selectedSubfields.size < allSubfields.length;
-
-    filtered = allReviews.filter((r) => {
-      if (g) {
-        const subfieldName = (SUBFIELD_NAMES[r.subfield] || "").toLowerCase();
-        const blob = (r.title + " " + r.author + " " + r.reviewer + " " + r.journal + " " + r.date + " " + subfieldName).toLowerCase();
-        if (!blob.includes(g)) return false;
-      }
-      if (ft && !r.title.toLowerCase().includes(ft)) return false;
-      if (fa && !r.author.toLowerCase().includes(fa)) return false;
-      if (fr && !r.reviewer.toLowerCase().includes(fr)) return false;
-      if (filterByJournal && !selectedJournals.has(r.journal)) return false;
-      if (filterBySubfield) {
-        if (!selectedSubfields.has(r.subfield) && !selectedSubfields.has(r.subfield2)) return false;
-      }
-      if (fac && r.access.toLowerCase() !== fac) return false;
-      if (ftype && (r.type || "review") !== ftype) return false;
-      if (fy1 || fy2) {
-        const y = parseInt((r.date || "").substring(0, 4), 10);
-        if (isNaN(y)) return false;
-        if (fy1 && y < fy1) return false;
-        if (fy2 && y > fy2) return false;
-      }
-      return true;
-    });
-
-    updateFilterIndicator();
-  }
-
+  /* ---------- Filter indicator ---------- */
   function updateFilterIndicator() {
     const active = [];
     if (els.globalSearch.value.trim()) active.push("search");
@@ -459,41 +521,30 @@
     if (selectedJournals.size < allJournals.length) active.push("journals");
     if (els.yearFrom.value || els.yearTo.value) active.push("year");
     if (els.accessFilter.value) active.push("access");
-    if (els.typeFilter.value) active.push("type");
+    if (!els.typeReview.checked || !els.typeSymposium.checked) active.push("type");
 
     if (active.length > 0) {
       els.filterIndicator.textContent = active.length + " filter" + (active.length > 1 ? "s" : "") + " active";
+      els.shareBtn.style.display = "";
     } else {
       els.filterIndicator.textContent = "";
+      els.shareBtn.style.display = "none";
     }
   }
 
-  /* ---------- Sorting ---------- */
-  function applySort() {
-    const key = state.sortKey;
-    const dir = state.sortDir === "asc" ? 1 : -1;
-    filtered.sort((a, b) => {
-      let va = (a[key] || "").toLowerCase();
-      let vb = (b[key] || "").toLowerCase();
-      if (key === "journal") { va = stripThe(va); vb = stripThe(vb); }
-      return dir * va.localeCompare(vb);
-    });
-  }
-
   /* ---------- Render ---------- */
-  function update() {
-    applyFilters();
-    render();
-  }
+  function renderResults(data) {
+    const total = data.total;
+    const reviews = data.reviews;
+    const totalPages = data.total_pages;
 
-  function render() {
-    applySort();
+    if (total < totalReviews) {
+      els.resultCount.textContent = "Page " + data.page + " of " + totalPages.toLocaleString() +
+        " \u2014 " + total.toLocaleString() + " results";
+    } else {
+      els.resultCount.textContent = total.toLocaleString() + " entries";
+    }
 
-    const total = allReviews.length;
-    const count = filtered.length;
-    els.resultCount.textContent = "Showing " + count.toLocaleString() + " of " + total.toLocaleString() + " entries";
-
-    /* sort indicators */
     document.querySelectorAll("th[data-sort]").forEach((th) => {
       th.classList.remove("sort-asc", "sort-desc");
       if (th.dataset.sort === state.sortKey) {
@@ -501,19 +552,18 @@
       }
     });
 
-    /* pagination math */
-    const totalPages = Math.max(1, Math.ceil(count / state.perPage));
-    if (state.page > totalPages) state.page = totalPages;
-    const start = (state.page - 1) * state.perPage;
-    const pageItems = filtered.slice(start, start + state.perPage);
-
-    /* build rows */
     let html = "";
-    pageItems.forEach((r, i) => {
-      const idx = start + i;
-      const expanded = state.expandedIdx === idx;
-      html += '<tr class="review-row' + (expanded ? " expanded" : "") + '" data-idx="' + idx + '">';
-      html += "<td>" + esc(r.title) + "</td>";
+    reviews.forEach((r) => {
+      const expanded = state.expandedId === r.id;
+      html += '<tr class="review-row' + (expanded ? " expanded" : "") + '" data-id="' + r.id + '">';
+      html += "<td>";
+      if (r.link) {
+        html += '<a class="title-link" href="' + esc(r.link) + '" target="_blank" rel="noopener">' + esc(r.title) + "</a>";
+      } else {
+        html += esc(r.title);
+      }
+      html += ' <button class="info-btn">' + (expanded ? "Less" : "Info") + "</button>";
+      html += "</td>";
       html += "<td>" + nameLink("author", r.author) + "</td>";
       html += "<td>" + nameLink("reviewer", r.reviewer) + "</td>";
       html += "<td>" + nameLink("journal", r.journal) + "</td>";
@@ -535,61 +585,83 @@
           const cls = r.access.toLowerCase() === "open" ? "badge-open" : "badge-restricted";
           html += '<span class="access-badge ' + cls + '">' + esc(r.access) + "</span> ";
         }
-        if (r.link) html += '<a class="read-link" href="' + esc(r.link) + '" target="_blank" rel="noopener">' + (r.type === "symposium" ? "Read Contribution" : "Read Review") + ' &rarr;</a>';
-        if (r.type === "symposium" && r.symposium_group) {
-          const peers = allReviews.filter(function(p) {
-            return p.symposium_group === r.symposium_group && p !== r;
+        if (r.link) html += '<a class="read-link" href="' + esc(r.link) + '" target="_blank" rel="noopener">' + (r.type === "symposium" ? "Read Contribution" : "Read Review") + ' &rarr;</a> ';
+        if (r.title) html += '<a class="read-link find-book-link" data-title="' + esc(r.title) + '">Other reviews of this book &rarr;</a>';
+        if (r.type === "symposium" && r.peers && r.peers.length > 0) {
+          html += '<div class="symposium-peers"><strong>Other contributions:</strong><ul>';
+          r.peers.forEach(function(p) {
+            html += "<li>" + esc(p.reviewer);
+            if (p.title && p.title !== r.title) html += ' &mdash; &ldquo;' + esc(p.title) + '&rdquo;';
+            if (p.link) html += ' <a href="' + esc(p.link) + '" target="_blank" rel="noopener">Read &rarr;</a>';
+            html += "</li>";
           });
-          if (peers.length > 0) {
-            html += '<div class="symposium-peers"><strong>Other contributions:</strong><ul>';
-            peers.forEach(function(p) {
-              html += "<li>" + esc(p.reviewer);
-              if (p.title && p.title !== r.title) html += ' — "' + esc(p.title) + '"';
-              if (p.link) html += ' <a href="' + esc(p.link) + '" target="_blank" rel="noopener">Read &rarr;</a>';
-              html += "</li>";
-            });
-            html += "</ul></div>";
-          }
+          html += "</ul></div>";
         }
         html += "</div></td></tr>";
       }
     });
     els.tbody.innerHTML = html;
 
-    /* row click handlers */
     els.tbody.querySelectorAll(".review-row").forEach((tr) => {
-      tr.addEventListener("click", () => {
-        const idx = parseInt(tr.dataset.idx, 10);
-        state.expandedIdx = state.expandedIdx === idx ? null : idx;
-        render();
+      tr.addEventListener("click", (e) => {
+        // Don't expand when clicking external links or name-links
+        if (e.target.closest(".title-link") || e.target.closest(".name-link")) return;
+        const id = parseInt(tr.dataset.id, 10);
+        state.expandedId = state.expandedId === id ? null : id;
+        renderResults(data);
       });
     });
 
-    /* name-link clicks — filter by author, reviewer, or journal */
+    els.tbody.querySelectorAll(".find-book-link").forEach((a) => {
+      a.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const title = a.dataset.title;
+        clearFilters();
+        els.titleFilter.value = title;
+        if (!els.advancedPanel.classList.contains("open")) {
+          els.advancedPanel.classList.add("open");
+          els.advancedToggle.textContent = "Hide Advanced Search";
+        }
+        state.sortKey = "date";
+        state.sortDir = "desc";
+        state.page = 1;
+        state.expandedId = null;
+        syncToUrl();
+        fetchAndRender();
+      });
+    });
+
     els.tbody.querySelectorAll(".name-link").forEach((a) => {
       a.addEventListener("click", (e) => {
         e.stopPropagation();
         const type = a.dataset.type;
         const value = a.dataset.value || a.textContent;
-        clearFilters();
         if (type === "journal") {
           selectedJournals = new Set([value]);
           syncCheckboxes();
           updateJournalBtnLabel();
-        } else {
-          els.globalSearch.value = value;
+        } else if (type === "author") {
+          els.authorFilter.value = value;
+          if (!els.advancedPanel.classList.contains("open")) {
+            els.advancedPanel.classList.add("open");
+            els.advancedToggle.textContent = "Hide Advanced Search";
+          }
+        } else if (type === "reviewer") {
+          els.reviewerFilter.value = value;
+          if (!els.advancedPanel.classList.contains("open")) {
+            els.advancedPanel.classList.add("open");
+            els.advancedToggle.textContent = "Hide Advanced Search";
+          }
         }
-        state.sortKey = "date";
-        state.sortDir = "desc";
         state.page = 1;
-        update();
+        state.expandedId = null;
         syncToUrl();
+        fetchAndRender();
       });
     });
 
-    /* GoatCounter click tracking on review links */
     els.tbody.querySelectorAll(".read-link").forEach((a) => {
-      a.addEventListener("click", (e) => {
+      a.addEventListener("click", () => {
         if (typeof goatcounter !== "undefined" && goatcounter.count) {
           const label = a.closest(".detail-row").previousElementSibling.querySelector("td").textContent || "unknown";
           goatcounter.count({ path: "click-" + label, event: true });
@@ -597,7 +669,7 @@
       });
     });
 
-    /* pagination */
+    state.page = data.page;
     renderPagination(totalPages);
   }
 
@@ -628,8 +700,8 @@
         const np = parseInt(btn.dataset.p, 10);
         if (np >= 1 && np <= totalPages) {
           state.page = np;
-          render();
           syncToUrl();
+          fetchAndRender();
         }
       });
     });
@@ -644,7 +716,8 @@
     els.yearFrom.value = "";
     els.yearTo.value = "";
     els.accessFilter.value = "";
-    els.typeFilter.value = "";
+    els.typeReview.checked = true;
+    els.typeSymposium.checked = true;
     selectedSubfields = new Set(allSubfields);
     syncSubfieldCheckboxes();
     updateSubfieldBtnLabel();
@@ -652,7 +725,6 @@
     syncCheckboxes();
     updateJournalBtnLabel();
     state.page = 1;
-    state.expandedIdx = null;
-    update();
+    state.expandedId = null;
   }
 })();

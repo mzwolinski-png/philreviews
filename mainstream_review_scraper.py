@@ -31,6 +31,7 @@ from urllib.parse import urlparse, urlunparse
 import requests
 
 import db
+from scraper_base import BaseScraper
 
 # ── Configuration ──────────────────────────────────────────────────
 
@@ -817,12 +818,15 @@ class NYTSearcher:
 
 # ── Main scraper ──────────────────────────────────────────────────
 
-class MainstreamReviewScraper:
+class MainstreamReviewScraper(BaseScraper):
     """Orchestrates searching and verification for mainstream reviews."""
+
+    name = "mainstream"
 
     def __init__(self, google_api_key=None, google_cx=None,
                  guardian_api_key=None, nyt_api_key=None,
                  brave_api_key=None):
+        super().__init__()
         self.google = None
         self.guardian = None
         self.nyt = None
@@ -850,9 +854,12 @@ class MainstreamReviewScraper:
         }
         self.found_reviews = []
 
-    def log(self, msg, level="INFO"):
-        ts = datetime.now().strftime("%H:%M:%S")
-        print(f"[{ts}] {level}: {msg}")
+        # Compatibility: self.log("msg", "LEVEL") still works
+        self._logger = self.log
+        self.log = self._compat_log
+
+    def _compat_log(self, msg, level="INFO"):
+        getattr(self._logger, level.lower(), self._logger.info)(msg)
 
     def search_book(self, book, guardian_only=False):
         """Search for mainstream reviews of a single book.

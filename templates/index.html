@@ -4,21 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PhilReviews</title>
-    <meta name="description" content="A comprehensive, searchable database of 77,000+ philosophy book reviews across 158 academic journals.">
+    <meta name="description" content="A comprehensive, searchable database of {{ "{:,}".format(total // 1000 * 1000) }}+ philosophy book reviews across {{ "{:,}".format(journal_count) }} academic journals.">
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <!-- Open Graph -->
     <meta property="og:type" content="website">
     <meta property="og:title" content="PhilReviews">
-    <meta property="og:description" content="A comprehensive, searchable database of 77,000+ philosophy book reviews across 158 academic journals.">
+    <meta property="og:description" content="A comprehensive, searchable database of {{ "{:,}".format(total // 1000 * 1000) }}+ philosophy book reviews across {{ "{:,}".format(journal_count) }} academic journals.">
     <meta property="og:url" content="https://philreviews.org/">
-    <meta property="og:image" content="https://philreviews.org/static/og-image.png">
+    <meta property="og:image" content="https://raw.githubusercontent.com/mzwolinski-png/philreviews/main/static/og-image.png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="PhilReviews">
-    <meta name="twitter:description" content="A comprehensive, searchable database of 77,000+ philosophy book reviews across 158 academic journals.">
-    <meta name="twitter:image" content="https://philreviews.org/static/og-image.png">
+    <meta name="twitter:description" content="A comprehensive, searchable database of {{ "{:,}".format(total // 1000 * 1000) }}+ philosophy book reviews across {{ "{:,}".format(journal_count) }} academic journals.">
+    <meta name="twitter:image" content="https://raw.githubusercontent.com/mzwolinski-png/philreviews/main/static/og-image.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
@@ -28,7 +28,7 @@
 <body>
 
 <header class="site-header">
-    <a href="index.html" class="site-logo"><img src="{{ url_for('static', filename='logo.svg') }}" alt="PhilReviews" height="44"></a>
+    <a href="/" class="site-logo"><img src="{{ url_for('static', filename='logo.svg') }}" alt="PhilReviews" height="44"></a>
     <p class="tagline">A comprehensive index of philosophy book reviews</p>
     <p class="meta">{{ total | default(0) }} reviews &middot; {{ min_year }}&ndash;{{ max_year }}</p>
 </header>
@@ -49,12 +49,8 @@
                         <button type="button" id="subfield-select-all">Select All</button>
                         <button type="button" id="subfield-select-none">Clear</button>
                     </div>
-                    <div class="journal-dropdown-list">
-                        {% for code, name in subfields %}
-                        <label class="journal-option">
-                            <input type="checkbox" value="{{ code }}" checked> {{ name }}
-                        </label>
-                        {% endfor %}
+                    <div class="journal-dropdown-list" id="subfield-list">
+                        <!-- Populated by JS from /api/metadata -->
                     </div>
                 </div>
             </div>
@@ -66,21 +62,17 @@
                         <button type="button" id="journal-select-all">Select All</button>
                         <button type="button" id="journal-select-none">Clear</button>
                     </div>
-                    <div class="journal-dropdown-list">
-                        {% for j in journals %}
-                        <label class="journal-option">
-                            <input type="checkbox" value="{{ j }}" checked> {{ j | strip_the }}
-                        </label>
-                        {% endfor %}
+                    <div class="journal-dropdown-list" id="journal-list">
+                        <!-- Populated by JS from /api/metadata -->
                     </div>
                 </div>
             </div>
             <div class="filter-bar-group year-filter-wrap">
                 <label>Year</label>
                 <div class="year-inputs">
-                    <input type="number" id="filter-year-from" min="{{ min_year }}" max="{{ max_year }}" placeholder="{{ min_year }}">
+                    <input type="number" id="filter-year-from" placeholder="{{ min_year }}">
                     <span class="year-dash">&ndash;</span>
-                    <input type="number" id="filter-year-to" min="{{ min_year }}" max="{{ max_year }}" placeholder="{{ max_year }}">
+                    <input type="number" id="filter-year-to" placeholder="{{ max_year }}">
                 </div>
             </div>
             <div class="filter-bar-group filter-bar-actions">
@@ -114,12 +106,11 @@
                     </select>
                 </div>
                 <div class="filter-group">
-                    <label for="filter-type">Type</label>
-                    <select id="filter-type">
-                        <option value="">All</option>
-                        <option value="review">Reviews only</option>
-                        <option value="symposium">Symposia only</option>
-                    </select>
+                    <label>Type</label>
+                    <div class="type-checkboxes">
+                        <label><input type="checkbox" id="filter-type-review" checked> Reviews</label>
+                        <label><input type="checkbox" id="filter-type-symposium" checked> Symposia</label>
+                    </div>
                 </div>
             </div>
         </div>
@@ -128,16 +119,11 @@
     <!-- Sources section (collapsible) -->
     <div class="sources-section">
         <h2 class="sources-toggle" id="sources-toggle">
-            Sources <span class="source-total">({{ sources|length }} journals)</span>
+            Sources <span class="source-total" id="source-total"></span>
             <span class="toggle-icon">&#9654;</span>
         </h2>
         <div class="sources-grid" id="sources-grid" style="display:none;">
-            {% for name, count in sources %}
-            <button class="source-card" data-journal="{{ name }}">
-                <span class="source-name">{{ name | strip_the }}</span>
-                <span class="source-count">{{ "{:,}".format(count) }}</span>
-            </button>
-            {% endfor %}
+            <!-- Populated by JS from /api/metadata -->
         </div>
     </div>
 
@@ -149,6 +135,7 @@
     <!-- Results bar -->
     <div class="results-bar">
         <span id="result-count"></span>
+        <button id="share-search" class="share-btn" title="Copy link to this search" style="display:none">Share</button>
         <div class="per-page-wrap">
             <label for="per-page">Show</label>
             <select id="per-page">
@@ -159,6 +146,9 @@
             <span>per page</span>
         </div>
     </div>
+
+    <!-- Loading indicator -->
+    <div id="loading" class="loading">Loading&hellip;</div>
 
     <!-- Table -->
     <div class="table-wrap">
@@ -182,11 +172,9 @@
 </div>
 
 <footer class="site-footer">
-    PhilReviews &mdash; built by <a href="https://mzwolinski.com" target="_blank" rel="noopener">Matt Zwolinski</a> &middot; <a href="mailto:mzwolinski@sandiego.edu">Contact</a> &middot; <a href="changelog.html">Update Log</a>
+    PhilReviews &mdash; built by <a href="https://mzwolinski.com" target="_blank" rel="noopener">Matt Zwolinski</a> &middot; <a href="mailto:mzwolinski@sandiego.edu">Contact</a> &middot; <a href="/changelog">Update Log</a>
     <br><small>&copy; 2026 Matt Zwolinski. PhilReviews is a bibliographic index. All review content is hosted by the original publishers.</small></footer>
 
-<!-- Embedded review data -->
-<script id="review-data" type="application/json">{{ reviews_json | safe }}</script>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 
 </body>

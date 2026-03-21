@@ -12,9 +12,7 @@ Usage:
 """
 
 import json
-import logging
 import os
-import subprocess
 import sys
 import time
 from datetime import datetime, timedelta
@@ -25,19 +23,11 @@ sys.path.insert(0, ROOT)
 
 import db
 from crossref_scraper import CrossrefReviewScraper, _to_db_fields
+from scraper_base import setup_logging
 
 STATE_FILE = os.path.join(ROOT, "scripts", "weekly_state.json")
-LOG_FILE = os.path.join(ROOT, "scripts", "weekly_update.log")
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_FILE),
-        logging.StreamHandler(),
-    ],
-)
-log = logging.getLogger(__name__)
+log = setup_logging("weekly_update", os.path.join(ROOT, "scripts", "weekly_update.log"))
 
 
 def load_state() -> dict:
@@ -148,46 +138,7 @@ def check_journal(scraper: CrossrefReviewScraper, journal_name: str,
     return new_count
 
 
-def rebuild_and_deploy():
-    """Rebuild the static site and push to GitHub if content changed."""
-    log.info("Rebuilding static site...")
-    try:
-        result = subprocess.run(
-            [sys.executable, os.path.join(ROOT, "build.py")],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        if result.returncode == 0:
-            log.info("Site rebuilt successfully.")
-        else:
-            log.error(f"Build failed: {result.stderr}")
-            return
-    except Exception as e:
-        log.error(f"Build error: {e}")
-        return
-
-    # Only commit and push if docs/ actually changed
-    try:
-        diff = subprocess.run(
-            ["git", "diff", "--quiet", "docs/"],
-            cwd=ROOT, capture_output=True,
-        )
-        if diff.returncode == 0:
-            log.info("No changes in docs/ — skipping deploy")
-            return
-
-        log.info("Deploying updated site to GitHub Pages...")
-        subprocess.run(["git", "add", "docs/"], cwd=ROOT, check=True)
-        subprocess.run(
-            ["git", "commit", "-m", "Weekly update: new reviews"],
-            cwd=ROOT, check=True,
-        )
-        subprocess.run(["git", "push"], cwd=ROOT, check=True)
-        log.info("Deploy complete")
-    except Exception:
-        log.exception("Git deploy failed")
+from deploy import sync_to_fly
 
 
 def main():
@@ -225,7 +176,7 @@ def main():
         except Exception:
             log.exception("Subfield classification failed")
 
-        rebuild_and_deploy()
+        sync_to_fly()
 
     if not dry_run:
         state["last_run"] = datetime.now().isoformat()
