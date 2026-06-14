@@ -66,14 +66,30 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
         if sub_a:
             author_str = sub_a.group(1).strip()
             book_title_str = sub_a.group(2).strip()
-            if len(book_title_str) > 5 and _looks_like_author_name(author_str):
-                first, last, has_multiple = _extract_first_author(author_str)
+            # Remember if this is an edited volume BEFORE stripping annotations
+            is_edited = bool(re.search(r'\(\s*[Ee]ds?\.?\s*\)|\b[Ee]ds?\b\.?', author_str))
+            # Strip "(eds)", "(Eds.)", "(ed.)" annotations for name validation
+            author_clean = re.sub(r'\s*\(\s*[Ee]ds?\.?\s*\)\s*', '', author_str).strip()
+            # For multi-author lists (2+ authors separated by commas), extract just the first author
+            # "A, B, C and D" → "A"; "A and B" → "A and B" (handled by _extract_first_author)
+            first_author_str = author_clean
+            has_multiple_commas = author_clean.count(',') >= 2 or (
+                author_clean.count(',') >= 1 and ' and ' in author_clean.lower()
+            )
+            if has_multiple_commas:
+                # Take first segment before any comma
+                first_author_str = author_clean.split(',')[0].strip()
+            if len(book_title_str) > 5 and _looks_like_author_name(first_author_str):
+                first, last, has_multiple = _extract_first_author(first_author_str)
+                # Track multiple authors at the original level
+                if author_clean != first_author_str:
+                    has_multiple = True
                 if last:
                     return {
                         'book_title': book_title_str,
                         'book_author_first': first,
                         'book_author_last': last,
-                        'is_edited_volume': bool(re.search(r'\b[Ee]ds?\b\.?', author_str)),
+                        'is_edited_volume': is_edited,
                         'has_multiple_authors': has_multiple,
                         'needs_doi_scrape': False,
                         'format': 'SUB-A',
@@ -108,6 +124,26 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
                 if name_match and _looks_like_author_name(name_match.group(1).strip()):
                     author_str = name_match.group(1).strip()
             book_title_clean = re.sub(r'<[^>]+>', '', title).strip()
+            # If title is generic ("Book Review" etc.), extract the book title
+            # from the subtitle: it's the segment(s) between the author and publisher.
+            generic_titles = {'book review', 'book reviews', 'review', 'reviews',
+                              'book review.', 'books received', 'book notes'}
+            if book_title_clean.lower().strip('.').strip() in generic_titles and author_str and pub_idx >= 1:
+                # Take everything between author (pub_idx - 1) and publisher (pub_idx).
+                # For Law & Philosophy format the title is entirely in parts_sub[pub_idx - 1]
+                # is author — so title is in parts_sub between author and publisher? No:
+                # subtitle format is "Author, Title possibly with commas (Publisher, Year)..."
+                # The author is parts_sub[pub_idx - 1], so the title comes before that.
+                # Actually for Law & Philosophy: "Author, Title (Publisher" — author=parts[0],
+                # parts[1] = "Title (Publisher" so title is the part before "(" in parts[pub_idx].
+                # Extract title from the publisher segment by splitting at '(' or first publisher word.
+                pub_segment = parts_sub[pub_idx]
+                # Split at "(" or " Publisher"
+                title_match = re.match(r'^([^(]+?)\s*(?:\(|' + _pub_kw + r')', pub_segment)
+                if title_match:
+                    extracted = title_match.group(1).strip().rstrip(',').rstrip('.')
+                    if len(extracted) > 5:
+                        book_title_clean = extracted
             if author_str:
                 first, last, has_multiple = _extract_first_author(author_str)
                 if last:
@@ -249,6 +285,33 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
         post_italic = re.sub(r'[,.\s]+$', '', post_italic).strip()
 
         if not pre_italic and book_title:
+            # Kant-Studien et al.: "<b>Author:</b> Title. City: Publisher, Year.
+            # Pages. ISBN" — the colon sits INSIDE the bold tag, so book_title
+            # carries a trailing colon and the real title follows </i>.
+            if book_title.rstrip().endswith(':'):
+                author_str = book_title.rstrip().rstrip(':').strip()
+                if _looks_like_author_name(author_str.replace(',', ' ')):
+                    title_str = stripped[italic_match.end():]
+                    title_str = re.sub(r'<[^>]+>', '', title_str)
+                    title_str = re.sub(r'^[\s.:;,]+', '', title_str).strip()
+                    # cut at "City: Publisher" / "City : Publisher" (allow space)
+                    title_str = re.split(r'\.\s+[A-Z][a-zA-ZÀ-ſ]+\s*:\s', title_str)[0].strip()
+                    title_str = re.split(r'\bISBN\b', title_str)[0].strip()
+                    title_str = re.split(r',?\s+\d+\s*(?:pages|pp|Seiten)\b', title_str, flags=re.IGNORECASE)[0].strip()
+                    title_str = re.split(r',\s+\d{4}\b', title_str)[0].strip()
+                    title_str = re.sub(r'[,.\s]+$', '', title_str).strip()
+                    if title_str and len(title_str) > 5:
+                        first, last, has_multiple = _extract_first_author(author_str)
+                        if last:
+                            return {
+                                'book_title': title_str,
+                                'book_author_first': first,
+                                'book_author_last': last,
+                                'is_edited_volume': False,
+                                'has_multiple_authors': has_multiple,
+                                'needs_doi_scrape': False,
+                                'format': 'italic_author_colon_inside',
+                            }
             # Check if italic text is an author name with ": Title" after it
             # (Kant-Studien format: <b>Author</b>: Title → <i>Author</i>: Title)
             raw_post = stripped[italic_match.end():]
@@ -351,10 +414,12 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
         #   (c) "Book symposium on Author," (Inquiry)
         #   (d) A review essay title with no author: "Critical reflections on" (EJP)
 
-        # Try to extract author from "Review of / symposium on" patterns
+        # Try to extract author from "Review of / symposium on / Thoughts on" patterns
         author_from_prefix = re.search(
-            r'(?:review\s+of|symposium\s+on|book\s+symposium\s+on)\s+'
-            r'([A-Z][a-zA-Z.\s-]+?)(?:[\'\']\s*s?\s*)?$',
+            r'(?:review\s+of|symposium\s+on|book\s+symposium\s+on|'
+            r'thoughts\s+on|commentary\s+on|comments\s+on|reflections\s+on|'
+            r'notes\s+on|remarks\s+on|on)\s+'
+            r'([A-Z][a-zA-Z.\s-]+?)(?:[\'\u2019]\s*s?\s*)?$',
             pre_italic, re.IGNORECASE
         )
 
@@ -667,7 +732,18 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     # --- Format P: "Author's Title" or "Review of Author's Title" (EJPE style) ---
     # E.g. "Julian Reiss's Philosophy of economics: a contemporary introduction. Routledge, 2013"
     # E.g. "Review of Thomas Mulligan's Justice and the Meritocratic State. New York: Routledge, 2018"
-    possessive = re.match(r"^(?:Review of )?(.+?)['\u2019]s\s+(.+)$", stripped)
+    # E.g. "Thoughts on Joshua Ehrlich's The East India Company..."
+    # E.g. "Knowledge and Power in the Age of Conciliation: On Joshua Ehrlich's ..."
+    # Strip review-prefix phrases so the author name is extracted cleanly
+    possessive_input = re.sub(
+        r"^(?:Review of|Thoughts on|Commentary on|Comments on|Reflections on|"
+        r"Notes on|Remarks on|Response to|Reply to|Rejoinder to|"
+        r".+?:\s+On)\s+",
+        '',
+        stripped,
+        flags=re.IGNORECASE,
+    )
+    possessive = re.match(r"^(.+?)['\u2019]s\s+(.+)$", possessive_input)
     if possessive and not re.search(r'["\u0027\u201c\u2018]', possessive.group(1)):
         author_str = possessive.group(1).strip()
         book_title = possessive.group(2).strip()
@@ -1050,6 +1126,13 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
             'all'        — use every pattern (default, good for EE/JVI-style journals)
             'italic_only' — only detect via italic tags or explicit "book review" text
                            (safe for journals whose article titles use colons/subtitles)
+            'dialogue'   — like italic_only but also detects ALL-CAPS author names
+                           in the title (Dialogue's distinctive review format)
+            'bib_required' — only accept items with explicit bibliographic markers
+                           (Pp., ISBN, "by Author Name", "(review)", explicit "book
+                           review" / "review of"). Italic tags alone are NOT enough.
+                           Use for journals like Hastings Center Report whose articles
+                           frequently use italicized subtitles.
     """
     title = (crossref_item.get('title', ['']) or [''])[0].lower()
     subtitle = ((crossref_item.get('subtitle') or [''])[0] or '').lower()
@@ -1062,6 +1145,42 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
                'general index', 'author responds']
     for pattern in exclude:
         if pattern in title_plus_sub:
+            return False
+
+    # Length heuristic: items > 15 pages are very rarely book reviews.
+    # Skip the check when the title has explicit review framing (already
+    # near-certain review) or when the page field is missing/non-numeric.
+    page_field = crossref_item.get('page', '') or ''
+    page_m = re.match(r'\s*(\d+)\s*[-–]\s*(\d+)', page_field)
+    if page_m:
+        first_pg = int(page_m.group(1))
+        last_pg = int(page_m.group(2))
+        page_count = last_pg - first_pg + 1
+        # Strong-review signals that override the length check
+        explicit = bool(
+            'book review' in title or 'book reviews' in title or
+            '(review)' in title or 'review of' in title or
+            'critical notice' in title or 'reviewed work' in title or
+            re.search(r'\bISBN\b|\b[Pp]p\.\s', (crossref_item.get('title', ['']) or [''])[0])
+        )
+        if page_count > 15 and not explicit:
+            return False
+
+    # bib_required mode: only accept items with EXPLICIT bibliographic markers.
+    # Italic tags alone are NOT enough (Hastings/etc. use italic subtitles for
+    # article-style content).
+    raw_title_check = (crossref_item.get('title', ['']) or [''])[0]
+    if detection_mode == 'bib_required':
+        has_bib = (
+            '(review)' in title or
+            'book review' in title or 'book reviews' in title or
+            'review of' in title or 'reviewed work' in title or
+            'critical notice of' in title or
+            bool(re.search(r'\bISBN\b|\b[Pp]p\.\s|\bpp\.\s\d', raw_title_check)) or
+            # "Title by Author Name" with capitalized name after "by"
+            bool(re.search(r'\bby\s+[A-Z][a-z]+\s+[A-Z][a-zA-Z\-]+', raw_title_check))
+        )
+        if not has_bib:
             return False
 
     # Positive indicators
@@ -1118,12 +1237,29 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
     if re.match(r'^<b>[^<]{5,}</b>\s*:', raw_title):
         return True
 
-    # Pattern: "Title. By/by AuthorName." (Heythrop Journal / Thomist review format)
-    if re.search(r'\.\s+[Bb]y\s+[A-Z][a-z]', raw_title):
+    # Pattern: "Title. By/by/Par AuthorName." (Heythrop Journal / Thomist / Dialogue French format)
+    if re.search(r'\.\s+(?:[Bb]y|[Pp]ar)\s+[A-Z][a-z]', raw_title):
         return True
 
-    # --- Name-based heuristics (skip for italic_only mode) ---
-    if detection_mode == 'italic_only':
+    # Bibliographic markers: publisher names, ISBN, or page counts in the title
+    # are strong signals of a book review citation — articles never contain these.
+    # Safe even in italic_only mode.
+    if re.search(r'\bISBN\b', raw_title):
+        return True
+    if re.search(r'\b[Pp]p\.\s', raw_title):
+        return True
+    publisher_re = r'(?:University Press|Oxford UP|Cambridge UP|Oxford University|Cambridge University|Princeton University|Harvard University|Yale University|Routledge|De Gruyter|Springer Verlag|Meiner|Clarendon Press|Bloomsbury|Palgrave|Johns Hopkins|MIT Press|Cornell University|Columbia University|Duke University|Edinburgh University|Stanford University|Blackwell|Brill|Nomos|Suhrkamp|Gallimard|Vrin|Alber|Felix Meiner|Klostermann|Duncker|Mohr Siebeck|Quodlibet|Olms)'
+    if re.search(publisher_re, raw_title):
+        return True
+
+    # Dialogue-style detection: ALL-CAPS author names in the title
+    # e.g. "Developing the Virtues JULIA ANNAS, DARCIA NARVAEZ ... Oxford: OUP, 2017"
+    if detection_mode in ('all', 'dialogue'):
+        if re.search(r'[A-Z]{3,}\s+[A-Z]{3,}', raw_title):
+            return True
+
+    # --- Name-based heuristics (skip for italic_only and dialogue modes) ---
+    if detection_mode in ('italic_only', 'dialogue'):
         return False
 
     # Pattern: "Title by PersonName" at end (Thomist pre-2023 format)
@@ -1223,7 +1359,9 @@ class CrossrefReviewScraper(BaseScraper):
         # "Book Review: <i>Title</i>, by Author" or "Book Review: Title"
         'Political Theory': {'crossref_parseable': True, 'openalex_enrichable': True, 'detection_mode': 'italic_only'},
         # "Title, Author, Publisher" or "Title. Par Author." (French/English)
-        'Dialogue': {'crossref_parseable': True, 'openalex_enrichable': True},
+        # Uses 'dialogue' mode: italic_only + ALL-CAPS author names (skips generic name heuristics
+        # that cause false positives on regular articles)
+        'Dialogue': {'crossref_parseable': True, 'openalex_enrichable': True, 'detection_mode': 'dialogue'},
         # "Author <i>Title</i>. (Publisher, Year)" or "Author. Title. Pp."
         'Religious Studies': {'crossref_parseable': True},
         # "<i>Title</i>" or "Title, by Author"
@@ -1326,10 +1464,6 @@ class CrossrefReviewScraper(BaseScraper):
         'Business Ethics Quarterly': {
             'crossref_parseable': True, 'openalex_enrichable': True,
             'detection_mode': 'italic_only',
-        },
-        # "Book Review: Title" format — most need OpenAlex for book author
-        'Political Theory': {
-            'crossref_parseable': True, 'openalex_enrichable': True,
         },
         'Journal of Moral Philosophy': {
             'crossref_parseable': True, 'openalex_enrichable': True,
@@ -1437,9 +1571,12 @@ class CrossrefReviewScraper(BaseScraper):
             'crossref_parseable': False, 'semantic_scholar_enrichable': True,
             'detection_mode': 'italic_only',
         },
-        # Mixed: "Title. By Author: Publisher, Year. pp." and "Book Received" — Scandinavian
+        # Mixed: "Title. By Author: Publisher, Year. pp." and "Book Received" — Scandinavian.
+        # italic_only: Theoria publishes mostly research articles; their colon/comma
+        # subtitles otherwise trip the generic name heuristics and import as fake reviews.
         'Theoria': {
             'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
         },
         # Generic "Book Review" — AI/philosophy of mind
         'Minds and Machines': {
@@ -1516,6 +1653,7 @@ class CrossrefReviewScraper(BaseScraper):
         # "<b>Author</b>: Title" format (bold normalized to italic) — Kant scholarship
         'Kant-Studien': {
             'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
         },
         # Leibniz Review — ISSN not indexed in Crossref, skipped
 
@@ -1835,6 +1973,8 @@ class CrossrefReviewScraper(BaseScraper):
         'Metascience': {
             'crossref_parseable': True,
             'all_reviews': True,
+            'allow_author_replies': True,  # book authors contribute replies in symposia
+            'symposium_detection': 'cluster',  # auto-group 3+ reviews of same book
         },
         # Political theory reviews — subtitle has "Author, Publisher, Year, ISBN" (~500-700 est.)
         'Contemporary Political Theory': {
@@ -1844,6 +1984,8 @@ class CrossrefReviewScraper(BaseScraper):
         'History of European Ideas': {
             'crossref_parseable': False, 'semantic_scholar_enrichable': True,
             'detection_mode': 'italic_only',
+            'allow_author_replies': True,  # book authors contribute replies in symposia
+            'symposium_detection': 'cluster',
         },
 
         # ── New journals from PI import (Mar 2026) ────────────────────
@@ -1857,9 +1999,12 @@ class CrossrefReviewScraper(BaseScraper):
             'crossref_parseable': True, 'openalex_enrichable': True,
             'detection_mode': 'italic_only',
         },
-        # Top generalist — "Review of Author: Title" format
+        # Top generalist — "Review of Author: Title" format. italic_only: most
+        # JoP items are research articles, not reviews; only flagged book-citing
+        # records (italic title / bib markers) should qualify.
         'The Journal of Philosophy': {
             'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
         },
         # History of philosophy of science — italic tags with full biblio info
         'HOPOS: The Journal of the International Society for the History of Philosophy of Science': {
@@ -1888,6 +2033,144 @@ class CrossrefReviewScraper(BaseScraper):
         },
         # Rhetoric/philosophy — reviews with various formats
         'Philosophy & Rhetoric': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Criminal law/philosophy — "Review of Author, Title" or "Review of Author: Title" format
+        'Criminal Law and Philosophy': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Dedicated review journal — all items are reviews, "Author, Title" format
+        'Phenomenological Reviews': {
+            'all_reviews': True, 'crossref_parseable': True, 'openalex_enrichable': True,
+        },
+        # Theology/philosophy — "Title by Author. Publisher" or "Title. Publisher" format
+        'New Blackfriars': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Continental philosophy of religion — "Title, by Author" or "Critical Study of Author, Title"
+        'Journal for Continental Philosophy of Religion': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+        },
+
+        # ── Previously unscanned journals (Apr 2026) ─────────────────────
+
+        # Interdisciplinary humanities — "Author. <i>Title</i>" format (~484 est.)
+        'Critical Inquiry': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Political philosophy — ":<i>Title</i>" and "Author. <i>Title</i>" format (~427 est.)
+        'American Political Thought': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Aesthetics — "Author (Year) <i>Title</i>" format (~413 est.)
+        'Film-Philosophy': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Philosophy of religion — "Title. By Author. Publisher, Year" format (~374 est.)
+        'Modern Theology': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # History of biology — mixed: "Book Review" generic + parseable titles (~295 est.)
+        'Journal of the History of Biology': {
+            'crossref_parseable': True, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Hastings — many articles use italicized subtitles ("Main: <i>Subtitle</i>"),
+        # so italic_only mode produces lots of false positives. Require explicit bib
+        # markers (ISBN, Pp., "by Author Name", or "(review)").
+        'Hastings Center Report': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'bib_required',
+        },
+        # Philosophy of education — "Book review: Author, <i>Title</i>" format (~171 est.)
+        'Theory and Research in Education': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # History of philosophy — "Author, <i>Title</i>" format (~160 est.)
+        'Journal of Scottish Philosophy': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Continental/phenomenology — mixed: "Book Reviews" generic + "Author. Title" (~156 est.)
+        'Journal of Phenomenological Psychology': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Eastern European philosophy — "Review of Author, Title" format (~102 est.)
+        'Studies in East European Thought': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Logic — italic format, reviews of books in mathematical logic (~93 est.)
+        'The Bulletin of Symbolic Logic': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Continental — "Author, <i>Title</i>" format (~77 est.)
+        'Derrida Today': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Utopian/political theory — italic format (~75 est.)
+        'Utopian Studies': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # History/philosophy of biology — "Author, Title. Publisher, Year" format (~68 est.)
+        'History and Philosophy of the Life Sciences': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Continental — "Book Review" / "Book Reviews" generic titles (~64 est.)
+        'Sartre Studies International': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Thomistic/scholastic — "Title. By Author." format (~54 est.)
+        'American Catholic Philosophical Quarterly': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Bioethics — "Author. Title. Publisher, Year" format (~49 est.)
+        'Theoretical Medicine and Bioethics': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Philosophy of science — "Book Reviews" / "BOOK REVIEWS" generic (~46 est.)
+        'International Studies in the Philosophy of Science': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Political/legal philosophy — "Author, Title. Publisher" format (~44 est.)
+        'Human Rights Review': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Phenomenology — "Book review" generic titles (~33 est.)
+        'Human Studies': {
+            'crossref_parseable': False, 'semantic_scholar_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Continental — "BOOK REVIEW OF Author's Title" format (~28 est.)
+        'Graduate Faculty Philosophy Journal': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Continental — "Author: <i>Title</i>" format (~26 est.)
+        'Journal of Transcendental Philosophy': {
+            'crossref_parseable': True, 'openalex_enrichable': True,
+            'detection_mode': 'italic_only',
+        },
+        # Ancient philosophy — italic format (~20 est.)
+        'Ancient Philosophy Today': {
             'crossref_parseable': True, 'openalex_enrichable': True,
             'detection_mode': 'italic_only',
         },
@@ -1997,6 +2280,9 @@ class CrossrefReviewScraper(BaseScraper):
         subtitle = (crossref_item.get('subtitle', ['']) or [''])[0] if crossref_item.get('subtitle') else ''
         doi = crossref_item.get('DOI', '')
         container = (crossref_item.get('container-title', ['']) or [''])[0]
+        # Decode HTML entities (Crossref returns "Mind &amp; Language", "Philosophy &amp; Social Criticism", etc.)
+        import html as _html
+        container = _html.unescape(container)
 
         # Get reviewer from Crossref author field
         reviewer_first = ''
@@ -2021,6 +2307,17 @@ class CrossrefReviewScraper(BaseScraper):
         review_link = crossref_item.get('URL', '')
         if review_link and not review_link.startswith('http'):
             review_link = 'https://' + review_link
+        # PDCNET (10.5840/*, e.g. Teaching Philosophy): the doi.org link
+        # redirects to an "oom/service" page behind Cloudflare ("Just a
+        # moment…"). The article-specific content URL is derivable from the
+        # imuse_id in the Crossref resource URL.
+        if doi.startswith('10.5840/'):
+            res_url = (crossref_item.get('resource', {}) or {}).get('primary', {}).get('URL', '')
+            m = re.search(r'imuse_id=([a-z0-9_]+)', res_url, re.IGNORECASE)
+            if m:
+                imuse = m.group(1)
+                prefix = imuse.split('_')[0]
+                review_link = f'https://www.pdcnet.org/{prefix}/content/{imuse}'
 
         # Get abstract
         abstract = crossref_item.get('abstract', '')
@@ -2057,11 +2354,14 @@ class CrossrefReviewScraper(BaseScraper):
 
         # Filter: if the book author and reviewer are the same person,
         # this is likely a symposium piece or research article, not a review.
-        # Exception: Analysis precis entries are written by the book author.
+        # Exceptions: journals with allow_author_replies=True keep these as
+        # symposium contributions (Analysis precis, Metascience author replies).
+        allow_replies = (container == 'Analysis' or
+                         self.JOURNALS.get(container, {}).get('allow_author_replies'))
         if (record.get('Book Author Last Name') and record.get('Reviewer Last Name')
                 and record['Book Author Last Name'].lower() == record['Reviewer Last Name'].lower()
                 and record['Book Author First Name'].lower() == record['Reviewer First Name'].lower()
-                and container != 'Analysis'):
+                and not allow_replies):
             return None
 
         self.stats['parsed_from_crossref'] += 1
@@ -2763,6 +3063,103 @@ class CrossrefReviewScraper(BaseScraper):
             self.log(f"  Analysis symposia: {len(new_records)} new records")
         return new_records
 
+    # --- Cluster-based symposium detection (Metascience-style) ---
+
+    def _detect_cluster_symposia(self, journal_name: str,
+                                  journal_records: List[Dict]) -> None:
+        """Detect book symposia by clustering: 3+ reviews of the same book
+        by 2+ distinct reviewers within 90 days.
+
+        Modifies records in place by setting entry_type='symposium' and
+        symposium_group. Adds [Author's Reply] or [Précis] suffix to
+        book_title for entries where reviewer == book author.
+
+        Args:
+            journal_name: Journal being processed.
+            journal_records: Records for this journal (modified in place).
+        """
+        def _norm_key(title: str) -> str:
+            if not title:
+                return ''
+            # Strip author-tag suffixes
+            t = re.sub(r"\s*\[.*?\]\s*", '', title)
+            # Drop subtitle
+            t = t.split(':')[0]
+            # Lowercase alphanumeric
+            t = re.sub(r'[^a-z0-9 ]', '', t.lower()).strip()
+            return t
+
+        # Group records by normalized book title
+        by_book = {}
+        for rec in journal_records:
+            key = _norm_key(rec.get('Book Title', ''))
+            if len(key) < 5:
+                continue
+            by_book.setdefault(key, []).append(rec)
+
+        symposia_found = 0
+        entries_tagged = 0
+
+        for key, records in by_book.items():
+            if len(records) < 3:
+                continue
+
+            # Parse dates and filter out records without dates
+            dated = []
+            for rec in records:
+                pd = rec.get('Publication Date', '')
+                try:
+                    d = datetime.strptime(pd, '%Y-%m-%d')
+                    dated.append((rec, d))
+                except (ValueError, TypeError):
+                    continue
+            if len(dated) < 3:
+                continue
+
+            dated.sort(key=lambda x: x[1])
+            span = (dated[-1][1] - dated[0][1]).days
+            if span > 90:
+                continue
+
+            # Require 2+ distinct reviewers
+            reviewers = set()
+            for rec, _ in dated:
+                key_r = ((rec.get('Reviewer First Name') or '').lower().strip(),
+                         (rec.get('Reviewer Last Name') or '').lower().strip())
+                reviewers.add(key_r)
+            if len(reviewers) < 2:
+                continue
+
+            # Build symposium group ID
+            year = dated[0][1].year
+            slug_words = key.split()[:3]
+            slug = '-'.join(slug_words)
+            group = f"{journal_name}|{year}|{slug}"
+
+            for rec, _ in dated:
+                rec['entry_type'] = 'symposium'
+                rec['symposium_group'] = group
+
+                # Check if reviewer == book author (author contribution)
+                baf = (rec.get('Book Author First Name') or '').lower().strip()
+                bal = (rec.get('Book Author Last Name') or '').lower().strip()
+                rf = (rec.get('Reviewer First Name') or '').lower().strip()
+                rl = (rec.get('Reviewer Last Name') or '').lower().strip()
+                if baf and bal and baf == rf and bal == rl:
+                    # Determine label from the raw item title if available
+                    # Default to [Précis] for opening essays
+                    bt = rec.get('Book Title', '')
+                    if '[' not in bt:
+                        # Mark as précis by default; actual title might indicate reply
+                        rec['Book Title'] = bt + " [Précis]"
+
+                entries_tagged += 1
+            symposia_found += 1
+
+        if symposia_found:
+            self.log(f"  {journal_name}: detected {symposia_found} symposia "
+                     f"({entries_tagged} entries tagged)")
+
     # --- Main pipeline ---
 
     def run(self, journals: List[str] = None, max_per_journal: int = 0,
@@ -2797,6 +3194,10 @@ class CrossrefReviewScraper(BaseScraper):
                 record = self.extract_review(item)
                 if record:
                     journal_records.append(record)
+
+            # Cluster-based symposium detection (per-journal opt-in)
+            if self.JOURNALS.get(journal, {}).get('symposium_detection') == 'cluster':
+                self._detect_cluster_symposia(journal, journal_records)
 
             all_records.extend(journal_records)
 
