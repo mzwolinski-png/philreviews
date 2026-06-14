@@ -49,6 +49,44 @@ AUTHOR_COLON_TITLE_JOURNALS = {
     'Journal of Agricultural and Environmental Ethics',
 }
 
+# Lowercase words that signal a phrase is a TITLE, not a person's name. Used to
+# stop author-extraction rules from mistaking a title that merely contains a
+# possessive or comma ("The Legacy of Parmenides, ..." / "Aristotle's Ethics")
+# for an author.
+_NAME_STOPWORDS = {
+    'the', 'a', 'an', 'of', 'in', 'on', 'and', 'or', 'to', 'for', 'with', 'at',
+    'by', 'from', 'into', 'about', 'as', 'behind', 'between', 'after', 'before',
+    'against', 'through', 'over', 'under', 'within', 'without', 'upon', 'toward',
+    'towards', 'per', 'via', 'vs', 'versus', 'beyond', 'among', 'amid', 'amongst',
+    'is', 'are', 'how', 'why', 'what', 'when', 'where', 'not', 'no',
+}
+# Lowercase nobiliary/name particles that ARE allowed inside a surname.
+_NAME_PARTICLES = {
+    'de', 'van', 'von', 'der', 'den', 'di', 'da', 'del', 'della', 'du', 'la',
+    'le', 'dos', 'das', 'ten', 'ter', 'el', 'al', 'bin', 'ibn', 'y', 'st',
+}
+
+
+def _is_person_name(s):
+    """True if `s` plausibly is a personal name (1-4 name words, each
+    capitalized or an allowed particle/initial), and not a title fragment.
+    Rejects anything with title punctuation or English function words."""
+    s = (s or '').strip()
+    if not s or any(c in s for c in ':;,'):
+        return False
+    parts = s.split()
+    if not (2 <= len(parts) <= 4):
+        return False
+    for p in parts:
+        low = p.lower().strip('.')
+        if low in _NAME_PARTICLES:
+            continue
+        if low in _NAME_STOPWORDS:
+            return False
+        if not p[:1].isupper():
+            return False
+    return True
+
 
 def run_integrity_check(since=None, dry_run=False):
     """Run integrity checks on recent entries.
@@ -178,12 +216,13 @@ def run_integrity_check(since=None, dry_run=False):
             s = re.sub(r'([a-zÀ-ſ])([A-Z])', r'\1 \2', s)
             s = re.sub(r'\s+', ' ', s).strip().strip('.,;:')
             parts = s.split()
-            if not (2 <= len(parts) <= 5):
-                return (None, None)
             if any(ch.isdigit() for ch in s):
                 return (None, None)
-            # reject obvious non-names (leftover function words / publisher bits)
-            if re.search(r'\b(?:University|Press|Verlag|Editions?|by|On)\b', s):
+            if re.search(r'\b(?:University|Press|Verlag|Editions?)\b', s):
+                return (None, None)
+            # final guard: must read as a person name, not a title fragment
+            # (rejects e.g. "Systems in Medicine", "Theory Alone").
+            if not _is_person_name(s):
                 return (None, None)
             return (' '.join(parts[:-1]), parts[-1])
 
@@ -215,19 +254,28 @@ def run_integrity_check(since=None, dry_run=False):
                 auth_str = m.group(1).strip()
                 title_str = m.group(2).strip()
                 parts = auth_str.split()
-                if 2 <= len(parts) <= 4:
+                # Only split when the pre-possessive part is itself a person name
+                # ("Aristotle's Ethics" / "Europe's First Great Queen" must NOT split).
+                if _is_person_name(auth_str):
                     changes['book_title'] = title_str
                     changes['book_author_first_name'] = ' '.join(parts[:-1])
                     changes['book_author_last_name'] = parts[-1]
 
-        # --- "Author, Title" format (Political Studies Review) ---
+        # --- "Author, Title" format (Political Studies Review et al.) ---
         if not author or len(author) < 2:
             m = re.match(r'^([A-Z][a-zA-Z.\s]+?),\s+([A-Z].{15,})', t)
             if m:
                 auth_str = m.group(1).strip()
                 title_str = m.group(2).strip()
                 parts = auth_str.split()
-                if 2 <= len(parts) <= 5:
+                # A real author's name never recurs inside its own title; if a
+                # 4+ char author word reappears in the title, the comma was a
+                # title separator ("Global Governance, Global Government...").
+                _aw = {w.lower().strip('.,;:') for w in parts if len(w) > 3}
+                _tw = {w.lower().strip('.,;:') for w in title_str.split()}
+                # Gated by _is_person_name so titles with an early comma
+                # ("The Legacy of Parmenides, ...") aren't read as "Author, Title".
+                if _is_person_name(auth_str) and not (_aw & _tw):
                     changes['book_title'] = title_str
                     changes['book_author_first_name'] = ' '.join(parts[:-1])
                     changes['book_author_last_name'] = parts[-1]
