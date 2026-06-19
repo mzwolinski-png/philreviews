@@ -337,6 +337,18 @@ def run_mm(dry_run=False):
         return None
 
 
+def run_atlantic(dry_run=False):
+    log.info("Starting The Atlantic scraper...")
+    try:
+        from atlantic_scraper import AtlanticScraper
+        scraper = AtlanticScraper()
+        stats = scraper.run(dry_run=dry_run)  # books/culture feed (incremental)
+        return stats
+    except Exception:
+        log.exception("The Atlantic scraper failed")
+        return None
+
+
 def run_unpopulist(dry_run=False):
     log.info("Starting Unpopulist scraper...")
     try:
@@ -444,6 +456,7 @@ def main():
     tir_stats = None
     rp_stats = None
     mm_stats = None
+    atlantic_stats = None
     crossref_added = []
 
     if run_all or args.ndpr:
@@ -465,6 +478,7 @@ def main():
         tir_stats = run_tir(dry_run=args.dry_run)
         rp_stats = run_radical_philosophy(dry_run=args.dry_run)
         mm_stats = run_mm(dry_run=args.dry_run)
+        atlantic_stats = run_atlantic(dry_run=args.dry_run)
 
     if run_all or args.crossref:
         crossref_stats = run_crossref_delta(from_date, dry_run=args.dry_run)
@@ -610,6 +624,10 @@ def main():
             detail_lines.append(f"Radical Philosophy: {rp_stats.get('uploaded', 0)} new")
         if mm_stats:
             detail_lines.append(f"Markets & Morality: {mm_stats.get('uploaded', 0)} new")
+        if atlantic_stats:
+            detail_lines.append(
+                f"The Atlantic: {atlantic_stats.get('uploaded', 0)} new "
+                f"({atlantic_stats.get('off_topic', 0)} off-topic skipped)")
         if crossref_stats:
             detail_lines.append(f"Crossref: {crossref_stats.get('new', 0)} new (across {crossref_stats.get('journals', 0)} journals)")
         if mainstream_stats:
