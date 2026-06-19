@@ -12,6 +12,12 @@ DB_PATH = os.environ.get(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "reviews.db"),
 )
 
+# Subscribers live in a separate DB so they survive reviews.db syncs
+SUBSCRIBERS_DB_PATH = os.environ.get(
+    "SUBSCRIBERS_DB_PATH",
+    os.path.join(os.path.dirname(DB_PATH), "subscribers.db"),
+)
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS reviews (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,6 +80,30 @@ def _get_read_conn():
     return _read_conn
 
 
+_REVIEW_FLAGS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS review_flags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    review_id INTEGER,
+    note TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    resolved INTEGER DEFAULT 0
+);
+"""
+
+
+_SUBSCRIBERS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS subscribers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT UNIQUE NOT NULL,
+    token TEXT UNIQUE NOT NULL,
+    verified INTEGER DEFAULT 0,
+    subfields TEXT DEFAULT 'all',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_sent_date TEXT
+);
+"""
+
+
 def _migrate(conn):
     """Add new columns if they don't exist (for existing databases)."""
     cursor = conn.execute("PRAGMA table_info(reviews)")
@@ -87,6 +117,15 @@ def _migrate(conn):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_subfield ON reviews(subfield_primary)")
     if 'subfield_secondary' not in existing_cols:
         conn.execute("ALTER TABLE reviews ADD COLUMN subfield_secondary TEXT")
+    if 'reviewed' not in existing_cols:
+        conn.execute("ALTER TABLE reviews ADD COLUMN reviewed INTEGER DEFAULT 0")
+        # Grandfather all pre-existing entries as already reviewed; only entries
+        # inserted after this migration enter the review queue (default 0).
+        conn.execute("UPDATE reviews SET reviewed = 1")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_reviewed ON reviews(reviewed)")
+    # Subscribers + review-flag tables
+    conn.executescript(_SUBSCRIBERS_SCHEMA)
+    conn.executescript(_REVIEW_FLAGS_SCHEMA)
 
 
 def _create_indexes(conn):
@@ -223,12 +262,20 @@ def insert_reviews(records: list[dict]):
 
 
 def doi_exists(doi: str) -> bool:
-    """Check whether a DOI already exists in the database."""
+    """Check whether a DOI already exists in the database, or has been excluded
+    as a known false positive."""
     if not doi:
         return False
     with _connect() as conn:
         row = conn.execute(
             "SELECT 1 FROM reviews WHERE doi = ? LIMIT 1", (doi,)
+        ).fetchone()
+        if row is not None:
+            return True
+        # Check the excluded_dois table — DOIs of items previously identified
+        # as false positives that we don't want to re-scrape.
+        row = conn.execute(
+            "SELECT 1 FROM excluded_dois WHERE doi = ? LIMIT 1", (doi,)
         ).fetchone()
         return row is not None
 
@@ -644,6 +691,79 @@ def get_subfield_reviews(subfield_code, page=1, per_page=50):
         "total": total, "page": page, "per_page": per_page,
         "total_pages": total_pages,
     }
+
+
+# --- Subscriber functions (separate DB) ---
+
+def _sub_connect():
+    """Open a connection to the subscribers database."""
+    conn = sqlite3.connect(SUBSCRIBERS_DB_PATH)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.executescript(_SUBSCRIBERS_SCHEMA)
+    return conn
+
+
+def get_verified_subscriber_count() -> int:
+    """Return the number of verified subscribers."""
+    with _sub_connect() as conn:
+        return conn.execute(
+            "SELECT COUNT(*) FROM subscribers WHERE verified = 1"
+        ).fetchone()[0]
+
+
+def add_subscriber(email: str, subfields: str, token: str) -> bool:
+    """Add a new subscriber. Returns True if created, False if email already exists."""
+    with _sub_connect() as conn:
+        try:
+            conn.execute(
+                "INSERT INTO subscribers (email, subfields, token) VALUES (?, ?, ?)",
+                (email.lower().strip(), subfields, token),
+            )
+            return True
+        except sqlite3.IntegrityError:
+            # Email already exists — update preferences and re-send verification
+            conn.execute(
+                "UPDATE subscribers SET subfields = ?, token = ?, verified = 0 WHERE email = ?",
+                (subfields, token, email.lower().strip()),
+            )
+            return True
+
+
+def verify_subscriber(token: str) -> bool:
+    """Mark a subscriber as verified. Returns True if found."""
+    with _sub_connect() as conn:
+        cur = conn.execute(
+            "UPDATE subscribers SET verified = 1 WHERE token = ?", (token,)
+        )
+        return cur.rowcount > 0
+
+
+def unsubscribe(token: str) -> bool:
+    """Remove a subscriber by token. Returns True if found."""
+    with _sub_connect() as conn:
+        cur = conn.execute("DELETE FROM subscribers WHERE token = ?", (token,))
+        return cur.rowcount > 0
+
+
+def get_verified_subscribers() -> list[dict]:
+    """Return all verified subscribers."""
+    conn = sqlite3.connect(SUBSCRIBERS_DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT * FROM subscribers WHERE verified = 1"
+    ).fetchall()
+    result = [dict(r) for r in rows]
+    conn.close()
+    return result
+
+
+def update_subscriber_last_sent(subscriber_id: int, date_str: str):
+    """Update the last_sent_date for a subscriber."""
+    with _sub_connect() as conn:
+        conn.execute(
+            "UPDATE subscribers SET last_sent_date = ? WHERE id = ?",
+            (date_str, subscriber_id),
+        )
 
 
 # Auto-init on import

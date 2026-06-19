@@ -658,6 +658,28 @@ def main():
         except Exception:
             log.exception("Suspect-entry flagging failed")
 
+        # Interactive review queue: new entries are left at reviewed=0 for
+        # Keep/Flag/Reject triage in the review app.
+        try:
+            import db as _db
+            with _db._connect() as _c:
+                pending = _c.execute(
+                    "SELECT COUNT(*) FROM reviews WHERE reviewed = 0").fetchone()[0]
+            if pending:
+                detail_lines.append(
+                    f"📋 Review queue: {pending} entr"
+                    f"{'y' if pending == 1 else 'ies'} awaiting review — "
+                    f"run `python3 review_app.py` then open http://localhost:8770")
+            # Surface any still-open flags from previous reviews
+            with _db._connect() as _c:
+                open_flags = _c.execute(
+                    "SELECT COUNT(*) FROM review_flags WHERE resolved = 0").fetchone()[0]
+            if open_flags:
+                detail_lines.append(f"🚩 {open_flags} flagged entr"
+                                    f"{'y' if open_flags == 1 else 'ies'} awaiting Claude's attention")
+        except Exception:
+            log.exception("Review-queue summary failed")
+
         # Collect full list of added reviews (Crossref already tracked;
         # for other scrapers, query by created_at)
         added_reviews = list(crossref_added)
