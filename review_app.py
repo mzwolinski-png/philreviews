@@ -15,12 +15,17 @@ the background. Run:  python3 review_app.py  (then open http://localhost:8770)
 """
 
 import html
+import os
 import sqlite3
+import subprocess
+import sys
 import threading
 
 from flask import Flask, request, jsonify
 
 import db
+
+ROOT = os.path.dirname(os.path.abspath(__file__))
 try:
     from scripts.integrity_check import _author_junk_reasons
 except Exception:
@@ -93,12 +98,31 @@ def apply_decisions(accept, reject, flags):
     conn.close()
 
 
+SYNC_LOG = os.path.join(ROOT, "review_sync.log")
+
+
 def background_sync():
+    """Sync to production in a detached subprocess (a fresh process inherits the
+    LaunchAgent env and is independent of the Flask request lifecycle), logging
+    the outcome to review_sync.log so failures are visible, not swallowed."""
     try:
-        from deploy import sync_to_fly
-        sync_to_fly()
-    except Exception:
-        pass
+        with open(SYNC_LOG, "a") as lf:
+            lf.write("--- sync triggered ---\n")
+            lf.flush()
+            r = subprocess.run(
+                [sys.executable, "-c", "from deploy import sync_to_fly; sync_to_fly()"],
+                cwd=ROOT, capture_output=True, text=True, timeout=900)
+            if r.stdout:
+                lf.write(r.stdout)
+            if r.stderr:
+                lf.write(r.stderr)
+            lf.write(f"--- sync exit={r.returncode} ---\n")
+    except Exception as e:
+        try:
+            with open(SYNC_LOG, "a") as lf:
+                lf.write(f"--- sync ERROR: {e} ---\n")
+        except Exception:
+            pass
 
 
 PAGE = """<!doctype html><html><head><meta charset="utf-8">
