@@ -88,6 +88,39 @@ def _is_person_name(s):
     return True
 
 
+# Religious-order suffixes (Dominican O.P., Jesuit S.J., etc.) that the scraper
+# sometimes mis-parses into the author name (as a first name, or appended to the
+# surname). Dropped only when a name token EXACTLY equals one of these — never as
+# a substring — and the ambiguous-with-initials forms (C.M./C.P.) are excluded.
+_ORDER_SUFFIXES = {
+    "O.P.", "O.P", "S.J.", "S.J", "O.S.B.", "O.S.B", "O.F.M.", "O.F.M",
+    "O.F.M.Cap.", "O.S.A.", "O.S.A", "C.S.C.", "C.S.C", "C.Ss.R.", "C.Ss.R",
+    "O.Carm.", "O.Carm", "O.Cist.", "O.Cist", "O.Praem.", "O.Praem",
+    "O.C.D.", "O.C.D", "S.D.B.", "S.D.B", "F.S.C.", "F.S.C", "O.M.I.", "O.M.I",
+    "S.S.S.", "Cap.", "OP", "SJ", "OSB", "OFM", "OSA", "OCD",
+}
+_ORDER_PARTICLES = {"van", "von", "de", "del", "della", "di", "da", "du",
+                    "la", "le", "dos", "das", "den", "ter", "ten", "el"}
+
+
+def _strip_order_suffix(af, al):
+    """If an order suffix is mis-parsed into the author fields, drop it and
+    re-split the remaining name. Returns (first, last) or None if no change."""
+    toks = [t for t in re.split(r"[\s,]+", f"{af or ''} {al or ''}".strip()) if t]
+    if not any(t.strip(",") in _ORDER_SUFFIXES for t in toks):
+        return None
+    kept = [t for t in toks if t.strip(",") not in _ORDER_SUFFIXES]
+    if not kept:
+        return None
+    if len(kept) == 1:
+        nf, nl = "", kept[0]
+    elif kept[-2].lower() in _ORDER_PARTICLES:
+        nf, nl = " ".join(kept[:-2]), kept[-2] + " " + kept[-1]
+    else:
+        nf, nl = " ".join(kept[:-1]), kept[-1]
+    return None if (nf, nl) == ((af or "").strip(), (al or "").strip()) else (nf, nl)
+
+
 def run_integrity_check(since=None, dry_run=False):
     """Run integrity checks on recent entries.
 
@@ -547,6 +580,12 @@ def run_integrity_check(since=None, dry_run=False):
                     al = fixed_val
                 else:
                     af = fixed_val
+
+        # --- Strip mis-parsed religious-order suffixes (O.P., S.J., ...) ---
+        _stripped = _strip_order_suffix(af, al)
+        if _stripped:
+            changes['book_author_first_name'], changes['book_author_last_name'] = _stripped
+            af, al = _stripped
 
         # --- "Author: Title" in title field when book_author empty ---
         # E.g. "Matthew Wale: Making Entomologists..." or
