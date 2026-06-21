@@ -35,6 +35,77 @@
 <div class="container changelog">
 
     <div class="changelog-entry">
+        <h2>June 21, 2026</h2>
+        <ul>
+            <li>Book symposia are now reconstructed and grouped together. For symposia in <em>Philosophy and Phenomenological Research</em> and <em>Philosophical Studies</em>, a book&rsquo;s pr&eacute;cis, the critics&rsquo; commentaries, and the author&rsquo;s replies now appear as a single linked symposium rather than scattered entries &mdash; around 190 symposia across the two journals, with several hundred previously-missing pieces (especially author replies) added.</li>
+            <li><em>The Atlantic</em> added as a regularly-scanned source: its book reviews are now picked up automatically each week, and we backfilled philosophy-relevant reviews from its archive (2021&ndash;present).</li>
+            <li>Large data-quality pass across the historical catalogue: corrected roughly 180 author names where religious-order suffixes (O.P., S.J., and the like) had been mis-parsed into the name, untangled hundreds of entries where a publisher, translator, or title fragment had ended up in the author field, and cleaned up garbled and over-truncated titles.</li>
+        </ul>
+    </div>
+
+    <div class="changelog-entry">
+        <h2>April 26, 2026</h2>
+        <ul>
+            <li>New eligibility filter for popular outlets and fringe academic journals &mdash; reviews from sources like Quillette, Law &amp; Liberty, Public Discourse, Claremont Review of Books, Modern Theology, and a few others are now retained only when there's evidence the book is philosophy-relevant (the book or its author appears elsewhere in the database, or the reviewer has a track record of reviewing for academic philosophy journals). Removed ~1,400 non-philosophy entries.</li>
+            <li>Significant expansion of the automated post-scrape data integrity check: now fixes concatenated author names (e.g. &ldquo;MarkHopwood&rdquo; &rarr; &ldquo;Mark Hopwood&rdquo;), splits &ldquo;Author: Title&rdquo; patterns common in HPS journals, fills missing reviewers from Project MUSE pages when Crossref lags, and looks up missing book authors via OpenAlex.</li>
+            <li>Manual data quality pass: corrected dozens of titles, authors, and reviewer names; deleted ~10 false-positive non-review articles; fixed HTML-entity encoding in journal names (&ldquo;Philosophy &amp;amp; Social Criticism&rdquo;).</li>
+            <li>Mainstream media verification hardened to reject articles where the byline matches the book author (catches cases where an op-ed by an author was misidentified as a review of their book).</li>
+        </ul>
+    </div>
+
+    <div class="changelog-entry">
+        <h2>April 8, 2026</h2>
+        <ul>
+            <li>Major expansion of regular journal scanning &mdash; 26 journals brought under weekly or daily monitoring that were previously import-only:
+                <ul>
+                    <li>23 journals added to the Crossref weekly scan, including Critical Inquiry, Modern Theology, American Political Thought, Film-Philosophy, and others</li>
+                    <li>8 Springer-published journals added to the daily scan</li>
+                    <li>New dedicated scrapers for The Independent Review, Radical Philosophy, and Journal of Markets &amp; Morality</li>
+                </ul>
+            </li>
+            <li>Backfilled ~830 reviews from newly-scanned journals, filling gaps of up to 6 years for some titles</li>
+            <li>Added Reason and Jacobin to the mainstream media review scanner</li>
+            <li>Consolidated 11 duplicate journal name variants (473 entries cleaned up)</li>
+            <li>Crossref scan now covers 164 journals; Springer scan covers 31</li>
+            <li>Database now contains ~221,500 reviews across 1,485 sources</li>
+        </ul>
+    </div>
+
+    <div class="changelog-entry">
+        <h2>April 5, 2026</h2>
+        <ul>
+            <li>Added 9 new review sources across philosophy magazines, intellectual journals, and academic review sites &mdash; ~4,600 new reviews:
+                <ul>
+                    <li>Claremont Review of Books (~1,400 reviews, 2000&ndash;present)</li>
+                    <li>Law &amp; Liberty (~1,340 reviews, 2012&ndash;present)</li>
+                    <li>Syndicate Network (~670 symposium posts across 73 book symposia)</li>
+                    <li>Philosophy Now (~350 reviews, full 1991&ndash;present archive)</li>
+                    <li>Public Discourse (~340 reviews, 2013&ndash;present)</li>
+                    <li>Quillette (~200 reviews, 2017&ndash;present)</li>
+                    <li>BJPS Review of Books (~125 reviews, philosophy of science)</li>
+                    <li>APA Blog Book Spotlights (~120 author presentations)</li>
+                    <li>The Philosophers&rsquo; Magazine archive (~90 reviews, 1998&ndash;2021)</li>
+                </ul>
+            </li>
+            <li>Mainstream media reviews now checked weekly &mdash; new reviews from TLS, NYRB, Guardian, NYT, and others are automatically found for books already in the database</li>
+            <li>Improved symposium detection: automatic clustering of 3+ reviews of the same book, now active for Metascience and History of European Ideas</li>
+            <li>Data quality: fixed ~250 Metascience entries (missing reviews + author replies), cleaned ~160 garbled Dialogue entries, fixed Crossref parser for multi-author subtitles</li>
+            <li>Database now contains ~220,700 reviews across 1,340+ sources</li>
+        </ul>
+    </div>
+
+    <div class="changelog-entry">
+        <h2>March 23, 2026</h2>
+        <ul>
+            <li>Added 3 new journals: New Blackfriars (~2,300 reviews), Phenomenological Reviews (~400), and Journal for Continental Philosophy of Religion (~25)</li>
+            <li>Improved review detection for Kantian Review, Hegel Bulletin, and Kant-Studien &mdash; backfilled ~275 previously missed reviews</li>
+            <li>Data quality sweep: cleaned ~820 garbled titles across multiple journals (HTML tags, publisher info, swapped fields)</li>
+            <li>Fixed weekly update crash caused by conflicting LaunchAgent configuration</li>
+            <li>Added 301 redirects for old GitHub Pages URLs flagged by Google Search Console</li>
+        </ul>
+    </div>
+
+    <div class="changelog-entry">
         <h2>March 21, 2026</h2>
         <ul>
             <li>New browsable pages for each of 1,200+ journals and 15 subfields &mdash; <a href="/journals">browse all journals</a> or <a href="/subfields">browse by subfield</a></li>
