@@ -492,6 +492,23 @@ def main():
         # (keeps API quota low while catching newly-reviewed books)
         mainstream_stats = run_mainstream(dry_run=args.dry_run, active_since_days=10)
 
+    # Philosophia book-symposium detection. Philosophia's italic_only mode skips the
+    # "Précis of X" and "Replies to ..." pieces (no italic book title), so symposia
+    # are never assembled. This rolling-window pass reconstructs each symposium
+    # (book + author + all pieces, labeled) and groups it. Additive/idempotent: it
+    # only fills ungrouped/missing rows and never overrides an existing group.
+    philosophia_symp_stats = None
+    if (run_all or args.crossref) and not args.dry_run:
+        try:
+            import philosophia_symposia
+            philosophia_symp_stats = philosophia_symposia.run(window_months=24)
+            log.info(
+                f"Philosophia symposia: {philosophia_symp_stats['inserted']} pieces added, "
+                f"{philosophia_symp_stats['updated']} grouped "
+                f"({philosophia_symp_stats['symposia']} symposia scanned)")
+        except Exception:
+            log.exception("Philosophia symposia detection failed")
+
     after = count_reviews()
     net_new = after - before
     log.info("-" * 40)
@@ -630,6 +647,10 @@ def main():
                 f"({atlantic_stats.get('off_topic', 0)} off-topic skipped)")
         if crossref_stats:
             detail_lines.append(f"Crossref: {crossref_stats.get('new', 0)} new (across {crossref_stats.get('journals', 0)} journals)")
+        if philosophia_symp_stats and (philosophia_symp_stats['inserted'] or philosophia_symp_stats['updated']):
+            detail_lines.append(
+                f"Philosophia symposia: {philosophia_symp_stats['inserted']} pieces added, "
+                f"{philosophia_symp_stats['updated']} grouped")
         if mainstream_stats:
             detail_lines.append(f"Mainstream: {mainstream_stats.get('uploaded', 0)} new")
         if tier1_removed:
