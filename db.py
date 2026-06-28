@@ -91,6 +91,20 @@ CREATE TABLE IF NOT EXISTS review_flags (
 """
 
 
+_REJECTION_LOG_SCHEMA = """
+CREATE TABLE IF NOT EXISTS rejection_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    review_id INTEGER,
+    book_title TEXT,
+    book_author TEXT,
+    publication_source TEXT,
+    doi TEXT,
+    note TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+
 _SUBSCRIBERS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS subscribers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,9 +137,10 @@ def _migrate(conn):
         # inserted after this migration enter the review queue (default 0).
         conn.execute("UPDATE reviews SET reviewed = 1")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_reviewed ON reviews(reviewed)")
-    # Subscribers + review-flag tables
+    # Subscribers + review-flag + rejection-log tables
     conn.executescript(_SUBSCRIBERS_SCHEMA)
     conn.executescript(_REVIEW_FLAGS_SCHEMA)
+    conn.executescript(_REJECTION_LOG_SCHEMA)
 
 
 def _create_indexes(conn):

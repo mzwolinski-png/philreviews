@@ -88,11 +88,22 @@ def apply_decisions(accept, reject, flags):
         conn.execute("UPDATE reviews SET reviewed = 1 WHERE id = ?", (f["id"],))
         conn.execute("INSERT INTO review_flags (review_id, note) VALUES (?, ?)",
                      (f["id"], (f.get("note") or "").strip()))
-    for rid in reject:
-        row = conn.execute("SELECT doi FROM reviews WHERE id = ?", (rid,)).fetchone()
-        if row and row["doi"]:
-            conn.execute("INSERT OR IGNORE INTO excluded_dois (doi, reason) VALUES (?, ?)",
-                         (row["doi"], "Rejected in weekly review"))
+    for r in reject:
+        rid = r["id"]
+        note = (r.get("note") or "").strip()
+        row = conn.execute(
+            "SELECT book_title, book_author_first_name, book_author_last_name, "
+            "publication_source, doi FROM reviews WHERE id = ?", (rid,)).fetchone()
+        if row:
+            author = f"{row['book_author_first_name'] or ''} {row['book_author_last_name'] or ''}".strip()
+            conn.execute(
+                "INSERT INTO rejection_log (review_id, book_title, book_author, "
+                "publication_source, doi, note) VALUES (?,?,?,?,?,?)",
+                (rid, row["book_title"], author, row["publication_source"], row["doi"], note))
+            if row["doi"]:
+                reason = "Rejected in weekly review" + (f": {note}" if note else "")
+                conn.execute("INSERT OR IGNORE INTO excluded_dois (doi, reason) VALUES (?, ?)",
+                             (row["doi"], reason))
         conn.execute("DELETE FROM reviews WHERE id = ?", (rid,))
     conn.commit()
     conn.close()
@@ -148,7 +159,7 @@ a.lk{color:var(--navy);font-size:13px}
 .tg.f.on{background:var(--flag);color:#fff;border-color:var(--flag)}
 .tg.r.on{background:var(--rej);color:#fff;border-color:var(--rej)}
 .note{display:none;margin-top:10px;width:100%;border:1px solid var(--line);border-radius:7px;padding:8px;font:14px inherit;resize:vertical}
-.card.flag .note{display:block}
+.card.flag .note,.card.reject .note{display:block}
 footer{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);padding:14px 22px;display:flex;align-items:center;gap:16px;box-shadow:0 -2px 10px rgba(0,0,0,.05)}
 #tally{font-size:14px}.k{color:var(--keep);font-weight:600}.f{color:var(--flag);font-weight:600}.r{color:var(--rej);font-weight:600}
 #go{margin-left:auto;background:var(--navy);color:#fff;border:0;border-radius:8px;padding:11px 22px;font-size:15px;font-weight:600;cursor:pointer}
@@ -177,7 +188,7 @@ function tally(){const ids=Object.keys(dec);const r=ids.filter(i=>dec[i]==='reje
 async function submit(){document.getElementById('go').disabled=true;
  const accept=[],reject=[],flags=[];
  Object.keys(dec).forEach(i=>{const id=Number(i);
-  if(dec[i]==='reject')reject.push(id);
+  if(dec[i]==='reject')reject.push({id:id,note:notes[i]||''});
   else if(dec[i]==='flag')flags.push({id:id,note:notes[i]||''});
   else accept.push(id);});
  const res=await fetch('/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accept,reject,flags})});
@@ -228,7 +239,7 @@ def index():
 def submit():
     data = request.get_json(force=True)
     accept = [int(i) for i in data.get("accept", [])]
-    reject = [int(i) for i in data.get("reject", [])]
+    reject = [{"id": int(x["id"]), "note": x.get("note", "")} for x in data.get("reject", [])]
     flags = [{"id": int(f["id"]), "note": f.get("note", "")} for f in data.get("flags", [])]
     apply_decisions(accept, reject, flags)
     threading.Thread(target=background_sync, daemon=True).start()
