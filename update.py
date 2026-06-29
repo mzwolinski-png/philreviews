@@ -492,6 +492,31 @@ def main():
         # (keeps API quota low while catching newly-reviewed books)
         mainstream_stats = run_mainstream(dry_run=args.dry_run, active_since_days=10)
 
+    # Surface any scrapers that crashed (a runner returns None only on an
+    # exception). Without this, a broken scraper silently vanishes from the
+    # report — no count, no error — so it could stay dead for weeks unnoticed.
+    attempted = []
+    if run_all or args.ndpr:
+        attempted.append(("NDPR", ndpr_stats))
+    if run_all or args.daily_nous:
+        attempted.append(("Daily Nous", dn_stats))
+    if run_all:
+        attempted += [
+            ("Unpopulist", unpop_stats), ("Philosophy Now", phil_now_stats),
+            ("Law & Liberty", ll_stats), ("Public Discourse", pd_stats),
+            ("BJPS", bjps_stats), ("Syndicate", syndicate_stats), ("CRB", crb_stats),
+            ("Quillette", quillette_stats), ("APA Blog", apa_stats), ("TIR", tir_stats),
+            ("Radical Philosophy", rp_stats), ("Markets & Morality", mm_stats),
+            ("Atlantic", atlantic_stats),
+        ]
+    if run_all or args.crossref:
+        attempted.append(("Crossref", crossref_stats))
+    if args.mainstream or run_all:
+        attempted.append(("Mainstream", mainstream_stats))
+    for _name, _st in attempted:
+        if _st is None:
+            errors.append(f"{_name} scraper FAILED (returned no result — see log for traceback)")
+
     # Philosophia book-symposium detection. Philosophia's italic_only mode skips the
     # "Précis of X" and "Replies to ..." pieces (no italic book title), so symposia
     # are never assembled. This rolling-window pass reconstructs each symposium
@@ -598,13 +623,22 @@ def main():
         log.info(f"Net new after post-processing: {net_new} (Tier 1 removed {tier1_removed})")
 
     # Sync
+    sync_ok = True
     if not args.dry_run:
-        sync_to_fly()
+        sync_ok = sync_to_fly()
+        if not sync_ok:
+            errors.append(
+                "Fly.io sync FAILED after retries — production was NOT updated this run. "
+                "The local DB has the new entries; the next run re-scrapes the same window "
+                "and retries the sync.")
 
-    # Save state
+    # Save state — only stamp last_run on a SUCCESSFUL sync. If the sync failed,
+    # leaving last_run stale (a) lets the Monday watchdog flag the stale production
+    # and (b) makes the next run re-scrape the same window and retry the upload.
     if not args.dry_run:
-        state["last_run"] = datetime.now().isoformat()
         state["last_new_count"] = net_new
+        if sync_ok:
+            state["last_run"] = datetime.now().isoformat()
         save_state(state)
 
     log.info("Update complete.")
