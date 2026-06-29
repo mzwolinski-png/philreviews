@@ -1,13 +1,68 @@
 import json
 import os
+import re
+import secrets
+import threading
+import time
+from collections import defaultdict, deque
 from urllib.parse import quote
 
-from flask import Flask, render_template, request, jsonify, make_response, abort
+from flask import Flask, render_template, request, jsonify, make_response, abort, redirect
 from markupsafe import escape
 
 import db
 
 app = Flask(__name__)
+
+
+# --- Abuse protection for the email-sending /subscribe endpoint ------------
+# Single gunicorn worker (see Dockerfile), so a per-process in-memory limiter
+# is sufficient. Guards against using the verification-email sender as an open
+# relay to spam arbitrary addresses / burn the Gmail send quota.
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _valid_email(addr):
+    """Strict-enough validation that also rejects CRLF (header-injection)."""
+    return (
+        bool(addr) and len(addr) <= 254
+        and "\r" not in addr and "\n" not in addr
+        and bool(_EMAIL_RE.match(addr))
+    )
+
+
+class _RateLimiter:
+    """Thread-safe in-memory sliding-window rate limiter."""
+
+    def __init__(self):
+        self._hits = defaultdict(deque)
+        self._lock = threading.Lock()
+
+    def allow(self, key, limit, window_s):
+        now = time.time()
+        with self._lock:
+            dq = self._hits[key]
+            while dq and dq[0] <= now - window_s:
+                dq.popleft()
+            if len(dq) >= limit:
+                return False
+            dq.append(now)
+            if len(self._hits) > 10000:  # bound memory
+                for k in [k for k, d in self._hits.items()
+                          if not d or d[-1] <= now - 86400]:
+                    del self._hits[k]
+            return True
+
+
+_rate_limiter = _RateLimiter()
+
+
+def _client_ip():
+    """Real client IP behind Fly's proxy (X-Forwarded-For), else remote_addr."""
+    xff = request.headers.get("X-Forwarded-For", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return request.remote_addr or "unknown"
 
 SUBFIELD_NAMES = {
     "ethics": "Ethics & Moral Philosophy",
@@ -94,6 +149,80 @@ def index():
 @app.route("/changelog")
 def changelog():
     return render_template("changelog.html")
+
+
+# --- Redirects for old GitHub Pages URLs ---
+
+@app.route("/index.html")
+@app.route("/docs/")
+@app.route("/docs/index.html")
+def old_index():
+    return redirect("/", code=301)
+
+
+@app.route("/docs/changelog.html")
+def old_changelog():
+    return redirect("/changelog", code=301)
+
+
+@app.route("/docs/static/<path:filename>")
+def old_static(filename):
+    return redirect(f"/static/{filename}", code=301)
+
+
+# --- Subscription endpoints ---
+
+@app.route("/subscribe", methods=["POST"])
+def subscribe():
+    email = (request.form.get("email") or "").strip().lower()
+    if not _valid_email(email):
+        return jsonify({"error": "Valid email required"}), 400
+
+    # Rate-limit before generating a token / sending mail: max 5 attempts per IP
+    # per hour, and per address max 2 verification emails/hour and 5/day.
+    ip = _client_ip()
+    if not _rate_limiter.allow(f"sub_ip:{ip}", 5, 3600):
+        return jsonify({"error": "Too many requests. Please try again later."}), 429
+    if not _rate_limiter.allow(f"sub_email_hr:{email}", 2, 3600) \
+            or not _rate_limiter.allow(f"sub_email_day:{email}", 5, 86400):
+        return jsonify({"error": "Too many requests for this address. Please try again later."}), 429
+
+    selected = request.form.getlist("subfields")
+    if not selected or "all" in selected:
+        subfields = "all"
+    else:
+        valid = set(SUBFIELD_NAMES.keys())
+        subfields = ",".join(s for s in selected if s in valid)
+        if not subfields:
+            subfields = "all"
+
+    token = secrets.token_urlsafe(32)
+    db.add_subscriber(email, subfields, token)
+
+    # Send verification email
+    try:
+        from notify import send_verification_email
+        send_verification_email(email, token)
+    except Exception:
+        pass  # Email may fail on server (no SMTP creds) — subscriber is still saved
+
+    return jsonify({"ok": True, "message": "Check your email to confirm your subscription. (Check your spam folder if you don't see it, and add updates@philreviews.org to your contacts.)"})
+
+
+@app.route("/verify")
+def verify():
+    token = request.args.get("token", "")
+    if token and db.verify_subscriber(token):
+        return render_template("subscribe_ok.html", action="verified")
+    abort(404)
+
+
+@app.route("/unsubscribe")
+def unsubscribe():
+    token = request.args.get("token", "")
+    if token and db.unsubscribe(token):
+        return render_template("subscribe_ok.html", action="unsubscribed")
+    abort(404)
 
 
 # --- SEO pages ---
@@ -276,7 +405,11 @@ def api_metadata():
 def health():
     try:
         count = db._get_total_count()
-        return jsonify({"status": "ok", "reviews": count}), 200
+        try:
+            subs = db.get_verified_subscriber_count()
+        except Exception:
+            subs = None
+        return jsonify({"status": "ok", "reviews": count, "subscribers": subs}), 200
     except Exception as e:
         return jsonify({"status": "error", "detail": str(e)}), 503
 
