@@ -18,8 +18,15 @@ gzip -f "$BACKUP_DIR/reviews-$TIMESTAMP.db"
 
 echo "Backup created: $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
 
-# Prune old backups, keeping the most recent $KEEP
-ls -t "$BACKUP_DIR"/reviews-*.db.gz 2>/dev/null | tail -n +$((KEEP + 1)) | xargs rm -f
+# Prune old backups, keeping the most recent $KEEP. NOTE: BACKUP_DIR contains
+# spaces ("My Drive/My Documents"), so the old `xargs rm -f` split every path on
+# whitespace and silently deleted nothing — backups accumulated for months. Use
+# a whitespace-safe read loop instead, and log each removal.
+set +e
+ls -t "$BACKUP_DIR"/reviews-*.db.gz 2>/dev/null | tail -n +$((KEEP + 1)) | while IFS= read -r f; do
+    rm -f "$f" && echo "Pruned old backup: $(basename "$f")"
+done
+set -e
 
 echo "Backups in $BACKUP_DIR:"
 ls -lh "$BACKUP_DIR"/reviews-*.db.gz 2>/dev/null

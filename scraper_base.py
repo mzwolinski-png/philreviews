@@ -3,8 +3,10 @@
 
 import logging
 import os
+import sys
 import time
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 
 import requests
 
@@ -27,12 +29,17 @@ def setup_logging(name, log_file=None):
     logger.setLevel(logging.INFO)
     fmt = logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s",
                             datefmt="%Y-%m-%d %H:%M:%S")
-    console = logging.StreamHandler()
-    console.setFormatter(fmt)
-    logger.addHandler(console)
+    # Add the console handler for interactive runs, or whenever there's no log
+    # file to fall back on. Under launchd/cron (stdout is not a tty) with a log
+    # file set, skip it — otherwise every line is duplicated into launchd's
+    # captured stderr file, which it never rotates.
+    if sys.stdout.isatty() or not log_file:
+        console = logging.StreamHandler()
+        console.setFormatter(fmt)
+        logger.addHandler(console)
     if log_file:
         path = log_file if os.path.isabs(log_file) else os.path.join(LOG_DIR, log_file)
-        fh = logging.FileHandler(path)
+        fh = RotatingFileHandler(path, maxBytes=5_000_000, backupCount=3)
         fh.setFormatter(fmt)
         logger.addHandler(fh)
     return logger
