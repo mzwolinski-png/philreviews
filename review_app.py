@@ -21,7 +21,7 @@ import subprocess
 import sys
 import threading
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, abort
 
 import db
 
@@ -235,9 +235,29 @@ def index():
     return PAGE.replace("{{N}}", str(len(items))).replace("{{BODY}}", render_body(items))
 
 
+_ALLOWED_HOSTS = {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}
+_ALLOWED_ORIGINS = {f"http://localhost:{PORT}", f"http://127.0.0.1:{PORT}"}
+
+
+def _local_only():
+    """Reject anything that isn't a genuine same-machine request. Guards the
+    state-changing endpoint against localhost-CSRF / DNS-rebinding: a web page
+    the user visits cannot (a) forge the Host header (DNS-rebinding defense),
+    (b) send a cross-origin application/json POST without a CORS preflight we
+    never approve, or (c) supply a foreign Origin."""
+    if request.host not in _ALLOWED_HOSTS:
+        abort(403)
+    origin = request.headers.get("Origin")
+    if origin and origin not in _ALLOWED_ORIGINS:
+        abort(403)
+    if not request.is_json:  # forces a preflight for cross-origin callers
+        abort(415)
+
+
 @app.route("/submit", methods=["POST"])
 def submit():
-    data = request.get_json(force=True)
+    _local_only()
+    data = request.get_json(silent=True) or {}
     accept = [int(i) for i in data.get("accept", [])]
     reject = [{"id": int(x["id"]), "note": x.get("note", "")} for x in data.get("reject", [])]
     flags = [{"id": int(f["id"]), "note": f.get("note", "")} for f in data.get("flags", [])]
@@ -247,4 +267,4 @@ def submit():
 
 
 if __name__ == "__main__":
-    app.run(port=PORT, debug=False)
+    app.run(host="127.0.0.1", port=PORT, debug=False)
