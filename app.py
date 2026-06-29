@@ -5,7 +5,7 @@ import secrets
 import threading
 import time
 from collections import defaultdict, deque
-from urllib.parse import quote
+from urllib.parse import quote, quote_plus
 
 from flask import Flask, render_template, request, jsonify, make_response, abort, redirect
 from markupsafe import escape
@@ -101,6 +101,21 @@ def url_encode_filter(s):
     return quote(s, safe="")
 
 
+def _search_link(title, reviewer, author, journal):
+    """A public 'find this review' Google search, used in place of links that
+    resolve to a subscription database the public can't reach."""
+    parts = []
+    if title:
+        parts.append('"%s"' % title)
+    parts.append(reviewer or author)
+    if journal:
+        parts.append(journal)
+    if not reviewer:
+        parts.append("review")
+    q = " ".join(p for p in parts if p).strip()
+    return "https://www.google.com/search?q=" + quote_plus(q)
+
+
 def normalize(record):
     """Convert a DB row dict to the API response format."""
     author = " ".join(
@@ -112,7 +127,15 @@ def normalize(record):
                       record.get("reviewer_last_name", "")])
     )
     link = record.get("review_link") or ""
-    if not link and record.get("doi"):
+    link_search = False
+    if link and "ebsco.com" in link:
+        # These links resolve to a subscription database (no public access).
+        # Serve a Google search for the review instead — never expose the
+        # original link in the UI or the raw API.
+        link = _search_link(record.get("book_title", ""), reviewer, author,
+                            record.get("publication_source", ""))
+        link_search = True
+    elif not link and record.get("doi"):
         link = f"https://doi.org/{record['doi']}"
 
     return {
@@ -123,6 +146,7 @@ def normalize(record):
         "journal": record.get("publication_source", ""),
         "date": record.get("publication_date", ""),
         "link": link,
+        "link_search": link_search,
         "summary": record.get("review_summary", ""),
         "access": record.get("access_type", ""),
         "type": record.get("entry_type", "review") or "review",

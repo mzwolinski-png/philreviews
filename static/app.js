@@ -624,7 +624,11 @@
           const cls = r.access.toLowerCase() === "open" ? "badge-open" : "badge-restricted";
           html += '<span class="access-badge ' + cls + '">' + esc(r.access) + "</span> ";
         }
-        if (r.link) html += '<a class="read-link" href="' + esc(r.link) + '" target="_blank" rel="noopener">' + (r.type === "symposium" ? "Read Contribution" : "Read Review") + ' &rarr;</a> ';
+        if (r.link) {
+          const readLabel = r.link_search ? "Search for this review"
+            : (r.type === "symposium" ? "Read Contribution" : "Read Review");
+          html += '<a class="read-link" href="' + esc(r.link) + '" target="_blank" rel="noopener">' + readLabel + ' &rarr;</a> ';
+        }
         if (r.title) html += '<a class="read-link find-book-link" tabindex="0" role="link" data-title="' + esc(r.title) + '">Other reviews of this book &rarr;</a>';
         if (r.type === "symposium" && r.peers && r.peers.length > 0) {
           html += '<div class="symposium-peers"><strong>Other contributions:</strong><ul>';
