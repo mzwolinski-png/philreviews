@@ -236,6 +236,20 @@ RELEVANCE_SYSTEM = (
 )
 
 
+_anthropic_client = None
+
+
+def _get_anthropic_client():
+    """Reuse a single Anthropic client. Instantiating one per call leaks
+    connection-pool sockets, which stalls long backfills (tens of thousands
+    of gate calls) once file descriptors run out."""
+    global _anthropic_client
+    if _anthropic_client is None:
+        import anthropic
+        _anthropic_client = anthropic.Anthropic()
+    return _anthropic_client
+
+
 def relevance_gate(title, author_display, description):
     """Haiku gate for NEW books. Returns (relevant, primary, secondary)."""
     try:
@@ -244,7 +258,7 @@ def relevance_gate(title, author_display, description):
         return False, "", ""
     msg = f"Book: {title}\nAuthor: {author_display}\nReview blurb: {description or '(none)'}"
     try:
-        client = anthropic.Anthropic()
+        client = _get_anthropic_client()
         # Retry on rate-limit / overload so a transient 429 (likely when several
         # gated backfills run at once) doesn't get mistaken for "not relevant"
         # and silently drop a real philosophy review.
