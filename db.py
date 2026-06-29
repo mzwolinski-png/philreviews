@@ -745,10 +745,14 @@ def add_subscriber(email: str, subfields: str, token: str) -> bool:
 
 
 def verify_subscriber(token: str) -> bool:
-    """Mark a subscriber as verified. Returns True if found."""
+    """Mark a subscriber as verified if the token is valid and the signup is no
+    more than 14 days old. Returns True if a row was verified. (Unsubscribe
+    still works on the same token indefinitely — only verification expires.)"""
     with _sub_connect() as conn:
         cur = conn.execute(
-            "UPDATE subscribers SET verified = 1 WHERE token = ?", (token,)
+            "UPDATE subscribers SET verified = 1 "
+            "WHERE token = ? AND created_at >= datetime('now', '-14 days')",
+            (token,),
         )
         return cur.rowcount > 0
 
