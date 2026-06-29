@@ -17,3 +17,7 @@ jsl_crossref_cache.json
 *.log
 reports/
 *.csv
+# locally-kept dead/one-off scripts (not in repo)
+archive/
+# Claude Code local config
+.claude/

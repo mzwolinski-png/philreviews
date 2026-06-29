@@ -1,0 +1,11 @@
+.git
+docs/
+logs/
+*.db
+__pycache__
+*.log
+*.pyc
+*.jsonl
+scripts/
+*.sh
+*.csv

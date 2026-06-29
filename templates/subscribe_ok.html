@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% if action == 'verified' %}Subscription Confirmed{% else %}Unsubscribed{% endif %} &mdash; PhilReviews</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="site-header">
+    <a href="/" class="site-logo"><img src="{{ url_for('static', filename='logo.svg') }}" alt="PhilReviews" height="44"></a>
+</header>
+
+<div class="container" style="text-align: center; padding: 4rem 2rem;">
+    {% if action == 'verified' %}
+        <h2 style="color: #1a3a5c;">Subscription confirmed!</h2>
+        <p>You'll receive a weekly digest of newly published philosophy book reviews.</p>
+    {% else %}
+        <h2 style="color: #1a3a5c;">You've been unsubscribed</h2>
+        <p>You won't receive any more emails from PhilReviews.</p>
+    {% endif %}
+    <p style="margin-top: 2rem;"><a href="/" style="color: #1a3a5c;">Back to PhilReviews</a></p>
+</div>
+
+</body>
+</html>
