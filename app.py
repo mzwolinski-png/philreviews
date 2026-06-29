@@ -161,12 +161,17 @@ def normalize(record):
 @app.route("/")
 def index():
     meta = db.get_metadata()
+    # Server-render the first page of recent reviews so the homepage has
+    # crawlable, no-JS-usable content (the JS re-renders on load).
+    result = db.search_reviews(sort="date", sort_dir="desc", page=1, per_page=25)
+    initial_reviews = [normalize(r) for r in result["reviews"]]
     return render_template(
         "index.html",
         total=meta["total"],
         journal_count=len(meta["journals"]),
         min_year=meta["min_year"],
         max_year=meta["max_year"],
+        initial_reviews=initial_reviews,
     )
 
 

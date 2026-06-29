@@ -169,8 +169,8 @@
         </div>
     </div>
 
-    <!-- Loading indicator -->
-    <div id="loading" class="loading">Loading&hellip;</div>
+    <!-- Loading indicator (shown by JS during fetch; hidden for no-JS) -->
+    <div id="loading" class="loading" style="display:none">Loading&hellip;</div>
 
     <!-- Empty / error state -->
     <div id="results-message" class="results-message" role="status" hidden></div>
@@ -187,7 +187,17 @@
                     <th data-sort="date" scope="col" tabindex="0" role="button" aria-sort="none">Date</th>
                 </tr>
             </thead>
-            <tbody id="review-tbody"></tbody>
+            <tbody id="review-tbody">
+            {% for r in initial_reviews|default([]) %}
+                <tr class="review-row" data-id="{{ r.id }}">
+                    <td>{% if r.link %}<a class="title-link" href="{{ r.link }}" target="_blank" rel="noopener">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}</td>
+                    <td>{{ r.author }}</td>
+                    <td>{{ r.reviewer }}</td>
+                    <td>{{ r.journal }}</td>
+                    <td>{{ r.date }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
         </table>
     </div>
 
