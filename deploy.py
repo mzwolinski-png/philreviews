@@ -18,6 +18,16 @@ FLY_APP = os.environ.get("FLY_APP", "philreviews")
 ROOT = os.path.dirname(os.path.abspath(__file__))
 
 
+def _local_review_count():
+    try:
+        conn = sqlite3.connect(db.DB_PATH)
+        n = conn.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
+        conn.close()
+        return n
+    except Exception:
+        return 0
+
+
 def sync_to_fly(retries=3):
     """Upload the database to Fly.io and restart the app, retrying on failure.
 
@@ -100,13 +110,34 @@ def _sync_once():
             log.error(f"DB upload failed: {result.stderr}")
             return False
 
-        # Decompress and atomically swap reviews.db
-        # (subscribers.db is separate and never touched by sync)
+        # Decompress on the remote (subscribers.db is separate, never touched)
         subprocess.run(
             ["fly", "ssh", "console", "-a", FLY_APP, "-C",
              "gunzip /data/reviews_new.db.gz"],
             cwd=ROOT, capture_output=True, text=True, timeout=60,
         )
+
+        # Verify the uploaded DB BEFORE swapping it into place: a truncated or
+        # corrupt upload that still exited 0 would otherwise overwrite good
+        # production data. Run integrity_check + a row-count sanity check on the
+        # remote (the image has python3 but not the sqlite3 CLI).
+        check = subprocess.run(
+            ["fly", "ssh", "console", "-a", FLY_APP, "-C",
+             "python3 -c \"import sqlite3;"
+             "c=sqlite3.connect('/data/reviews_new.db');"
+             "print(c.execute('PRAGMA integrity_check').fetchone()[0]);"
+             "print(c.execute('SELECT COUNT(*) FROM reviews').fetchone()[0])\""],
+            cwd=ROOT, capture_output=True, text=True, timeout=120,
+        )
+        out = [ln.strip() for ln in (check.stdout or "").replace("\r", "").splitlines() if ln.strip()]
+        local_n = _local_review_count()
+        remote_n = int(out[-1]) if out and out[-1].isdigit() else -1
+        if check.returncode != 0 or not out or out[0] != "ok" or remote_n < local_n * 0.95:
+            log.error(
+                f"Uploaded DB failed verification (integrity={out[0] if out else '?'}, "
+                f"remote_rows={remote_n}, local_rows={local_n}); aborting swap, "
+                "production left untouched")
+            return False
 
         result = subprocess.run(
             ["fly", "ssh", "console", "-a", FLY_APP, "-C",
