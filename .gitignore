@@ -5,3 +5,15 @@ __pycache__/
 scraper_progress.json
 mainstream_search_state.json
 *.pyc
+
+# sqlite sidecars & deploy temp artifacts
+*.db-wal
+*.db-shm
+*.db.upload*
+# scraper state files & large caches
+*_state.json
+jsl_crossref_cache.json
+# logs, generated reports, data dumps
+*.log
+reports/
+*.csv
