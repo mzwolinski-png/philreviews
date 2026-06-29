@@ -236,6 +236,15 @@ def detect_symposia(items, window_months_cluster=15):
         if reply and reply["doi"] != anchor_item["doi"]:
             pieces.append((reply, "reply"))
 
+        # Count how many window pieces each first-author surname has, to detect
+        # ambiguous surnames (two different authors sharing a surname, where the
+        # reply only names the surname — e.g. Eva Schmidt vs Elke Schmidt).
+        surname_counts = defaultdict(int)
+        for it in items:
+            if it["authors"]:
+                surname_counts[_surname(it["authors"][0])] += 1
+        book_words = {w for w in _norm(book).split() if len(w) >= 6}
+
         # commentaries
         for it in items:
             d = it["doi"]
@@ -251,8 +260,14 @@ def detect_symposia(items, window_months_cluster=15):
             # commentary title contains the book author's surname ("On Doris's
             # Character Trouble"). Book-title-word overlap is too noisy (common
             # philosophy words match unrelated articles) and is intentionally unused.
-            named_hit = asurn in named
             author_named = bool(bl) and bl in twords
+            named_hit = asurn in named
+            # Disambiguate shared surnames: if the named surname belongs to >1
+            # author in the window, only accept the piece that actually engages
+            # the book (its title names the book author or a distinctive book word).
+            if named_hit and surname_counts.get(asurn, 0) > 1:
+                if not (author_named or (book_words & twords)):
+                    named_hit = False
             if named_hit or author_named:
                 pieces.append((it, "commentary"))
 
