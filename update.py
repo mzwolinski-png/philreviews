@@ -492,6 +492,22 @@ def main():
         # (keeps API quota low while catching newly-reviewed books)
         mainstream_stats = run_mainstream(dry_run=args.dry_run, active_since_days=10)
 
+    # Guardian philosophy reviews: gate the Guardian's new book reviews since the
+    # last run through the Haiku relevance gate (captures philosophy books not
+    # already in the DB — beyond the cross-reference scraper's reach). Cheap
+    # weekly delta; the one-time full-archive backfill is run separately.
+    guardian_phil_stats = None
+    if run_all and not args.dry_run:
+        try:
+            import guardian_backfill
+            gkey = os.environ.get("GUARDIAN_API_KEY")
+            if gkey:
+                guardian_phil_stats = guardian_backfill.run(gkey, since=str(from_date)[:10])
+                log.info(f"Guardian philosophy: {guardian_phil_stats['gate_pass']} new "
+                         f"reviews ({guardian_phil_stats['inserted']} inserted)")
+        except Exception:
+            log.exception("Guardian philosophy step failed")
+
     # Surface any scrapers that crashed (a runner returns None only on an
     # exception). Without this, a broken scraper silently vanishes from the
     # report — no count, no error — so it could stay dead for weeks unnoticed.
@@ -687,6 +703,8 @@ def main():
                 f"{philosophia_symp_stats['updated']} grouped")
         if mainstream_stats:
             detail_lines.append(f"Mainstream: {mainstream_stats.get('uploaded', 0)} new")
+        if guardian_phil_stats and guardian_phil_stats.get("inserted"):
+            detail_lines.append(f"Guardian philosophy: {guardian_phil_stats['inserted']} new")
         if tier1_removed:
             detail_lines.append(f"Tier 1 filter removed: {tier1_removed} (non-philosophy)")
         if reconcile_report_path:
