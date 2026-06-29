@@ -43,23 +43,28 @@
 </head>
 <body>
 
+<a href="#main-content" class="skip-link">Skip to results</a>
+
 <header class="site-header">
     <a href="/" class="site-logo"><img src="{{ url_for('static', filename='logo.svg') }}" alt="PhilReviews" height="44"></a>
+    <h1 class="sr-only">PhilReviews &mdash; a comprehensive index of philosophy book reviews</h1>
     <p class="tagline">A comprehensive index of philosophy book reviews</p>
-    <p class="meta">{{ total | default(0) }} reviews &middot; {{ min_year }}&ndash;{{ max_year }}</p>
+    <p class="meta">{{ "{:,}".format(total | default(0)) }} reviews &middot; {{ min_year }}&ndash;{{ max_year }}</p>
+    <a href="#subscribe" class="subscribe-cta" id="subscribe-cta">&#9993;&nbsp; Get new reviews by email &mdash; free weekly digest</a>
 </header>
 
-<div class="container">
+<div class="container" id="main-content" role="main">
 
     <!-- Search panel -->
-    <div class="search-panel">
+    <div class="search-panel" role="search">
         <div class="global-search">
+            <label for="global-search" class="sr-only">Search all reviews</label>
             <input type="text" id="global-search" placeholder="Search all reviews&hellip;" autocomplete="off">
         </div>
         <div class="filter-bar">
             <div class="filter-bar-group subfield-filter-wrap">
                 <label>Subfield</label>
-                <button id="subfield-select-btn" type="button">All Subfields</button>
+                <button id="subfield-select-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="subfield-dropdown">All Subfields</button>
                 <div id="subfield-dropdown" class="journal-dropdown subfield-dropdown">
                     <div class="journal-dropdown-actions">
                         <button type="button" id="subfield-select-all">Select All</button>
@@ -72,12 +77,13 @@
             </div>
             <div class="filter-bar-group journal-filter-wrap">
                 <label>Journals</label>
-                <button id="journal-select-btn" type="button">All Journals</button>
+                <button id="journal-select-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="journal-dropdown">All Journals</button>
                 <div id="journal-dropdown" class="journal-dropdown">
                     <div class="journal-dropdown-actions">
                         <button type="button" id="journal-select-all">Select All</button>
                         <button type="button" id="journal-select-none">Clear</button>
                     </div>
+                    <input type="text" id="journal-filter" class="journal-filter-input" placeholder="Filter journals&hellip;" autocomplete="off" aria-label="Filter journals">
                     <div class="journal-dropdown-list" id="journal-list">
                         <!-- Populated by JS from /api/metadata -->
                     </div>
@@ -146,12 +152,12 @@
     <!-- Quick actions -->
     <div class="quick-actions">
         <button id="browse-recent" class="quick-action-btn">Browse Recent Reviews</button>
+        <button id="share-search" class="quick-action-btn share-btn" title="Copy link to this search" style="display:none">Share This Search</button>
     </div>
 
     <!-- Results bar -->
     <div class="results-bar">
         <span id="result-count"></span>
-        <button id="share-search" class="share-btn" title="Copy link to this search" style="display:none">Share</button>
         <div class="per-page-wrap">
             <label for="per-page">Show</label>
             <select id="per-page">
@@ -166,16 +172,19 @@
     <!-- Loading indicator -->
     <div id="loading" class="loading">Loading&hellip;</div>
 
+    <!-- Empty / error state -->
+    <div id="results-message" class="results-message" role="status" hidden></div>
+
     <!-- Table -->
     <div class="table-wrap">
         <table>
             <thead>
                 <tr>
-                    <th data-sort="title">Book Title</th>
-                    <th data-sort="author">Author</th>
-                    <th data-sort="reviewer">Reviewer</th>
-                    <th data-sort="journal">Journal</th>
-                    <th data-sort="date">Date</th>
+                    <th data-sort="title" scope="col" tabindex="0" role="button" aria-sort="none">Book Title</th>
+                    <th data-sort="author" scope="col" tabindex="0" role="button" aria-sort="none">Author</th>
+                    <th data-sort="reviewer" scope="col" tabindex="0" role="button" aria-sort="none">Reviewer</th>
+                    <th data-sort="journal" scope="col" tabindex="0" role="button" aria-sort="none">Journal</th>
+                    <th data-sort="date" scope="col" tabindex="0" role="button" aria-sort="none">Date</th>
                 </tr>
             </thead>
             <tbody id="review-tbody"></tbody>
@@ -186,6 +195,96 @@
     <div id="pagination"></div>
 
 </div>
+
+<!-- Subscribe -->
+<div class="subscribe-section" id="subscribe">
+    <h3>Weekly Digest</h3>
+    <p>Get newly published philosophy book reviews delivered to your inbox every week.</p>
+    <form id="subscribe-form" action="/subscribe" method="POST">
+        <div class="subscribe-row">
+            <input type="email" name="email" placeholder="your@email.com" required>
+            <button type="submit">Subscribe</button>
+        </div>
+        <details class="subfield-picker">
+            <summary>Filter by subfield (optional)</summary>
+            <div class="subfield-checkboxes">
+                <label><input type="checkbox" name="subfields" value="all" checked> All subfields</label>
+                {% for code, name in SUBFIELD_NAMES.items() %}
+                <label><input type="checkbox" name="subfields" value="{{ code }}"> {{ name }}</label>
+                {% endfor %}
+            </div>
+        </details>
+    </form>
+    <p id="subscribe-msg" class="subscribe-msg" style="display:none;"></p>
+</div>
+
+<script>
+// Header CTA: smooth-scroll to the form, briefly highlight it, focus the email field
+(function() {
+    var cta = document.getElementById('subscribe-cta');
+    var section = document.getElementById('subscribe');
+    if (cta && section) {
+        cta.addEventListener('click', function() {
+            // Track CTA engagement (top of the subscribe funnel)
+            if (typeof goatcounter !== "undefined" && goatcounter.count) {
+                goatcounter.count({ path: 'subscribe-cta-click', title: 'Subscribe CTA clicked', event: true });
+            }
+            section.classList.remove('flash');
+            // re-trigger the animation, then focus the email input
+            void section.offsetWidth;
+            section.classList.add('flash');
+            setTimeout(function() {
+                var input = section.querySelector('input[type="email"]');
+                if (input) input.focus({ preventScroll: true });
+            }, 500);
+        });
+    }
+})();
+document.getElementById('subscribe-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const form = this;
+    const msg = document.getElementById('subscribe-msg');
+    const btn = form.querySelector('button');
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+    fetch('/subscribe', { method: 'POST', body: new FormData(form) })
+        .then(r => r.json())
+        .then(data => {
+            msg.style.display = 'block';
+            if (data.ok) {
+                msg.textContent = data.message;
+                msg.className = 'subscribe-msg success';
+                form.reset();
+                // Track successful subscription (bottom of the funnel)
+                if (typeof goatcounter !== "undefined" && goatcounter.count) {
+                    goatcounter.count({ path: 'subscribe-success', title: 'Subscribed', event: true });
+                }
+            } else {
+                msg.textContent = data.error || 'Something went wrong.';
+                msg.className = 'subscribe-msg error';
+            }
+        })
+        .catch(() => {
+            msg.style.display = 'block';
+            msg.textContent = 'Something went wrong. Please try again.';
+            msg.className = 'subscribe-msg error';
+        })
+        .finally(() => { btn.disabled = false; btn.textContent = 'Subscribe'; });
+});
+// "All" checkbox logic
+document.querySelector('.subfield-checkboxes').addEventListener('change', function(e) {
+    const allCb = this.querySelector('input[value="all"]');
+    const others = [...this.querySelectorAll('input:not([value="all"])')];
+    if (e.target === allCb && allCb.checked) {
+        others.forEach(cb => cb.checked = false);
+    } else if (e.target !== allCb && e.target.checked) {
+        allCb.checked = false;
+    }
+    if (!allCb.checked && !others.some(cb => cb.checked)) {
+        allCb.checked = true;
+    }
+});
+</script>
 
 <footer class="site-footer">
     PhilReviews &mdash; built by <a href="https://mzwolinski.com" target="_blank" rel="noopener">Matt Zwolinski</a> &middot; <a href="mailto:mzwolinski@sandiego.edu">Contact</a> &middot; <a href="/changelog">Update Log</a>
