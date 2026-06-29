@@ -47,6 +47,7 @@ class PublicDiscourseScraper(BaseScraper):
             "reviews_parsed": 0,
             "uploaded": 0,
             "duplicates_skipped": 0,
+            "not_reviews": 0,
             "parse_errors": 0,
         }
 
@@ -317,14 +318,17 @@ If you can't determine the author, use null.
                         all_records.append(record)
                         self.stats["reviews_parsed"] += 1
                     else:
-                        self.stats["parse_errors"] += 1
+                        # Not a book review (most PD articles aren't) — expected,
+                        # not an error.
+                        self.stats["not_reviews"] += 1
                 except Exception as e:
                     self.log.exception(f"Parse error: {e}")
                     self.stats["parse_errors"] += 1
             self.sleep()
 
         self.log.info(f"Extracted {len(all_records)} records from {self.stats['feed_pages']} feed pages "
-                      f"({self.stats['parse_errors']} parse errors)")
+                      f"({self.stats['not_reviews']} non-reviews skipped, "
+                      f"{self.stats['parse_errors']} parse errors)")
 
         # Enrich missing authors via Haiku
         self.enrich_authors_with_haiku(all_records)
