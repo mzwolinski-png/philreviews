@@ -508,6 +508,22 @@ def main():
         except Exception:
             log.exception("Guardian philosophy step failed")
 
+    # NYT philosophy reviews: gate the NYT Book Review's new book reviews since
+    # the last run (same Haiku gate). Captures trade/popular philosophy that
+    # academic journals don't review; the full-archive backfill is run separately.
+    nyt_phil_stats = None
+    if run_all and not args.dry_run:
+        try:
+            import nyt_backfill
+            nkey = os.environ.get("NYT_API_KEY")
+            if nkey:
+                nyt_phil_stats = nyt_backfill.run(
+                    nkey, begin_date=str(from_date)[:10].replace("-", ""))
+                log.info(f"NYT philosophy: {nyt_phil_stats['gate_pass']} new "
+                         f"reviews ({nyt_phil_stats['inserted']} inserted)")
+        except Exception:
+            log.exception("NYT philosophy step failed")
+
     # Surface any scrapers that crashed (a runner returns None only on an
     # exception). Without this, a broken scraper silently vanishes from the
     # report — no count, no error — so it could stay dead for weeks unnoticed.
@@ -705,6 +721,8 @@ def main():
             detail_lines.append(f"Mainstream: {mainstream_stats.get('uploaded', 0)} new")
         if guardian_phil_stats and guardian_phil_stats.get("inserted"):
             detail_lines.append(f"Guardian philosophy: {guardian_phil_stats['inserted']} new")
+        if nyt_phil_stats and nyt_phil_stats.get("inserted"):
+            detail_lines.append(f"NYT philosophy: {nyt_phil_stats['inserted']} new")
         if tier1_removed:
             detail_lines.append(f"Tier 1 filter removed: {tier1_removed} (non-philosophy)")
         if reconcile_report_path:

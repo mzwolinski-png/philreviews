@@ -245,12 +245,24 @@ def relevance_gate(title, author_display, description):
     msg = f"Book: {title}\nAuthor: {author_display}\nReview blurb: {description or '(none)'}"
     try:
         client = anthropic.Anthropic()
-        resp = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=60,
-            system=RELEVANCE_SYSTEM,
-            messages=[{"role": "user", "content": msg}],
-        )
+        # Retry on rate-limit / overload so a transient 429 (likely when several
+        # gated backfills run at once) doesn't get mistaken for "not relevant"
+        # and silently drop a real philosophy review.
+        resp = None
+        for attempt in range(5):
+            try:
+                resp = client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=60,
+                    system=RELEVANCE_SYSTEM,
+                    messages=[{"role": "user", "content": msg}],
+                )
+                break
+            except (anthropic.RateLimitError, anthropic.InternalServerError,
+                    anthropic.APITimeoutError) as e:
+                if attempt == 4:
+                    raise
+                time.sleep(2 ** attempt)  # 1,2,4,8s backoff
         text = resp.content[0].text.strip()
         m = re.search(r"\{.*\}", text, re.S)
         if not m:
