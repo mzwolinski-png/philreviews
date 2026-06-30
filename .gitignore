@@ -21,3 +21,5 @@ reports/
 archive/
 # Claude Code local config
 .claude/
+scripts/nyt_backfill_state.json
+scripts/perlentaucher_deep_state.json
