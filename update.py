@@ -524,6 +524,19 @@ def main():
         except Exception:
             log.exception("NYT philosophy step failed")
 
+    # Perlentaucher: new German-press philosophy reviews from the last ~10 days
+    # of daily roundups (gate filters to philosophy). Captures FAZ/SZ/Zeit/NZZ
+    # etc. that no English index carries; full topic backfill is run separately.
+    perlentaucher_stats = None
+    if run_all and not args.dry_run:
+        try:
+            import perlentaucher_scraper
+            perlentaucher_stats = perlentaucher_scraper.run(recent_days=10)
+            log.info(f"Perlentaucher: {perlentaucher_stats['books_relevant']} phil books "
+                     f"({perlentaucher_stats['notes_inserted']} notes inserted)")
+        except Exception:
+            log.exception("Perlentaucher step failed")
+
     # Surface any scrapers that crashed (a runner returns None only on an
     # exception). Without this, a broken scraper silently vanishes from the
     # report — no count, no error — so it could stay dead for weeks unnoticed.
@@ -723,6 +736,8 @@ def main():
             detail_lines.append(f"Guardian philosophy: {guardian_phil_stats['inserted']} new")
         if nyt_phil_stats and nyt_phil_stats.get("inserted"):
             detail_lines.append(f"NYT philosophy: {nyt_phil_stats['inserted']} new")
+        if perlentaucher_stats and perlentaucher_stats.get("notes_inserted"):
+            detail_lines.append(f"Perlentaucher (German press): {perlentaucher_stats['notes_inserted']} new")
         if tier1_removed:
             detail_lines.append(f"Tier 1 filter removed: {tier1_removed} (non-philosophy)")
         if reconcile_report_path:

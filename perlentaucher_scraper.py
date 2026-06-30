@@ -44,7 +44,9 @@ DELAY = 2.0  # polite crawl delay for a small independent site
 PHIL_TOPIC_RE = re.compile(
     r"philosoph|ethik|moral|aesthetik|ästhetik|erkenntnis|metaphysik|"
     r"politische-theorie|staatstheorie|gesellschaftstheorie|geistesgeschichte|"
-    r"stichwort-(aesthetik|ethik|moral|geist|bewusstsein|metaphysik)",
+    r"freiheit-aufklaerung|beethoven-hegel-hoelderlin|"
+    r"stichwort-(aesthetik|ethik|moral|geist|bewusstsein|metaphysik|aufklaerung|"
+    r"nietzsche|ludwig-wittgenstein|hegel|kant|heidegger)",
     re.I,
 )
 
