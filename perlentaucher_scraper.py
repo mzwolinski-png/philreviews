@@ -36,6 +36,8 @@ from atlantic_scraper import relevance_gate
 BASE = "https://www.perlentaucher.de"
 TOPIC_SITEMAP = "http://www.perlentaucher.de/cdata/sitemap/buecher-themengebiete.xml"
 ROUNDUP_SITEMAP = "http://www.perlentaucher.de/cdata/sitemap/buecherschauen.xml"
+SACHBUCH_SITEMAP = "http://www.perlentaucher.de/cdata/sitemap/sachbuch.xml"
+DEEP_STATE = os.path.join(ROOT, "scripts", "perlentaucher_deep_state.json")
 UA = "PhilReviews/2.0 (+https://philreviews.org; book-review index; mailto:mzwolinski@sandiego.edu)"
 DELAY = 2.0  # polite crawl delay for a small independent site
 
@@ -89,6 +91,33 @@ def recent_book_urls(session, days):
     for d in dates[:days]:
         urls += book_urls_on_topic(session, f"{BASE}/{d}")
     return list(dict.fromkeys(urls))
+
+
+def sachbuch_book_urls(session):
+    """Every non-fiction (/buch/) page from the Sachbuch sitemap (~32k). The
+    deep philosophy seam: includes politics/history/science/philosophy, gate
+    filters to philosophy."""
+    xml = _get(session, SACHBUCH_SITEMAP) or ""
+    # Force https so links match the topic/recent modes' links (else a book seen
+    # in both modes would dedup-miss and double-insert).
+    return [re.sub(r"^http://", "https://", m)
+            for m in re.findall(r'<loc>\s*(https?://[^<]+/buch/[^<]+\.html)\s*</loc>', xml)]
+
+
+def _load_deep_index():
+    try:
+        import json
+        with open(DEEP_STATE) as f:
+            return int(json.load(f).get("index", 0))
+    except Exception:
+        return 0
+
+
+def _save_deep_index(i):
+    import json
+    os.makedirs(os.path.dirname(DEEP_STATE), exist_ok=True)
+    with open(DEEP_STATE, "w") as f:
+        json.dump({"index": i}, f)
 
 
 # Paper name stops at the first tag ([^<]+) so it can't bleed across notes; the
@@ -158,13 +187,20 @@ def parse_book_page(html, book_url):
             "blurb": blurb, "notes": notes}
 
 
-def run(dry_run=False, max_topics=None, recent_days=None, delay=DELAY):
+def run(dry_run=False, max_topics=None, recent_days=None, deep=False, delay=DELAY):
     session = requests.Session()
     session.headers.update({"User-Agent": UA})
     st = {"topics": 0, "books_found": 0, "books_gated": 0, "books_relevant": 0,
           "already_in_db": 0, "notes_inserted": 0, "samples": []}
 
-    if recent_days:  # weekly mode: discover via recent daily roundups
+    deep_base = 0
+    if deep:         # deep mode: full Sachbuch (non-fiction) list, resumable
+        full = sachbuch_book_urls(session)
+        deep_base = _load_deep_index()
+        book_list = full[deep_base:]
+        print(f"  Perlentaucher DEEP: {len(full)} non-fiction books, "
+              f"resuming at {deep_base} ({len(book_list)} to go)")
+    elif recent_days:  # weekly mode: discover via recent daily roundups
         book_list = recent_book_urls(session, recent_days)
         print(f"  Perlentaucher: {len(book_list)} books in last {recent_days} roundups")
     else:            # backfill mode: sweep the philosophy topic taxonomy
@@ -178,7 +214,9 @@ def run(dry_run=False, max_topics=None, recent_days=None, delay=DELAY):
         book_list = list(dict.fromkeys(book_list))
         print(f"  Perlentaucher: {len(topics)} philosophy topics -> {len(book_list)} books")
 
-    for burl in book_list:
+    for _i, burl in enumerate(book_list):
+            if deep and _i % 50 == 0:
+                _save_deep_index(deep_base + _i)
             st["books_found"] += 1
             time.sleep(delay)
             html = _get(session, burl)
@@ -226,6 +264,8 @@ def run(dry_run=False, max_topics=None, recent_days=None, delay=DELAY):
                 st["samples"].append(
                     f"{book['title'][:42]} — {author_disp} [{len(to_add)} notes: "
                     f"{', '.join(sorted({n['paper'] for n in book['notes']}))[:60]}] {prim or '?'}")
+    if deep:
+        _save_deep_index(deep_base + len(book_list))  # mark cursor complete
     return st
 
 
@@ -234,11 +274,13 @@ if __name__ == "__main__":
     ap.add_argument("--max-topics", type=int, help="cap topic pages (pilot)")
     ap.add_argument("--recent", type=int, metavar="DAYS",
                     help="weekly mode: scan the last DAYS daily roundups instead of topics")
+    ap.add_argument("--deep", action="store_true",
+                    help="deep mode: crawl the full ~32k Sachbuch list (resumable via state file)")
     ap.add_argument("--delay", type=float, default=DELAY)
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     st = run(dry_run=a.dry_run, max_topics=a.max_topics,
-             recent_days=a.recent, delay=a.delay)
+             recent_days=a.recent, deep=a.deep, delay=a.delay)
     print("\n=== Perlentaucher philosophy backfill ===")
     for k in ("topics", "books_found", "books_gated", "books_relevant",
               "already_in_db", "notes_inserted"):
