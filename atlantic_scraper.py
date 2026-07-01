@@ -287,6 +287,16 @@ def relevance_gate(title, author_display, description):
         p = d.get("primary") if d.get("primary") in VALID_SUBFIELDS else ""
         s = d.get("secondary") if d.get("secondary") in VALID_SUBFIELDS else ""
         return True, p or "", s or ""
+    except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as e:
+        # Bad/expired key or exhausted credits: every subsequent call would also
+        # fail, and returning False would silently mark thousands of real books
+        # "not philosophy". Fail loud so the caller aborts (crawls are resumable).
+        raise RuntimeError(f"Anthropic auth/credit error — aborting gate: {e}") from e
+    except anthropic.BadRequestError as e:
+        if any(w in str(e).lower() for w in ("credit", "billing", "balance")):
+            raise RuntimeError(f"Anthropic credit balance exhausted — aborting gate: {e}") from e
+        log.warning(f"Relevance gate bad request for '{title}': {e}")
+        return False, "", ""
     except Exception as e:
         log.warning(f"Relevance gate failed for '{title}': {e}")
         return False, "", ""
