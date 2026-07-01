@@ -537,6 +537,30 @@ def main():
         except Exception:
             log.exception("Perlentaucher step failed")
 
+    # OpenEdition Lectures: new French comptes rendus since the last run (OAI
+    # from-date). Full archive backfill is run separately.
+    openedition_stats = None
+    if run_all and not args.dry_run:
+        try:
+            import openedition_scraper
+            openedition_stats = openedition_scraper.run(from_date=str(from_date)[:10])
+            log.info(f"OpenEdition Lectures: {openedition_stats['gate_pass']} new "
+                     f"({openedition_stats['inserted']} inserted)")
+        except Exception:
+            log.exception("OpenEdition step failed")
+
+    # La Vie des idées: shallow re-scan of the Philosophie rubric (newest first;
+    # dedup skips what's already in the DB) for new philosophy recensions.
+    laviedesidees_stats = None
+    if run_all and not args.dry_run:
+        try:
+            import laviedesidees_scraper
+            laviedesidees_stats = laviedesidees_scraper.run(max_offset=80)
+            log.info(f"La Vie des idées: {laviedesidees_stats['gate_pass']} new "
+                     f"({laviedesidees_stats['inserted']} inserted)")
+        except Exception:
+            log.exception("La Vie des idées step failed")
+
     # Surface any scrapers that crashed (a runner returns None only on an
     # exception). Without this, a broken scraper silently vanishes from the
     # report — no count, no error — so it could stay dead for weeks unnoticed.
@@ -738,6 +762,10 @@ def main():
             detail_lines.append(f"NYT philosophy: {nyt_phil_stats['inserted']} new")
         if perlentaucher_stats and perlentaucher_stats.get("notes_inserted"):
             detail_lines.append(f"Perlentaucher (German press): {perlentaucher_stats['notes_inserted']} new")
+        if openedition_stats and openedition_stats.get("inserted"):
+            detail_lines.append(f"OpenEdition Lectures (FR): {openedition_stats['inserted']} new")
+        if laviedesidees_stats and laviedesidees_stats.get("inserted"):
+            detail_lines.append(f"La Vie des idées (FR): {laviedesidees_stats['inserted']} new")
         if tier1_removed:
             detail_lines.append(f"Tier 1 filter removed: {tier1_removed} (non-philosophy)")
         if reconcile_report_path:
