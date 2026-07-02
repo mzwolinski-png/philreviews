@@ -162,7 +162,7 @@ def parse_article(html, url, date):
     return out
 
 
-def run(dry_run=False, max_issues=None, delay=DELAY, resume=True):
+def run(dry_run=False, max_issues=None, delay=DELAY, resume=True, save_cursor=True):
     session = requests.Session()
     session.headers.update({"User-Agent": UA})
     st = {"issues": 0, "articles": 0, "reviews": 0, "books_seen": 0,
@@ -181,7 +181,8 @@ def run(dry_run=False, max_issues=None, delay=DELAY, resume=True):
         if parsed is None:
             continue  # gap in numbering
         st["issues"] += 1
-        _save_state(vol, num)
+        if save_cursor:  # weekly newest-issue scans must not clobber the backfill cursor
+            _save_state(vol, num)
         date, urls = parsed
         for url in urls:
             if db.review_link_exists(url):

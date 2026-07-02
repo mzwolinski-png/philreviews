@@ -574,6 +574,18 @@ def main():
         except Exception:
             log.exception("Books & Ideas step failed")
 
+    # LRB: scan the newest ~3 issues for philosophy reviews (metadata only,
+    # access_type Paywalled). resume/save_cursor off so this never touches the
+    # full-archive backfill cursor; dedup makes re-scans cheap.
+    lrb_stats = None
+    if run_all and not args.dry_run:
+        try:
+            import lrb_scraper
+            lrb_stats = lrb_scraper.run(max_issues=3, resume=False, save_cursor=False)
+            log.info(f"LRB: {lrb_stats['gate_pass']} new ({lrb_stats['inserted']} inserted)")
+        except Exception:
+            log.exception("LRB step failed")
+
     # Surface any scrapers that crashed (a runner returns None only on an
     # exception). Without this, a broken scraper silently vanishes from the
     # report — no count, no error — so it could stay dead for weeks unnoticed.
@@ -782,6 +794,8 @@ def main():
         if booksandideas_stats and (booksandideas_stats.get("inserted") or booksandideas_stats.get("upgraded_to_english")):
             detail_lines.append(f"Books & Ideas: {booksandideas_stats['inserted']} new, "
                                 f"{booksandideas_stats['upgraded_to_english']} upgraded to English")
+        if lrb_stats and lrb_stats.get("inserted"):
+            detail_lines.append(f"LRB: {lrb_stats['inserted']} new")
         if tier1_removed:
             detail_lines.append(f"Tier 1 filter removed: {tier1_removed} (non-philosophy)")
         if reconcile_report_path:
