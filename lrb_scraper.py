@@ -77,6 +77,28 @@ def _txt(s):
     return re.sub(r"\s+", " ", htmllib.unescape(re.sub(r"<[^>]+>", " ", s))).strip("  ")
 
 
+def _norm_title(t):
+    return re.sub(r"[^a-z0-9]", "", (t or "").lower())[:24]
+
+
+def _already_indexed(book):
+    """True if this review is already in the DB from an earlier import.
+    Old imports used different URL formats (no www, no /the-paper, different
+    slugs), so link dedup misses them. Match instead on the same LRB
+    reviewer + book author + normalized-title prefix (author+reviewer alone is
+    too coarse: e.g. Nagel reviewed several Scanlon books in the LRB)."""
+    with db._connect() as conn:
+        rows = conn.execute(
+            "SELECT book_title FROM reviews WHERE publication_source=? AND "
+            "book_author_last_name=? AND reviewer_last_name=?",
+            (SOURCE, book["author_last"], book["rev_last"])).fetchall()
+    mine = _norm_title(book["book_title"])
+    return bool(mine) and any(
+        _norm_title(r[0]) and (_norm_title(r[0]).startswith(mine) or
+                               mine.startswith(_norm_title(r[0])))
+        for r in rows)
+
+
 def _load_state():
     try:
         with open(STATE) as f:
@@ -198,7 +220,7 @@ def run(dry_run=False, max_issues=None, delay=DELAY, resume=True, save_cursor=Tr
             st["reviews"] += 1
             for b in books:
                 st["books_seen"] += 1
-                if db.review_link_exists(b["link"]):
+                if db.review_link_exists(b["link"]) or _already_indexed(b):
                     st["already_in_db"] += 1; continue
                 author_disp = (b["author_first"] + " " + b["author_last"]).strip()
                 st["gate_checked"] += 1
