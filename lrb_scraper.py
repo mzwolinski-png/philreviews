@@ -56,7 +56,15 @@ _ITEM_SUBTITLE = re.compile(r'<span class="article-reviewed-item-subtitle">(.*?)
 _ITEM_BY = re.compile(r"<span class='by'>.*?<a[^>]*>(.*?)</a>", re.S)
 
 
-def _get(session, url, tries=3):
+class NetworkDown(RuntimeError):
+    """Raised when fetches fail for network (not HTTP-404) reasons.
+
+    Must abort the run rather than return None: a None is treated as a genuine
+    gap in issue numbering and skipped forever, so returning it during a DNS/
+    network outage would silently drop whole issues past the cursor."""
+
+
+def _get(session, url, tries=4):
     for i in range(tries):
         try:
             r = session.get(url, timeout=30)
@@ -68,9 +76,9 @@ def _get(session, url, tries=3):
             return r.text
         except requests.RequestException as e:
             if i == tries - 1:
-                print(f"  fetch failed {url}: {e}"); return None
-            time.sleep(4 * (i + 1))
-    return None
+                raise NetworkDown(f"{url}: {e}")
+            time.sleep(10 * (i + 1))  # 10,20,30s — ride out short outages
+    raise NetworkDown(f"{url}: retries exhausted")
 
 
 def _txt(s):
