@@ -561,6 +561,19 @@ def main():
         except Exception:
             log.exception("La Vie des idées step failed")
 
+    # Books & Ideas (LVI's English edition): runs AFTER the LVI step so newly
+    # translated reviews upgrade their French rows to the English version
+    # (prefer-English policy); B&I-exclusive recensions are gated and inserted.
+    booksandideas_stats = None
+    if run_all and not args.dry_run:
+        try:
+            import booksandideas_scraper
+            booksandideas_stats = booksandideas_scraper.run(max_offset=80)
+            log.info(f"Books & Ideas: {booksandideas_stats['upgraded_to_english']} upgraded, "
+                     f"{booksandideas_stats['inserted']} new")
+        except Exception:
+            log.exception("Books & Ideas step failed")
+
     # Surface any scrapers that crashed (a runner returns None only on an
     # exception). Without this, a broken scraper silently vanishes from the
     # report — no count, no error — so it could stay dead for weeks unnoticed.
@@ -766,6 +779,9 @@ def main():
             detail_lines.append(f"OpenEdition Lectures (FR): {openedition_stats['inserted']} new")
         if laviedesidees_stats and laviedesidees_stats.get("inserted"):
             detail_lines.append(f"La Vie des idées (FR): {laviedesidees_stats['inserted']} new")
+        if booksandideas_stats and (booksandideas_stats.get("inserted") or booksandideas_stats.get("upgraded_to_english")):
+            detail_lines.append(f"Books & Ideas: {booksandideas_stats['inserted']} new, "
+                                f"{booksandideas_stats['upgraded_to_english']} upgraded to English")
         if tier1_removed:
             detail_lines.append(f"Tier 1 filter removed: {tier1_removed} (non-philosophy)")
         if reconcile_report_path:
