@@ -131,15 +131,17 @@ def discover_newest(session):
 
 
 def issue_walk(newest, state=None):
-    """Yield (volume, issue) newest-first, resuming after `state` if given."""
+    """Yield (volume, issue) newest-first, resuming at `state` if given.
+
+    Positional (<=) comparison, not exact match: the saved cursor can sit
+    above the archive's reported newest issue (e.g. a forthcoming issue was
+    processed directly but isn't on the /archive index yet), and an exact
+    match would then never fire and the walk would yield nothing."""
     vol, num = newest
-    started = state is None or state == (None, None)
+    resume_at = state if state and state[0] else None
     while vol >= 1:
         while num >= 1:
-            if started:
-                yield vol, num
-            elif (vol, num) == state:
-                started = True  # resume from the saved position (re-check it)
+            if resume_at is None or (vol, num) <= resume_at:
                 yield vol, num
             num -= 1
         vol -= 1
