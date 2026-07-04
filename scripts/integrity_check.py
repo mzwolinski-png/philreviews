@@ -629,6 +629,49 @@ def run_integrity_check(since=None, dry_run=False):
             fixed += 1
             details.append(f"FIXED {rid}: {list(changes.keys())} in '{r['book_title'][:40]}'")
 
+    # --- Canonicalize publisher DOI-URLs (dedup vs existing doi.org rows) ---
+    # Some link-following scrapers (e.g. Daily Nous) insert the publisher's
+    # DOI-bearing URL (onlinelibrary.wiley.com/doi/10.x/..., link.springer.com/
+    # article/10.x/..., tandfonline/cambridge .../doi/...) with an empty doi
+    # field. The unique review_link index then can't see it duplicates an
+    # existing https://doi.org/ row (found: Byrne on Cosker-Rowland, id 239041).
+    # For each such new row: extract the DOI; if another row already carries it
+    # -> delete this row as a duplicate; else fill doi + rewrite the link to
+    # canonical doi.org form so future inserts dedup naturally.
+    doi_pat = re.compile(
+        r'(?:onlinelibrary\.wiley\.com/doi(?:/full|/abs|/epdf)?/|'
+        r'link\.springer\.com/article/|'
+        r'(?:www\.)?tandfonline\.com/doi(?:/full|/abs)?/|'
+        r'(?:www\.)?cambridge\.org/core/.*?/(?=10\.)|'
+        r'journals\.sagepub\.com/doi(?:/full|/abs)?/)'
+        r'(10\.\d{4,9}/[^?#\s]+)', re.I)
+    link_rows = conn.execute(
+        f"SELECT id, review_link, doi FROM reviews {where} "
+        f"{'AND' if where else 'WHERE'} review_link LIKE 'http%' "
+        f"AND review_link NOT LIKE 'https://doi.org/%'", params
+    ).fetchall()
+    for r in link_rows:
+        m = doi_pat.search(r['review_link'] or '')
+        if not m:
+            continue
+        doi_val = m.group(1).rstrip('/.').lower()
+        canonical = f"https://doi.org/{doi_val}"
+        dup = conn.execute(
+            "SELECT id FROM reviews WHERE id != ? AND "
+            "(LOWER(doi) = ? OR LOWER(review_link) = ?)",
+            (r['id'], doi_val, canonical)).fetchone()
+        if dup:
+            if not dry_run:
+                cur.execute("DELETE FROM reviews WHERE id = ?", (r['id'],))
+            deleted += 1
+            details.append(f"DELETED {r['id']}: publisher-URL duplicate of DOI {doi_val} (kept {dup['id']})")
+        else:
+            if not dry_run:
+                cur.execute("UPDATE reviews SET review_link = ?, doi = COALESCE(NULLIF(doi,''), ?) WHERE id = ?",
+                            (canonical, doi_val, r['id']))
+            fixed += 1
+            details.append(f"FIXED {r['id']}: canonicalized publisher DOI-URL -> {canonical}")
+
     if not dry_run:
         conn.commit()
     conn.close()
