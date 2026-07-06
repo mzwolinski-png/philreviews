@@ -104,10 +104,16 @@ _ORDER_PARTICLES = {"van", "von", "de", "del", "della", "di", "da", "du",
 
 
 def _strip_order_suffix(af, al):
-    """If an order suffix is mis-parsed into the author fields, drop it and
-    re-split the remaining name. Returns (first, last) or None if no change."""
+    """Normalize a religious-order suffix (O.P., S.J., ...) in author fields.
+
+    Convention (user decision 2026-07-06): suffixes are KEPT, canonically as
+    "Lastname, O.P." on the last-name field — they are part of how these
+    authors publish (The Thomist, Heythrop, etc.). This fixes mis-parses
+    (suffix stranded in the first-name field, glued without a comma, etc.)
+    without deleting the suffix. Returns (first, last) or None if no change."""
     toks = [t for t in re.split(r"[\s,]+", f"{af or ''} {al or ''}".strip()) if t]
-    if not any(t.strip(",") in _ORDER_SUFFIXES for t in toks):
+    sufs = [t.strip(",") for t in toks if t.strip(",") in _ORDER_SUFFIXES]
+    if not sufs:
         return None
     kept = [t for t in toks if t.strip(",") not in _ORDER_SUFFIXES]
     if not kept:
@@ -118,6 +124,7 @@ def _strip_order_suffix(af, al):
         nf, nl = " ".join(kept[:-2]), kept[-2] + " " + kept[-1]
     else:
         nf, nl = " ".join(kept[:-1]), kept[-1]
+    nl = f"{nl}, {sufs[0]}"  # canonical placement
     return None if (nf, nl) == ((af or "").strip(), (al or "").strip()) else (nf, nl)
 
 
