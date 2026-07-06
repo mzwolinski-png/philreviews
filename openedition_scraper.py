@@ -93,21 +93,27 @@ def _split_reviewer(name):
     return (" ".join(p[:-1]), p[-1]) if len(p) > 1 else ("", name)
 
 
+_ED_MARK = re.compile(r"\s*\((?:dir|éd|ed|eds)\.?\)\s*", re.I)
+_NAME_TOK = r"[A-ZÉÈÀÎÔ][\w'’.-]+(?:\s+(?:de|du|von|van|le|la)?\s*[A-ZÉÈÀÎÔa-z][\w'’.-]+){1,3}"
+
+
 def _split_book(title_raw):
-    """dc:title is 'Author(s), Book Title. Subtitle' -> (author_first, author_last, book_title).
-    Heuristic: authors are the run of Firstname-Lastname name-tokens before the
-    title; take the first listed author. Blank author if it doesn't look like one."""
-    m = re.match(r"^([^,]+?),\s+(.+)$", title_raw)
+    """dc:title is 'Author[, Author...][ (dir.)], Book Title' -> (first, last, title).
+    Captures the full leading name-list (joined 'A, B and C'), drops (dir.)-style
+    editor markers, keeps all co-authors (single-author capture used to strand
+    co-directors in the title). Blank author if the head doesn't look like names."""
+    m = re.match(rf"^({_NAME_TOK}(?:\s*,\s*{_NAME_TOK})*)\s*(?:\((?:dir|éd|ed|eds)\.?\))?\s*,\s+(.{{6,}})$",
+                 title_raw.strip())
     if not m:
+        return "", "", _ED_MARK.sub(" ", title_raw).strip()
+    parts = [p.strip() for p in m.group(1).split(",")
+             if p.strip() and not any(ch.isdigit() for ch in p)]
+    book = _ED_MARK.sub(" ", m.group(2)).strip(" ,")
+    if not parts or any(len(p.split()) > 4 for p in parts):
         return "", "", title_raw.strip()
-    author_part, book = m.group(1).strip(), m.group(2).strip()
-    # first author only (handle "A, B et C" — but the first comma already split A off)
-    first_auth = re.split(r"\s+et\s+|\s*&\s*|;", author_part)[0].strip()
-    toks = first_auth.split()
-    # looks like a person name: 2-4 capitalized tokens, no digits
-    if 1 < len(toks) <= 4 and not any(ch.isdigit() for ch in first_auth):
-        return " ".join(toks[:-1]), toks[-1], book
-    return "", "", title_raw.strip()  # couldn't confidently parse author
+    joined = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+    toks = joined.split()
+    return " ".join(toks[:-1]), toks[-1], book
 
 
 def parse_record(rec):

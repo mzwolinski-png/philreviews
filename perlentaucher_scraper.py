@@ -161,10 +161,14 @@ def parse_book_page(html, book_url):
         return None
     author_str, title = head.split(":", 1)
     title = title.strip().rstrip(".")
-    # first listed author -> first/last
-    first_author = re.split(r",|\bund\b|;", author_str)[0].strip()
-    ap = first_author.split()
-    af, al = (" ".join(ap[:-1]), ap[-1]) if len(ap) > 1 else ("", first_author)
+    # Full co-author list: strip editor markers ((Hg.), (Hrsg.)), normalize
+    # '/' and 'und' separators to 'A, B and C' (keeping only the first author
+    # used to strand co-editors, and raw '(Hg.) / ' strings polluted fields).
+    author_str = re.sub(r"\s*\((?:Hg|Hrsg|Hgg|Bearb)\.?\)\s*", " ", author_str)
+    parts = [p.strip() for p in re.split(r"\s*/\s*|,|\bund\b|;", author_str) if p.strip()]
+    joined = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1] if parts else ""
+    ap = joined.split()
+    af, al = (" ".join(ap[:-1]), ap[-1]) if len(ap) > 1 else ("", joined)
 
     blurb = ""
     bm = re.search(r"Klappentext\s*</[^>]+>(.*?)(?:BuchLink|Rezensionsnotiz|<div class=\"box)", html, re.S)
