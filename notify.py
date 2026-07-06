@@ -15,6 +15,7 @@ log = logging.getLogger("notify")
 
 GMAIL_USER = "mzwolinski@gmail.com"  # SMTP login
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 NOTIFY_TO = os.getenv("NOTIFY_TO", "mzwolinski@gmail.com")
 FROM_INTERNAL = GMAIL_USER  # admin notifications
 FROM_PUBLIC = "PhilReviews <updates@philreviews.org>"  # subscriber-facing emails
@@ -22,22 +23,37 @@ FROM_PUBLIC = "PhilReviews <updates@philreviews.org>"  # subscriber-facing email
 
 def send_email(subject: str, body: str, to: str = None, from_addr: str = None,
                content_type: str = "plain"):
-    """Send an email via Gmail SMTP. Fails silently with a log warning."""
+    """Send an email. Fails silently with a log warning.
+
+    Subscriber-facing mail (From: updates@philreviews.org) goes via Resend,
+    which DKIM-signs as philreviews.org — required since Yahoo/AT&T (and
+    increasingly others) block unaligned mail. Gmail send-as signs d=gmail.com,
+    which fails DMARC alignment for our From-domain, and our own DMARC
+    p=quarantine then instructs receivers to junk it. Admin mail stays on
+    Gmail. Falls back to Gmail if RESEND_API_KEY is unset so nothing breaks.
+    """
     to = to or NOTIFY_TO
-    if not GMAIL_APP_PASSWORD:
-        log.warning("GMAIL_APP_PASSWORD not set — skipping email notification")
-        return False
+    from_addr = from_addr or GMAIL_USER
+    use_resend = bool(RESEND_API_KEY) and "philreviews.org" in from_addr
 
     msg = MIMEText(body, content_type)
     msg["Subject"] = subject
-    msg["From"] = from_addr or GMAIL_USER
+    msg["From"] = from_addr
     msg["To"] = to
 
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
-            smtp.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-            smtp.send_message(msg)
-        log.info(f"Email sent: {subject}")
+        if use_resend:
+            with smtplib.SMTP_SSL("smtp.resend.com", 465, timeout=30) as smtp:
+                smtp.login("resend", RESEND_API_KEY)
+                smtp.send_message(msg)
+        else:
+            if not GMAIL_APP_PASSWORD:
+                log.warning("GMAIL_APP_PASSWORD not set — skipping email notification")
+                return False
+            with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
+                smtp.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+                smtp.send_message(msg)
+        log.info(f"Email sent{' via Resend' if use_resend else ''}: {subject}")
         return True
     except Exception as e:
         log.warning(f"Email failed: {e}")
