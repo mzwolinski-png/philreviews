@@ -48,7 +48,7 @@ SKIP_TAGS = {
 
 def fetch_reviews(api_key, from_date=None, to_date=None, max_pages=None):
     """Page the Content API for book reviews (newest first)."""
-    out, page, total_pages = [], 1, None
+    out, page, total_pages, errors = [], 1, None, 0
     sess = requests.Session()
     sess.headers.update({"User-Agent": UA})
     while True:
@@ -64,10 +64,25 @@ def fetch_reviews(api_key, from_date=None, to_date=None, max_pages=None):
         try:
             r = sess.get(API_URL, params=params, timeout=30)
             if r.status_code == 429:
+                # Daily quota (500/day, resets midnight UTC) may be exhausted —
+                # e.g. by the mainstream scan earlier in the same weekly run.
+                # Cap retries: on 2026-07-05 an unbounded retry loop here stalled
+                # the whole weekly update for 9.5 hours until the quota reset.
+                errors += 1
+                if errors > 8:
+                    print(f"  Guardian API rate-limited persistently — giving up "
+                          f"with {len(out)} reviews fetched")
+                    break
                 time.sleep(20); continue
             r.raise_for_status()
             resp = r.json().get("response", {})
+            errors = 0
         except requests.RequestException as e:
+            errors += 1
+            if errors > 8:
+                print(f"  Guardian API failing persistently ({e}) — giving up "
+                      f"with {len(out)} reviews fetched")
+                break
             print(f"  api error page {page}: {e}"); time.sleep(5); continue
         items = resp.get("results", [])
         if total_pages is None:

@@ -146,6 +146,16 @@ def run(dry_run=False, max_offset=None):
         if not rec:
             continue  # not a book review
         st["recensions"] += 1
+        # Prefer-English policy: if this review was upgraded to its Books &
+        # Ideas English version, its row no longer carries the LVI link — so
+        # link dedup misses it and we'd re-insert the French original.
+        with db._connect() as conn:
+            if conn.execute(
+                    "SELECT 1 FROM reviews WHERE publication_source='Books & Ideas' "
+                    "AND book_author_last_name=? AND reviewer_last_name=?",
+                    (rec["author_last"], rec["rev_last"])).fetchone():
+                st["already_in_db"] += 1
+                continue
         author_disp = (rec["author_first"] + " " + rec["author_last"]).strip()
         st["gate_checked"] += 1
         relevant, prim, sec = relevance_gate(rec["book_title"], author_disp, rec["summary"])

@@ -484,18 +484,14 @@ def main():
         crossref_stats = run_crossref_delta(from_date, dry_run=args.dry_run)
         crossref_added = crossref_stats.get("added_reviews", []) if crossref_stats else []
 
-    if args.mainstream:
-        # Explicit flag: full scan, no time filter
-        mainstream_stats = run_mainstream(dry_run=args.dry_run)
-    elif run_all:
-        # Weekly run: scan only books with review activity in the last 10 days
-        # (keeps API quota low while catching newly-reviewed books)
-        mainstream_stats = run_mainstream(dry_run=args.dry_run, active_since_days=10)
-
     # Guardian philosophy reviews: gate the Guardian's new book reviews since the
     # last run through the Haiku relevance gate (captures philosophy books not
     # already in the DB — beyond the cross-reference scraper's reach). Cheap
     # weekly delta; the one-time full-archive backfill is run separately.
+    # MUST run BEFORE the mainstream scan: both share the Guardian API's
+    # 500/day quota, and mainstream can exhaust it (2026-07-05: this step then
+    # retried 429s for 9.5h until the quota reset at midnight UTC). This needs
+    # ~3 calls; mainstream can burn the rest.
     guardian_phil_stats = None
     if run_all and not args.dry_run:
         try:
@@ -507,6 +503,14 @@ def main():
                          f"reviews ({guardian_phil_stats['inserted']} inserted)")
         except Exception:
             log.exception("Guardian philosophy step failed")
+
+    if args.mainstream:
+        # Explicit flag: full scan, no time filter
+        mainstream_stats = run_mainstream(dry_run=args.dry_run)
+    elif run_all:
+        # Weekly run: scan only books with review activity in the last 10 days
+        # (keeps API quota low while catching newly-reviewed books)
+        mainstream_stats = run_mainstream(dry_run=args.dry_run, active_since_days=10)
 
     # NYT philosophy reviews: gate the NYT Book Review's new book reviews since
     # the last run (same Haiku gate). Captures trade/popular philosophy that
