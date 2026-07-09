@@ -185,7 +185,9 @@ def parse_article(html, url, date):
         by = _ITEM_BY.search(item)
         af = al = ""
         if by:
-            first_auth = re.split(r",| and |&", _txt(by.group(1)))[0].strip()
+            # full co-author list (first-author-only erased co-authors — audit finding)
+            parts = [p.strip() for p in re.split(r",| and |&", _txt(by.group(1))) if p.strip()]
+            first_auth = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
             ap = first_auth.split()
             af, al = (" ".join(ap[:-1]), ap[-1]) if len(ap) > 1 else ("", first_auth)
         link = url if i == 0 else f"{url}#book-{i + 1}"

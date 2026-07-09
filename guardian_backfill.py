@@ -98,11 +98,23 @@ def fetch_reviews(api_key, from_date=None, to_date=None, max_pages=None):
 
 
 def _split_name(full):
-    """First listed person -> (first, last)."""
+    """First listed person -> (first, last). For reviewer bylines."""
     full = re.split(r"\s+and\s+|;|,\s+", (full or "").strip())[0].strip()
     full = re.sub(r"^by\s+", "", full, flags=re.I).strip()
     p = full.split()
     return (" ".join(p[:-1]), p[-1]) if len(p) > 1 else ("", full)
+
+
+def _split_authors(full):
+    """Full co-author list -> (first, last), joined 'A, B and C'.
+    Keeping only the first author silently erased co-authors (audit finding)."""
+    full = re.sub(r"^by\s+", "", (full or "").strip(), flags=re.I)
+    parts = [p.strip() for p in re.split(r"\s+and\s+|;|,\s+", full) if p.strip()]
+    if not parts:
+        return "", ""
+    joined = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+    p = joined.split()
+    return (" ".join(p[:-1]), p[-1]) if len(p) > 1 else ("", joined)
 
 
 def parse_headline(title):
@@ -113,7 +125,7 @@ def parse_headline(title):
     if not m:
         return None
     book = m.group(1).strip(" '\"‘’“”")
-    af, al = _split_name(m.group(2))
+    af, al = _split_authors(m.group(2))
     if len(book) < 3 or not al or "review" in book.lower():
         return None
     return book, af, al
