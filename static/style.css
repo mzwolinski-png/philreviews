@@ -963,6 +963,53 @@ html { scroll-behavior: smooth; }
   background: #254d73;
 }
 
+/* ---------- Follow alerts ---------- */
+.follow-form {
+  margin: 0.6rem 0 0.2rem;
+  padding: 0.7rem 0.9rem;
+  background: #f4f7fa;
+  border: 1px solid #d7e1ea;
+  border-radius: 6px;
+  font-size: 0.88rem;
+}
+.follow-form label {
+  display: block;
+  margin: 0.15rem 0;
+  cursor: pointer;
+}
+.follow-blurb {
+  margin: 0 0 0.4rem;
+  color: #4a5a68;
+}
+.follow-row {
+  margin-top: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.follow-row input[type="email"] {
+  flex: 1;
+  min-width: 180px;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid #c3cfd9;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.88rem;
+}
+.follow-row button {
+  padding: 0.35rem 0.9rem;
+  background: #1a3a5c;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.follow-row button:hover { background: #254d73; }
+.follow-row button:disabled { opacity: 0.6; cursor: default; }
+.follow-msg { margin: 0.4rem 0 0; color: #1a3a5c; font-weight: 600; }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 768px) {
   .container { padding: 1rem; }
@@ -972,4 +1019,12 @@ html { scroll-behavior: smooth; }
   .journal-dropdown { min-width: 100%; }
   .filter-grid { grid-template-columns: 1fr; }
   .results-bar { flex-direction: column; align-items: flex-start; }
+}
+
+/* Honeypot: off-screen for humans, still fillable by naive bots. Not
+   display:none — some bots skip hidden inputs. */
+.hp-field {
+  position: absolute !important;
+  left: -9999px !important;
+  width: 1px; height: 1px; overflow: hidden;
 }

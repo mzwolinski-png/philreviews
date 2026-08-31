@@ -3,6 +3,7 @@ PhilReviews SQLite database interface.
 Single module for all database operations — replaces Airtable.
 """
 
+import re
 import sqlite3
 import os
 import time
@@ -114,6 +115,17 @@ CREATE TABLE IF NOT EXISTS subscribers (
     subfields TEXT DEFAULT 'all',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_sent_date TEXT
+);
+CREATE TABLE IF NOT EXISTS follows (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL,
+    follow_type TEXT NOT NULL,
+    follow_value TEXT NOT NULL,
+    norm_value TEXT NOT NULL,
+    token TEXT UNIQUE NOT NULL,
+    verified INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(email, follow_type, norm_value)
 );
 """
 
@@ -468,7 +480,10 @@ def search_reviews(q=None, title=None, author=None, reviewer=None,
         conditions.append("CAST(SUBSTR(publication_date, 1, 4) AS INTEGER) <= ?")
         params.append(year_to)
     if access:
-        conditions.append("access_type = ?")
+        # Case-insensitive: stored values have drifted between 'Open'/'open'
+        # (and historically 'Paywalled'/'Subscription'), while the filter UI
+        # sends lowercase — an exact match silently returned a subset.
+        conditions.append("lower(access_type) = lower(?)")
         params.append(access)
     if entry_type:
         conditions.append("entry_type = ?")
@@ -774,6 +789,85 @@ def get_verified_subscribers() -> list[dict]:
     result = [dict(r) for r in rows]
     conn.close()
     return result
+
+
+def norm_follow_value(s: str) -> str:
+    """Normalize a book title or author name for follow matching:
+    diacritics stripped, lowercase, alphanumerics + single spaces only.
+    'Susana Monsó' -> 'susana monso'."""
+    import unicodedata
+    s = unicodedata.normalize('NFD', s or '')
+    s = ''.join(c for c in s if not unicodedata.combining(c))
+    s = re.sub(r'[^a-z0-9 ]', ' ', s.lower())
+    return re.sub(r'\s+', ' ', s).strip()
+
+
+def add_follow(email: str, follow_type: str, value: str, token: str) -> str:
+    """Register a follow (book title or author). Returns one of:
+    'active'  — the email already has a verified subscription/follow, so the
+                new follow is live immediately;
+    'pending' — new email, verification required (send them the token link);
+    'exists'  — this exact follow is already registered for this email."""
+    email = email.lower().strip()
+    norm = norm_follow_value(value)
+    with _sub_connect() as conn:
+        dup = conn.execute(
+            "SELECT verified FROM follows WHERE email=? AND follow_type=? AND norm_value=?",
+            (email, follow_type, norm)).fetchone()
+        if dup:
+            return 'exists' if dup[0] else 'pending'
+        known = conn.execute(
+            "SELECT 1 FROM subscribers WHERE email=? AND verified=1 "
+            "UNION SELECT 1 FROM follows WHERE email=? AND verified=1",
+            (email, email)).fetchone()
+        conn.execute(
+            "INSERT INTO follows (email, follow_type, follow_value, norm_value, token, verified) "
+            "VALUES (?,?,?,?,?,?)",
+            (email, follow_type, value.strip(), norm, token, 1 if known else 0))
+        return 'active' if known else 'pending'
+
+
+def pending_token_exists(token: str, kind: str) -> bool:
+    """Does this token match a real, still-unverified signup? Used so the
+    confirm page 404s on bogus tokens instead of rendering a form that can
+    never succeed. kind is 'subscriber' or 'follow'."""
+    table = "subscribers" if kind == "subscriber" else "follows"
+    with _sub_connect() as conn:
+        row = conn.execute(
+            f"SELECT 1 FROM {table} WHERE token = ? "
+            f"AND created_at >= datetime('now', '-14 days')", (token,)).fetchone()
+        return row is not None
+
+
+def verify_follow(token: str) -> bool:
+    """Verify the follow with this token — and any other pending follows the
+    same address registered (one click confirms the address)."""
+    with _sub_connect() as conn:
+        row = conn.execute(
+            "SELECT email FROM follows WHERE token=? "
+            "AND created_at >= datetime('now', '-14 days')", (token,)).fetchone()
+        if not row:
+            return False
+        conn.execute("UPDATE follows SET verified=1 WHERE email=?", (row[0],))
+        return True
+
+
+def unfollow(token: str) -> bool:
+    """Remove a single follow by its token."""
+    with _sub_connect() as conn:
+        cur = conn.execute("DELETE FROM follows WHERE token=?", (token,))
+        return cur.rowcount > 0
+
+
+def get_verified_follows() -> list[dict]:
+    """All verified follows (for the weekly alert matcher)."""
+    conn = sqlite3.connect(SUBSCRIBERS_DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute("SELECT * FROM follows WHERE verified=1").fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
 
 
 def update_subscriber_last_sent(subscriber_id: int, date_str: str):

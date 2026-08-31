@@ -18,7 +18,643 @@ def _normalize(text: str) -> str:
     text = text.replace('\u2010', '-').replace('\u2011', '-')
     text = text.replace('\u2013', '-').replace('\u2014', '-')
     text = re.sub(r'\s+', ' ', text)
+    # Publishers sometimes emit a space before the comma ("Nature , by Alyssa"),
+    # which stops the "Title, by Author" splitters from firing.
+    text = re.sub(r'\s+([,;])', r'\1', text)
     return text.strip()
+
+
+_CITE_PUB = re.compile(
+    r'(?:University Press|Oxford|Cambridge|Princeton|Yale|Harvard|Routledge|Bloomsbury|'
+    r'Palgrave|Polity|Blackwell|Wiley|MIT Press|Columbia|Cornell|Stanford|Chicago|Duke|'
+    r'Rowman|Verso|Brill|Springer|Hackett|Broadview|Edinburgh|Manchester|Notre Dame|'
+    r'Hart Publishing|Littlefield|Continuum|Penguin|Bristol)', re.I)
+
+# Unambiguous publisher phrases — safe to reject a candidate book title on.
+# (Bare city/university words like "Cambridge" are NOT here: they occur in
+# genuine titles such as "The Cambridge Companion to ...".)
+_PUB_PHRASE = re.compile(
+    r'(?:University Press|\bPress\b|Publish(?:ing|ers?)\b|Verlag|Routledge|'
+    r'Palgrave|Bloomsbury|Blackwell|Wiley|Springer|Polity|Brill|Rowman|'
+    r'Littlefield|Hackett|Broadview|Verso|Continuum)', re.I)
+
+
+def _parse_bib_citation(title: str):
+    """Parse the 'Title. Author, Year. [Place,] Publisher. pp, price (binding)'
+    citation format (e.g. Journal of Applied Philosophy, Wiley's non-italic review
+    style). Tightly gated: requires a publisher + page/price marker, excludes the
+    'By Author'/'Pp.'/italic/'Review of' styles that dedicated parsers own, and
+    returns None (never a garbled record) when the split isn't clean."""
+    t = title or ''
+    if not (_CITE_PUB.search(t) and re.search(
+            r'\d+\s*pp\b|[£$€]\s?\d|\((?:hb|pb|hbk|pbk|hardback|paperback|cloth)\)', t, re.I)):
+        return None
+    # formats owned by other branches — leave them alone
+    if re.search(r'\breview of\b|\(review\)|<i>|<em>|\.\s+(?:by|par|edited by)\s|\bPp\.\s', t, re.I):
+        return None
+    t = re.sub(r'</?[a-zA-Z]+>', '', t).replace('&amp;', '&')
+    for a, b in (('‐', '-'), ('‑', '-'), ('–', '-'), ('’', "'"), ('‘', "'")):
+        t = t.replace(a, b)
+    t = re.sub(r'\s+', ' ', t).strip()
+    t = re.sub(r'(?<![A-ZÀ-Þ])([.?!])([A-ZÀ-Þ])', r'\1 \2', t)   # unglue sentence-end+Upper, NOT initials
+    ym = re.search(r'(?:^|[^0-9])((?:19|20)\d{2})\b', t)
+    if not ym:
+        return None
+    head = t[:ym.start(1)].rstrip(' .,')
+    m = re.search(r'^(.*[.?!])\s+(.+)$', head)
+    if not (m and len(m.group(1)) > 4):
+        return None
+    book_title = m.group(1).strip().rstrip('.')
+    author = m.group(2).strip()
+    # a clean split has a plain person-name author and a title free of bib junk
+    if (_CITE_PUB.search(author) or re.search(r'\d|\bpp\b|University|Press', author, re.I)
+            or _CITE_PUB.search(book_title) or re.search(r'\d\s*pp\b|[£$€]', book_title)):
+        return None
+    author = re.sub(r'(\.)([A-ZÀ-Þ])', r'\1 \2', author)              # N.Dobos -> N. Dobos
+    author = re.sub(r'([a-zà-ÿ])([A-ZÀ-Þ][a-zà-ÿ])', r'\1 \2', author)  # EdmundFawcett -> Edmund Fawcett
+    author = re.sub(r'\s+', ' ', author).strip().rstrip(',')
+    first_seg = re.split(r'\s+(?:and|&)\s+|\s*\(eds?\.?\)|,\s*eds?\.?', author)[0].strip().rstrip('.,')
+    p = first_seg.split()
+    if not (1 <= len(p) <= 6) or len(book_title) < 4:
+        return None
+    af, al = (' '.join(p[:-1]), p[-1]) if len(p) > 1 else ('', first_seg)
+    if not al:
+        return None
+    return {
+        'book_title': book_title, 'book_author_first': af, 'book_author_last': al,
+        'is_edited_volume': bool(re.search(r'\(eds?\.?\)', author, re.I)),
+        'has_multiple_authors': author != first_seg,
+        'needs_doi_scrape': False, 'format': 'bib_citation',
+    }
+
+
+def _parse_wiley_by_citation(title: str):
+    """Parse Wiley's 'Title[: Subtitle] By Last, First, City[, Country]:
+    Publisher, pp./price/ISBN' review-citation style (Bioethics, EJP).
+    Handles Wiley's glued names (TrudoLemmens, K.SonuGaind) and the inverted
+    'Last, First' lead author. Tightly gated; returns None on any unclean
+    split (a skipped title is safer than a garbled record)."""
+    t = title or ''
+    if '<i>' in t or '<em>' in t:
+        return None
+    if not (_CITE_PUB.search(t) and re.search(
+            r'\d+\s*pp\b|\bPp\.\s*\d|ISBN|[£$€]\s?\d|\b(?:19|20)\d{2}\b', t, re.I)):
+        return None
+    if re.search(r'\breview of\b|\(review\)', t, re.I):
+        return None
+    t = re.sub(r'</?[a-zA-Z]+>', '', t).replace('&amp;', '&')
+    for a, b in (('‐', '-'), ('‑', '-'), ('–', '-'), ('’', "'"), ('‘', "'")):
+        t = t.replace(a, b)
+    t = re.sub(r'\s+', ' ', t).strip()
+    # split at the LAST ' By/by ' that precedes a capitalized name
+    marks = list(re.finditer(r'[.,]?\s+[Bb]y\s+(?=[A-ZÀ-Þ])', t))
+    if not marks:
+        return None
+    m = marks[-1]
+    book_title = t[:m.start()].strip().rstrip('.,')
+    rest = t[m.end():].strip()
+    # Reject only on an unambiguous publisher PHRASE in the title — a bare
+    # "Cambridge"/"Oxford" is frequently part of a real book title
+    # ("The Cambridge Companion to Augustine's Sermons").
+    if (len(book_title) < 5 or _PUB_PHRASE.search(book_title)
+            or re.search(r'\d\s*pp\b|ISBN', book_title)):
+        return None
+    # Heythrop-style tail: 'Author. Pp. 451, Publisher...' — cut before Pp.
+    rest = re.split(r'\.?\s*\bPp\.\s*\d', rest)[0].strip()
+    # "Title. Edited by X" / "Title. Translated by X" — the verb belongs to the
+    # byline, not the title; strip it and remember that it's an edited volume.
+    _tail_verb = re.search(r'[.,]?\s*(Edited|Ed|Translated|Trans|Compiled)\.?$',
+                           book_title, re.I)
+    if _tail_verb:
+        book_title = book_title[:_tail_verb.start()].strip().rstrip('.,')
+        if _tail_verb.group(1).lower() in ('edited', 'ed', 'compiled'):
+            is_edited_tail = True
+        else:
+            is_edited_tail = False
+    else:
+        is_edited_tail = False
+    # unglue Wiley's dropped spaces on the author side only
+    rest = re.sub(r'(\.)([A-ZÀ-Þ])', r'\1 \2', rest)                 # K.Sonu -> K. Sonu
+    rest = re.sub(r'([a-zà-ÿ])([A-ZÀ-Þ][a-zà-ÿ])', r'\1 \2', rest)  # TrudoLemmens -> Trudo Lemmens
+    segs = [s.strip() for s in rest.split(',')]
+    names, is_edited = [], False
+    for i, s in enumerate(segs):
+        if not s:
+            continue
+        if re.search(r'\(eds?\.?\)', s, re.I):
+            is_edited = True
+            s = re.sub(r'\s*\(eds?\.?\)', '', s, flags=re.I).strip()
+        if ':' in s:
+            # 'Name City: Publisher' (glued) — salvage the name by dropping
+            # the city token before the colon; 'London: Rowman' salvages to ''.
+            pre = s.split(':')[0].strip()
+            pre_words = pre.split()
+            salvage = ' '.join(pre_words[:-1]).strip()
+            if salvage and not names and re.match(r'^[A-ZÀ-Þ]', salvage) \
+                    and not re.search(r'\d', salvage) and not _CITE_PUB.search(salvage):
+                names.append(salvage)
+            break
+        if (re.search(r'\d', s) or _CITE_PUB.search(s)
+                or re.search(r'\bpp\b|ISBN|Press|Publish', s, re.I)):
+            break  # reached the location/publisher tail
+        if i + 1 < len(segs) and ':' in segs[i + 1] and names:
+            break  # 'City, Country: Publisher' — current seg is the city
+        if not re.match(r'^(?:and\s+)?[A-ZÀ-Þ]', s):
+            return None  # non-name segment where a name should be
+        names.append(s)
+        if len(names) > 5:
+            return None
+    if not names:
+        return None
+    # 'Last, First' inversion for a single person
+    if (len(names) == 2 and len(names[0].split()) == 1
+            and 1 <= len(names[1].split()) <= 2
+            and not names[1].lower().startswith('and')):
+        author = f"{names[1]} {names[0]}"
+        has_multiple = False
+    else:
+        author = ', '.join(names)
+        author = re.sub(r',\s+and\s+', ' and ', author)
+        has_multiple = len(names) > 1 or ' and ' in author
+    author = re.sub(r'\s+', ' ', author).strip().rstrip('.,')
+    if not author or len(author.split()) > 12:
+        return None
+    af, _, al = author.rpartition(' ')
+    if not al:
+        return None
+    return {
+        'book_title': book_title, 'book_author_first': af, 'book_author_last': al,
+        'is_edited_volume': is_edited or is_edited_tail,
+        'has_multiple_authors': has_multiple,
+        'needs_doi_scrape': False, 'format': 'wiley_by_citation',
+    }
+
+
+def _parse_glued_citation(title: str):
+    """Parse the glued 'TitleAuthorName City[ and City]: Publisher, year. pages'
+    citation style (Dialogue's older records, where the space between title and
+    author is lost): e.g.
+      'Science and Hypothesis...MethodologyLarry Laudan Dordrecht: D. Reidel
+       Publishing Company, 1981. Pp. x, 258'
+      'Common SenseLynd Forguson London and New York: Routledge, 1989. vi + 193 p.'
+    Anchors on the lowercase->uppercase glue point immediately before a
+    1-3 word name that is followed by 'City:'. Requires a publisher keyword
+    plus a year/page marker; returns None on anything ambiguous."""
+    t = re.sub(r'\s+', ' ', re.sub(r'</?[a-zA-Z]+>', '', title or '')).strip()
+    if '<i>' in (title or '') or '<em>' in (title or ''):
+        return None
+    if not (_PUB_PHRASE.search(t) and re.search(r'\b(?:19|20)\d{2}\b', t)
+            and re.search(r'\bpp?\b|\bPp\b|\d+\s*p\.', t, re.I)):
+        return None
+    if re.search(r'\breview of\b|\(review\)|\bby\s+[A-Z]', t, re.I):
+        return None  # owned by the "by"-marker parsers
+    # <title ending lowercase><Name Name> <City[ and City]>: <Publisher>
+    m = re.match(
+        r'^(.{6,}?[a-z])'                                      # title, ends lowercase
+        r'([A-ZÀ-Þ][a-zà-ÿ]+(?:\s+[A-ZÀ-Þ][a-zà-ÿ.]+){1,2}?)'  # 2-3 word name
+        r'\s+([A-ZÀ-Þ][a-zà-ÿ]+(?:\s+(?:and\s+)?[A-ZÀ-Þ][a-zà-ÿ]+){0,3})'  # city/cities
+        r'\s*:\s*(.+)$', t)
+    if not m:
+        return None
+    book_title, author, city, tail = (g.strip() for g in m.groups())
+    if not _PUB_PHRASE.search(tail):
+        return None
+    book_title = re.sub(r'[.,;:]\s*$', '', book_title).strip()
+    if len(book_title) < 5 or _PUB_PHRASE.search(book_title):
+        return None
+    parts = author.split()
+    af, al = ' '.join(parts[:-1]), parts[-1]
+    if not al or not _looks_like_author_name(author):
+        return None
+    return {
+        'book_title': book_title, 'book_author_first': af, 'book_author_last': al,
+        'is_edited_volume': False, 'has_multiple_authors': False,
+        'needs_doi_scrape': False, 'format': 'glued_citation',
+    }
+
+
+def _parse_paren_citation(title: str):
+    """Parse the '[Essay Title - ]Author(s): Book Title. (City: Publisher, Year.
+    Pp. N.)' review-citation style used by The Review of Politics (and kin).
+
+    The trailing parenthetical carrying a publisher and/or 'Pp.' is the anchor —
+    it is distinctive enough that this can run for any journal. Handles the
+    review-essay prefix ('Consent, Fairness and Political Obligation - George
+    Klosko: ...'), multi-author bylines ('A and B: ...'), and translator tails
+    ('... Trans. Stephen Curtis'). Returns None on anything unclean.
+
+    Before this existed the RoP records failed four different ways: the tail was
+    kept in book_title, 'Author: Book's Subtitle' hit the possessive splitter,
+    and multi-author bylines fell through to the fallback (audit 2026-08-02).
+    """
+    t = re.sub(r'\s+', ' ', re.sub(r'</?[a-zA-Z]+>', '', title or '')).replace('&amp;', '&').strip()
+    if '<i>' in (title or '') or '<em>' in (title or ''):
+        return None
+    # anchor: a trailing "(...)" holding a publisher phrase or a page count
+    m_par = re.search(r'\s*\(([^()]*(?:' + _PUB_PHRASE.pattern + r'|\bPp\.|\bpp\.)[^()]*)\)?\s*$', t, re.I)
+    if not m_par:
+        return None
+    head = t[:m_par.start()].strip().rstrip('.,;')
+    if not head or len(head) < 8:
+        return None
+    # optional review-essay prefix: "Essay Title - Author: Book"
+    m_pref = re.match(r'^.{4,90}?\s[-–—]\s(?=[A-ZÀ-Þ][^:]{2,60}:\s)(.+)$', head)
+    if m_pref:
+        head = m_pref.group(1).strip()
+    m = re.match(r'^([^:]{3,70}):\s+(.+)$', head)
+    if not m:
+        return None
+    author, book = m.group(1).strip(), m.group(2).strip()
+    # "Author, Book Title: Subtitle" — the comma, not the colon, is the
+    # author/title boundary here, so the naive first-colon split swallows the
+    # book's main title into the byline ('Tom Arnold-Forster, Walter Lippmann:
+    # An Intellectual Biography' -> author 'Tom Arnold-Forster, Walter
+    # Lippmann'). Real multi-author bylines always join with 'and'/'&', never a
+    # bare comma, so a comma with no conjunction means we split in the wrong
+    # place. Found 2026-08-05 after this corrupted 6 rows.
+    if ',' in author and not re.search(r'\s+and\s+|\s*&\s*', author):
+        first, _, rest_of_title = author.partition(',')
+        first, rest_of_title = first.strip(), rest_of_title.strip()
+        if first and rest_of_title:
+            author, book = first, f"{rest_of_title}: {book}"
+    # translator / editor / foreword tails belong to neither field
+    book = re.split(
+        r'\.\s+(?:Trans\.|Translated\b|Ed\.|Edited\b|Foreword\b|Introduction\b|'
+        r'Preface\b|With an?\s+(?:foreword|introduction|preface)\b)'
+        r'|,\s+(?:edited|translated|with an?\s+(?:foreword|introduction))\s+by\b'
+        r'|\s*\(trans\.', book, flags=re.I)[0].strip().rstrip('.,;')
+    if len(book) < 4 or _PUB_PHRASE.search(book) or re.search(r'\bPp\.|\d+\s*pp\b', book):
+        return None
+    is_edited = bool(re.search(r',?\s*\beds?\.?\b|\beditors?\b', author, re.I))
+    author = re.sub(r',?\s*\(?\beds?\.?\)?\s*$', '', author, flags=re.I).strip().rstrip(',')
+    # the byline must read as names, not as a title fragment
+    if re.search(r'\d|\bPp\b', author) or not re.match(r'^[A-ZÀ-Þ]', author):
+        return None
+    segs = [s for s in re.split(r',\s*|\s+and\s+|\s*&\s*', author) if s.strip()]
+    if not segs or len(segs) > 4:
+        return None
+    _seg_stop = {'the', 'a', 'an', 'of', 'on', 'in', 'for', 'to', 'from', 'other',
+                 'with', 'his', 'her', 'their', 'its', 'essays', 'studies'}
+    for s in segs:
+        w = s.split()
+        if not (1 <= len(w) <= 5) or not re.match(r'^[A-ZÀ-Þ]', s):
+            return None
+        # A byline segment never opens with an article/preposition — that marks a
+        # title running on after a comma ("Ellis Sandoz, The Politics of Truth…").
+        if w[0].lower().rstrip('.,') in _seg_stop:
+            return None
+    has_multiple = len(segs) > 1
+    af, _, al = author.rpartition(' ')
+    if not al:
+        return None
+    return {
+        'book_title': book, 'book_author_first': af, 'book_author_last': al,
+        'is_edited_volume': is_edited, 'has_multiple_authors': has_multiple,
+        'needs_doi_scrape': False, 'format': 'paren_citation',
+    }
+
+
+def _parse_eds_prefix(title: str):
+    """Parse '<Editors> (eds.), <Book Title> (<publisher>)' — the Utilitas /
+    UCL Press review style.
+
+    Without this, the generic 'Author, Title' comma split claims the string and
+    keeps only the FIRST editor ('Philip Schofield, Tim Causer and Chris Riley
+    (eds.), The Correspondence…' lost Schofield's co-editors into the title,
+    found 2026-08-08). The '(eds.),' marker is unambiguous, so the whole byline
+    can be lifted cleanly.
+    """
+    t = re.sub(r'\s+', ' ', re.sub(r'</?[a-zA-Z]+>', '', title or '')).replace('&amp;', '&').strip()
+    m = re.match(r'^(.{3,140}?)\s*\(\s*(?:eds?|edited by)\.?\s*\)\s*[,.]\s*(.+)$', t, re.I)
+    if not m:
+        return None
+    author, book = m.group(1).strip().rstrip(','), m.group(2).strip()
+    # drop the trailing publisher parenthetical and any page/price tail
+    book = re.sub(r'\s*\([^)]*(?:' + _PUB_PHRASE.pattern + r'|(?:1[6-9]|20)\d\d)[^)]*\)?.*$',
+                  '', book, flags=re.I).strip()
+    # \b matters: without it this ate 'Su(pp)lementary Letters', since the
+    # roman-numeral class also matches the 'l' that follows.
+    book = re.sub(r'[,.;]?\s*\bpp?\.?\s*[\divxl].*$', '', book, flags=re.I).strip().rstrip('.,;: ')
+    if len(book) < 4 or _PUB_PHRASE.search(book):
+        return None
+    segs = [s.strip() for s in re.split(r',\s*|\s+and\s+|\s*&\s*', author) if s.strip()]
+    if not segs or len(segs) > 6:
+        return None
+    for s in segs:
+        w = s.split()
+        if not (1 <= len(w) <= 5) or not re.match(r'^[A-ZÀ-Þ]', s) or re.search(r'\d', s):
+            return None
+    af, _, al = author.rpartition(' ')
+    if not al:
+        return None
+    return {
+        'book_title': book, 'book_author_first': af, 'book_author_last': al,
+        'is_edited_volume': True, 'has_multiple_authors': len(segs) > 1,
+        'needs_doi_scrape': False, 'format': 'eds_prefix',
+    }
+
+
+def _parse_author_title_editedby(title: str):
+    """Parse '<Author>, <Book Title>, Edited by <Editor> (<publisher>)'.
+
+    The author is the person whose work it is; the named editor is apparatus.
+    Previously `title_edited_by_author` claimed this shape and produced
+    nonsense bylines ('Jeremy Bentham, Essays on Logic… Edited by Philip
+    Schofield (London, UCL Press, 2025)' -> author 'UCL Press, 2025), pp. lxxvi
+    + 519'), found 2026-08-08.
+    """
+    t = re.sub(r'\s+', ' ', re.sub(r'</?[a-zA-Z]+>', '', title or '')).replace('&amp;', '&').strip()
+    m = re.match(r'^([A-ZÀ-Þ][^,]{2,45}),\s+(.+?),\s+(?:Edited|Translated|Trans\.|Ed\.)\s*'
+                 r'(?:by\s+)?[^(]{3,80}\(.*$', t, re.I)
+    if not m:
+        return None
+    author, book = m.group(1).strip(), m.group(2).strip().rstrip('.,;: ')
+    if len(book) < 4 or _PUB_PHRASE.search(book) or re.search(r'\bpp\.|\d{4}', book):
+        return None
+    w = author.split()
+    if not (2 <= len(w) <= 5) or re.search(r'\d', author):
+        return None
+    if w[0].lower().rstrip('.,') in {'the', 'a', 'an'}:
+        return None
+    af, _, al = author.rpartition(' ')
+    if not al:
+        return None
+    return {
+        'book_title': book, 'book_author_first': af, 'book_author_last': al,
+        'is_edited_volume': False, 'has_multiple_authors': False,
+        'needs_doi_scrape': False, 'format': 'author_title_editedby',
+    }
+
+
+def _parse_wiley_glued_authorlist(title: str):
+    """Parse Wiley's '<Title><FirstLast>, <FirstLast>, and <FirstLast>, City:
+    Publisher, Year. NNN pp. ISBN…' style, where the space between the title
+    and the first author is lost and every name is glued (Bioethics).
+
+    Distinct from _parse_wiley_by_citation, which needs a 'By' marker, and from
+    _parse_glued_citation, which expects a single 2-3 word name before the
+    city. Found 2026-08-12: 'Rethinking Conscientious Objection in Health
+    CareAlbertoGiubilini, UdoSchuklenk, FrancescaMinerva, and JulianSavulescu…'
+    was landing as title '265 pp' with three of the four authors lost.
+    """
+    t = re.sub(r'\s+', ' ', re.sub(r'</?[a-zA-Z]+>', '', title or '')).replace('&amp;', '&')
+    for a, b in (('‐', '-'), ('‑', '-'), ('–', '-'), ('’', "'")):
+        t = t.replace(a, b)
+    t = t.strip()
+    if '<i>' in (title or '') or '<em>' in (title or ''):
+        return None
+    if not (_PUB_PHRASE.search(t) and re.search(r'\d+\s*pp\b|ISBN', t, re.I)):
+        return None
+    if re.search(r'\breview of\b|\(review\)|\bby\s+[A-ZÀ-Þ]', t, re.I):
+        return None                      # owned by the 'by'-marker parsers
+    segs = [s.strip() for s in t.split(',')]
+    # everything up to the 'City: Publisher' segment is title + authors
+    cut = next((i for i, s in enumerate(segs) if ':' in s), None)
+    if cut is None or cut < 1:
+        return None
+    head = segs[:cut]
+    # trailing run of glued capitalised words on the first segment:
+    # 'Health CareAlbertoGiubilini' -> ['Care','Alberto','Giubilini']
+    m = re.search(r'((?:[A-ZÀ-Þ][a-zà-ÿ]+){2,})$', head[0])
+    if not m:
+        return None
+    words = re.findall(r'[A-ZÀ-Þ][a-zà-ÿ]+', m.group(1))
+    if len(words) < 3:
+        return None                      # need title-word + First + Last
+    book = re.sub(r'\s+', ' ',
+                  head[0][:m.start()] + ' ' + ' '.join(words[:-2])).strip().rstrip('.,;: ')
+    names = [' '.join(words[-2:])]
+    for s in head[1:]:
+        s = re.sub(r'^and\s+', '', s).strip()
+        s = re.sub(r'([a-zà-ÿ])([A-ZÀ-Þ])', r'\1 \2', s)   # unglue FirstLast
+        if not re.fullmatch(r"[A-ZÀ-Þ][\w.'-]*(?:\s+[A-ZÀ-Þ][\w.'-]*){0,3}", s):
+            return None
+        names.append(s)
+    if len(book) < 5 or _PUB_PHRASE.search(book) or len(names) > 6:
+        return None
+    joined = (', '.join(names[:-1]) + ' and ' + names[-1]) if len(names) > 1 else names[0]
+    af, _, al = joined.rpartition(' ')
+    if not al:
+        return None
+    return {
+        'book_title': book, 'book_author_first': af, 'book_author_last': al,
+        'is_edited_volume': False, 'has_multiple_authors': len(names) > 1,
+        'needs_doi_scrape': False, 'format': 'wiley_glued_authorlist',
+    }
+
+
+def _collapse_duplicated_citation(title: str) -> str:
+    """Collapse Sage records that print the whole citation twice.
+
+    Political Theory (and other Sage journals) deposit titles like
+        "Book Review: <Title> , by <First Last> <Title>, by <LastFirst>, <pub>"
+    where the title and byline repeat. Whichever branch then parses it, the
+    duplicate leaks: the author came out as "Alyssa Battistoni Free Gifts" in
+    the DB, and as the inverted "Battistoni / Alyssa" when parsed fresh
+    (found 2026-08-31).
+
+    If a long opening run of the title occurs a second time, cut there. A real
+    title repeating 30+ consecutive characters of itself does not happen.
+    """
+    t = re.sub(r'\s+', ' ', title or '').strip()
+    probe_src = re.sub(r'^\s*(?:book\s+review|review)\s*:\s*', '', t, flags=re.I)
+    if len(probe_src) < 60:
+        return title
+    probe_src = re.split(r',\s*by\s+', probe_src, maxsplit=1, flags=re.I)[0]
+    probe = probe_src[:40].strip()
+    if len(probe) < 20:
+        return title
+    second = t.find(probe, t.find(probe) + 1)
+    if second > 0:
+        return t[:second].strip().rstrip(' ,;')
+    return title
+
+
+# ---------------------------------------------------------------------------
+# Full-citation bylines: "Title, by Author. Publisher, City, Year. NNN pp. £p"
+#
+# New Blackfriars deposits its whole review header as the Crossref title, and
+# several other journals use the same shape. Multiple books in one review are
+# joined with " - ". Left unparsed these rows kept the byline inside the title
+# and, when a looser branch caught them, dropped publisher text into the author
+# field ("Philip Rieff. Faber").  Found 2026-08-31.
+# ---------------------------------------------------------------------------
+
+# religious-order and academic suffixes the user wants preserved on the surname
+_ORDER_SUFFIX = re.compile(
+    r'^(?:O\.P|S\.J|S\.S|O\.S\.B|O\.S\.A|C\.S\.C|O\.F\.M|O\.Carm|C\.SS\.R|S\.D\.B|'
+    r'C\.P|O\.Cist|S\.V\.D|O\.M\.I|F\.S\.C|Jr|Sr|III?)\.?$', re.I)
+
+# a token that can legitimately appear inside a personal name
+_NAME_TOKEN = re.compile(
+    r"^(?:(?:[A-ZÀ-Þ]\.-?){1,5}|[A-ZÀ-Þ][\w'’\-]*|von|van|der|den|del|de|di|du|la|le|"
+    r"dos|das|ten|ter|af|al|bin|ibn|St\.?)$")
+
+# a token that is nothing but initials ("G.P.", "F.-H.") never closes the byline
+_ALL_INITIALS = re.compile(r'^(?:[A-ZÀ-Þ]\.-?){1,5}$')
+
+# text that means the byline has ended and the imprint has begun
+_IMPRINT_STOP = re.compile(
+    r'^(?:trans|translated|tr|ed|eds|edited|editor|editors|with|introduction|'
+    r'foreword|preface|press|publications?|publishers?|books?|ltd|inc|'
+    r'university|univ|paperback|hardback|pp|vol|vols)\b\.?,?$', re.I)
+
+
+def _split_citation_books(raw: str):
+    """Split a multi-book citation header into one segment per book.
+
+    Books are joined with " - " or "; ". Only split where the following segment
+    is itself a citation (it carries its own ", by"/", edited by" byline), so
+    hyphenated titles and volume lists like "(Vol. 1: 1815-1846; Vol. 2: ...)"
+    stay intact.
+    """
+    text = re.sub(r'\s+', ' ', raw or '').strip()
+    parts = re.split(r'(\s+[-\u2013\u2014]\s+|;\s+)', text)
+    if len(parts) == 1:
+        return parts
+    out, buf = [], parts[0]
+    for i in range(1, len(parts), 2):
+        sep, nxt = parts[i], parts[i + 1] if i + 1 < len(parts) else ''
+        balanced = buf.count('(') == buf.count(')')
+        if balanced and re.search(r',\s*(?:by|edited by|ed\.\s*by)\s+[A-ZÀ-Þ]', nxt, re.I):
+            out.append(buf)
+            buf = nxt
+        else:                      # separator belongs inside the title
+            buf += sep + nxt
+    out.append(buf)
+    return out
+
+
+_BARE_ORDER = re.compile(r"([a-z\u2019'])\s?(OP|SJ|OSB|OFM|OSA|CSC|CSSR|SDB|SSp|CP)\b\.?")
+
+
+def _order_dots(abbrev: str) -> str:
+    """OP -> O.P."""
+    return '.'.join(abbrev.upper()) + '.'
+
+
+def _name_group(group: str):
+    """Parse one comma-delimited group into name tokens.
+
+    Returns (tokens, reason) where reason says why the scan stopped:
+    None/'period'/'suffix' mean the group was a clean personal name;
+    'imprint'/'nonname' mean it was really publisher or series text.
+    """
+    out = []
+    for tok in group.split():
+        bare = tok.strip()
+        if not bare:
+            continue
+        if _IMPRINT_STOP.match(bare) or re.match(r'^[A-Z]{2,}$', bare):
+            return out, 'imprint'
+        if bare.lower() in ('and', '&'):
+            out.append(bare)
+            continue
+        if _ORDER_SUFFIX.match(bare):
+            out.append(bare if bare.endswith('.') else bare + '.')
+            return out, 'suffix'
+        core = bare.rstrip('.')
+        if not (_NAME_TOKEN.match(bare) or _NAME_TOKEN.match(core)):
+            return out, 'nonname'
+        out.append(bare)
+        # a period after a full word (not a run of initials) ends the byline
+        if bare.endswith('.') and len(core) > 1 and not _ALL_INITIALS.match(bare):
+            return out, 'period'
+    return out, None
+
+
+def _author_from_byline(rest: str) -> str:
+    """Take the personal-name run off the front of the post-'by' remainder.
+
+    Walks comma-delimited groups. A later group is only treated as another
+    author when it actually reads like a personal name (two or more name
+    tokens, or an explicit "and"); this is what keeps imprints out of the
+    author field -- "by Peter Tyler, Bloomsbury, London" stops at Tyler.
+    """
+    rest = rest.strip()
+    # Wiley glues the order suffix onto the surname: "SchillebeeckxO.P.", "MooreOP"
+    rest = re.sub(r"([a-z\u2019'])((?:[A-Z]\.){2,})", r'\1, \2', rest)
+    rest = _BARE_ORDER.sub(lambda m: m.group(1) + ', ' + _order_dots(m.group(2)), rest)
+    rest = rest.split(';')[0]
+
+    names, first = [], True
+    for group in rest.split(','):
+        group = group.strip()
+        if not group:
+            continue
+        if not first:
+            lead = re.sub(r'^(?:and|&)\s+', '', group, flags=re.I)
+            plausible = (len(lead.split()) >= 2 or _ORDER_SUFFIX.match(lead)
+                         or group.lower().startswith(('and ', '& ')))
+            if not plausible:
+                break
+        toks, reason = _name_group(group)
+        if not toks:
+            break
+        real = [t for t in toks if t.lower() not in ('and', '&')]
+        if not first:
+            # "…, Teneo Press" / "…, Cambridge Papers in Social Anthropology"
+            if reason in ('imprint', 'nonname'):
+                break
+            if len(real) < 2 and not (len(real) == 1 and _ORDER_SUFFIX.match(real[0])):
+                break
+        names.append(' '.join(toks))
+        first = False
+        if reason:
+            break
+    joined = ', '.join(names)
+    joined = re.sub(r',\s*(and|&)\s+', r' \1 ', joined)
+    joined = re.sub(r'\s+', ' ', joined).strip()
+    joined = re.sub(r'\s*(?:and|&)$', '', joined, flags=re.I).strip()
+    return joined.rstrip('.,') if joined else ''
+
+
+def parse_citation_byline(raw: str):
+    """Parse a 'Title, by Author. Imprint' header into one dict per book."""
+    books = []
+    for seg in _split_citation_books(raw):
+        # earliest byline marker wins, so "X by Author, edited by Editor" keeps
+        # Author rather than the editor; "edited by" is tried before bare "by"
+        # so "Edited" is not left behind in the title
+        m = re.search(
+            r'^(.{4,}?)(,\s*|\.\s+|\s+)(?:edited by|ed\.\s*by|edited|eds?\.|by)\s+(.+)$', seg, re.I)
+        if not m:
+            continue
+        had_comma = m.group(2).lstrip().startswith(',') or m.group(2).startswith(',')
+        if not had_comma:
+            # no comma -- only a byline if a real imprint follows the name
+            if not re.search(r'\bpp\b|\u00a3|\b(?:18|19|20)\d{2}\b|Press|Publish|'
+                             r'Books|Ltd|&', m.group(3)):
+                continue
+        title = m.group(1).strip().rstrip(' ,;')
+        author = _author_from_byline(m.group(3))
+        if not title or not author:
+            continue
+        # a trailing imprint fragment is not a title
+        if re.search(r'\bpp\b|\u00a3|\$|\b\d{4}\b|\bPress\b|\bLondon\b|\bs\.\s*$', title):
+            if not re.match(r'^[A-ZÀ-Þ]', title) or re.search(r'\bpp\b|\u00a3', title):
+                continue
+        edited = bool(re.search(r'(?:^|[\s,.)])(?:edited by|ed\.\s*by|edited|eds?\.)\s',
+                                seg, re.I))
+        # keep an order suffix attached to the surname: "Schillebeeckx, O.P."
+        sm = re.match(r'^(.*?)[\s,]+((?:[A-Z]\.)+[A-Z]\.?)$', author)
+        suffix = ''
+        if sm:
+            suffix = ', ' + sm.group(2).rstrip('.') + '.'
+            author = sm.group(1).strip().rstrip(',')
+        parts = author.split()
+        if len(parts) < 2:
+            continue
+        books.append({
+            'book_title': title,
+            'book_author_first': ' '.join(parts[:-1]),
+            'book_author_last': parts[-1] + suffix,
+            'is_edited_volume': edited,
+            'has_multiple_authors': ' and ' in author or ',' in author,
+            'needs_doi_scrape': False,
+            'format': 'citation_byline',
+        })
+    return books
 
 
 def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = None) -> Optional[Dict]:
@@ -31,7 +667,58 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     Or None if we can't parse it at all.
     """
     title = _normalize(title)
+    title = _collapse_duplicated_citation(title)
     subtitle = _normalize(subtitle) if subtitle else ''
+
+    # --- "Title. Author, Year. Publisher. pp, price" citation (JAP-style) ---
+    # High-priority, tightly gated so it can't hijack other formats.
+    _cite = _parse_bib_citation(title)
+    if _cite:
+        return _cite
+
+    # --- Wiley "Title By Last, First, City: Publisher, pp/ISBN" (Bioethics) ---
+    _wby = _parse_wiley_by_citation(title)
+    if _wby:
+        return _wby
+
+    # --- Wiley glued author LIST: "TitleFirstLast, FirstLast, and FirstLast, City: Pub" ---
+    _wgl = _parse_wiley_glued_authorlist(title)
+    if _wgl:
+        return _wgl
+
+    # --- Glued "TitleAuthor City: Publisher, year. pp" (older Dialogue) ---
+    _glued = _parse_glued_citation(title)
+    if _glued:
+        return _glued
+
+    # --- "<Editors> (eds.), <Title> (<publisher>)" (Utilitas / UCL Press) ---
+    _eds = _parse_eds_prefix(title)
+    if _eds:
+        return _eds
+
+    # --- "<Author>, <Title>, Edited by <Editor> (<publisher>)" ---
+    _ate = _parse_author_title_editedby(title)
+    if _ate:
+        return _ate
+
+    # --- "Author: Book Title. (City: Publisher, Year. Pp. N.)" (Review of Politics) ---
+    _paren = _parse_paren_citation(title)
+    if _paren:
+        return _paren
+
+    # --- Full-citation byline: "Title, by Author. Publisher, City, Year. pp." ---
+    # New Blackfriars and several other journals deposit the whole review header
+    # as the Crossref title. Gated on an imprint signature so ordinary titles are
+    # never touched; runs after the specialised citation parsers but ahead of the
+    # looser ones, which otherwise read the
+    # publisher as the author on these records (found 2026-08-31).
+    if re.search(r'\bpp\b|\u00a3\s?\d|\b\d+s\.\s|\bPress\b|\bPublish', title, re.I):
+        _cit = parse_citation_byline(re.sub(r'<[^>]+>', '', title))
+        if _cit:
+            _head = dict(_cit[0])
+            if len(_cit) > 1:
+                _head['extra_books'] = _cit[1:]
+            return _head
 
     # --- Format SUB-A: Subtitle contains "Author: Title. City: Publisher, Year" (Metascience) ---
     if subtitle:
@@ -170,6 +857,32 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
                             'needs_doi_scrape': False,
                             'format': 'book_review_colon',
                         }
+        # "<Title>, by <Author>" — Sage's usual shape once the duplicated
+        # citation is collapsed. Try it before falling back to title-only,
+        # which would otherwise swallow the byline into book_title.
+        by_m = re.match(
+            r"^(.{4,}?)\s*,\s*by\s+([A-ZÀ-Þ][^,]{2,40}(?:,\s*[A-ZÀ-Þ][\w.'-]{1,30})?)$",
+            remainder, re.I)
+        if by_m:
+            cand_title = by_m.group(1).strip().rstrip('.,;')
+            cand_author = by_m.group(2).strip().rstrip('.,;')
+            # "Theuns, Tom" -> "Tom Theuns"
+            if cand_author.count(',') == 1:
+                _l, _f = [x.strip() for x in cand_author.split(',', 1)]
+                if _l and _f and len(_f.split()) <= 2:
+                    cand_author = f"{_f} {_l}"
+            if _looks_like_author_name(cand_author) and len(cand_title) > 3:
+                first, last, has_multiple = _extract_first_author(cand_author)
+                if last:
+                    return {
+                        'book_title': cand_title,
+                        'book_author_first': first,
+                        'book_author_last': last,
+                        'is_edited_volume': False,
+                        'has_multiple_authors': has_multiple,
+                        'needs_doi_scrape': False,
+                        'format': 'book_review_colon_by',
+                    }
         # No author found — if remainder has italic tags or "Author, Title" pattern,
         # let other formats (italic handler, Format N) try after prefix stripping
         if remainder and ('<i>' in remainder or '<em>' in remainder):
@@ -207,6 +920,33 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
                     'needs_doi_scrape': False,
                     'format': 'review_of_by',
                 }
+        # "Review of Title, ed(s). Editor(s)" — editors are the volume's authors
+        # (EiP audit 2026-07-19: these previously landed whole in book_title)
+        ed_match = re.match(r'^(.+?),\s+[Ee]ds?\.\s+(.+?)$', remainder)
+        if ed_match:
+            book_title = ed_match.group(1).strip().rstrip('.')
+            editor_str = ed_match.group(2).strip().rstrip('.')
+            # Multi-editor lists ("A, B and C") fail the whole-string name
+            # check; validate on the first name-segment instead.
+            _first_seg = re.split(r',\s+|\s+and\s+', editor_str)[0].strip()
+            if _looks_like_author_name(editor_str) or _looks_like_author_name(_first_seg):
+                if re.search(r',|\band\b', editor_str):
+                    # Multi-editor: DB convention keeps the joined list in the
+                    # first-name field with the final surname split off.
+                    first, _, last = editor_str.rpartition(' ')
+                    has_multiple = True
+                else:
+                    first, last, has_multiple = _extract_first_author(editor_str)
+                if book_title and last:
+                    return {
+                        'book_title': book_title,
+                        'book_author_first': first,
+                        'book_author_last': last,
+                        'is_edited_volume': True,
+                        'has_multiple_authors': has_multiple,
+                        'needs_doi_scrape': False,
+                        'format': 'review_of_eds',
+                    }
         # Title-only: "Review of Title"
         clean = re.sub(r'<[^>]+>', '', remainder).strip().rstrip('.')
         if clean and len(clean) > 3:
@@ -818,9 +1558,24 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     # --- Format O: "Author: Title" or "Author. Title" (Environmental Ethics format) ---
     # Also handles "Author, eds. Title" and "Author, ed.: Title"
     # Priority: ed(s). pattern first, then ". " split, then ": " split, then ", Title"
+    #
+    # Journal gate: some journals never use "Author: Title" — their reviews all
+    # carry an explicit "Review of ..." prefix, so a bare "X: Y" title reaching
+    # this point is a book title (or a mis-admitted article), and colon-splitting
+    # it garbles the record (EiP audit 2026-07-19: "Silent Parties: A Problem
+    # for Liberalism?" -> author "Silent Parties"). Skip O-formats for them;
+    # falling through to title-only/None is safer than a wrong split.
+    # (O-4 "Title, by Author" stays available — EiP does use that.)
+    _no_author_colon = {'essays in philosophy'}
+    _container = ''
+    if crossref_data:
+        _ct = crossref_data.get('container-title') or []
+        _container = (_ct[0] if isinstance(_ct, list) and _ct else str(_ct)).lower()
+    _skip_author_split = _container in _no_author_colon
 
     # O-1: "Author, ed(s). Title" or "Author, ed(s).: Title"
-    ee_eds_match = re.match(r'^(.+?),\s*eds?\.\s*:?\s*(.+)', stripped)
+    ee_eds_match = None if _skip_author_split else re.match(
+        r'^(.+?),\s*eds?\.\s*:?\s*(.+)', stripped)
     if ee_eds_match:
         author_part = ee_eds_match.group(1).strip()
         title_part = ee_eds_match.group(2).strip()
@@ -838,7 +1593,8 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
                 }
 
     # O-2: "Author. Title" (period separator — author ends with surname 3+ chars)
-    dot_splits = [(m.start(), m.end()) for m in re.finditer(r'\.\s+', stripped)]
+    dot_splits = [] if _skip_author_split else [
+        (m.start(), m.end()) for m in re.finditer(r'\.\s+', stripped)]
     for ds_start, ds_end in dot_splits:
         cand_author = stripped[:ds_start].strip()
         cand_title = stripped[ds_end:].strip()
@@ -863,7 +1619,8 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
         break  # Only try first valid split
 
     # O-3: "Author: Title" (colon separator — author is a name, not a book title)
-    ee_colon_match = re.match(r'^(.+?):\s+(.+)', stripped)
+    ee_colon_match = None if _skip_author_split else re.match(
+        r'^(.+?):\s+(.+)', stripped)
     if ee_colon_match:
         cand_author = ee_colon_match.group(1).strip()
         cand_title = ee_colon_match.group(2).strip()
@@ -873,7 +1630,11 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
         # "to", "for", "the", etc. unless they're name particles like "de"/"von".
         _function_words = {'the', 'a', 'an', 'of', 'on', 'in', 'for', 'and', 'to',
                            'from', 'with', 'at', 'by', 'or', 'nor', 'but', 'is',
-                           'are', 'was', 'not', 'no', 'its', 'their', 'our', 'all'}
+                           'are', 'was', 'not', 'no', 'its', 'their', 'our', 'all',
+                           'about', 'against', 'between', 'beyond', 'toward',
+                           'towards', 'through', 'after', 'before', 'under',
+                           'over', 'into', 'upon', 'without', 'within', 'since',
+                           'during', 'how', 'why', 'what', 'when', 'where'}
         cand_lower = {w.lower() for w in cand_author.split()}
         has_function_word = bool(cand_lower & _function_words)
         if (_looks_like_author_name(cand_author) and 2 <= len(cand_author.split()) <= 6
@@ -987,6 +1748,14 @@ def _looks_like_author_name(text: str) -> bool:
         # Require at least 2 words (first + last name). Single-word "names"
         # like "Convention", "Pragmaticism", "Logicians" are almost always
         # title fragments, not author names.
+        return False
+
+    # No person's name starts with "The"/"An" — but plenty of book titles do
+    # ("The Cambridge Companion to Augustine's Sermons" once parsed as author
+    # "The Cambridge Companion to" / title "Sermons"). Bare "A" is deliberately
+    # NOT rejected here: it is a common leading initial (A. W. Moore, A. A.
+    # Long, A. Rupert Hall).
+    if words[0].lower().rstrip('.,') in {'the', 'an'}:
         return False
 
     # Author names are short and mostly capitalized words
@@ -1192,6 +1961,16 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
                 if len(post_plain) < 5 and tag_ratio > 0.25:
                     return True
     if '(review)' in title:
+        return True
+
+    # Full citation signature: "…, by Author … <year>. … NNN pp." — a title
+    # carrying an author byline plus year AND page count is a review citation
+    # in any journal (BEQ switched to this style in 2025; its italic_only mode
+    # was silently skipping them). Active in every detection mode: article
+    # titles essentially never contain this triple.
+    if re.search(r',\s+by\s+[A-ZÀ-Þ]', raw_title_for_tags) \
+            and re.search(r'\b(?:19|20)\d{2}\b', raw_title_for_tags) \
+            and re.search(r'\b\d+\s*pp\b', raw_title_for_tags):
         return True
 
     indicators = ['book review', 'book reviews', 'review of', 'reviewed work',

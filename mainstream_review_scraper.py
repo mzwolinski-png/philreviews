@@ -61,6 +61,10 @@ DOMAIN_TO_VENUE = {
     "thenation.com": ("The Nation", "Open"),
     "theatlantic.com": ("The Atlantic", "Restricted"),
     "australianbookreview.com.au": ("Australian Book Review", "Open"),
+    "reason.com": ("Reason", "Open"),
+    "jacobin.com": ("Jacobin", "Open"),
+    "liberalcurrents.com": ("Liberal Currents", "Open"),
+    "libertarianism.org": ("Libertarianism.org", "Open"),
 }
 
 # Venue names already in the DB (from Daily Nous) that count as "mainstream"
@@ -76,6 +80,19 @@ GENERIC_TITLES = {
 
 # Minimum significant words for a title to be searchable
 MIN_TITLE_WORDS = 3
+
+# Books whose review history in our DB reaches back further than this are
+# classics/perennials. Mainstream hits on them are frequently essays ABOUT the
+# work, or reviews of some OTHER book on the same thinker — on 2026-08-09
+# Spinoza's Tractatus (reviewed here since 1974) collected an NYRB essay on
+# Matthew Stewart, another on Yovel, a Literary Review piece on a Spinoza
+# biography, and a 1907 NYT notice of Max Stirner.
+#
+# We deliberately do NOT skip these books: those articles are real philosophy
+# reviews and worth having — the 1907 Stirner notice is a genuine find. The
+# failure was ATTRIBUTION, not discovery. So old books are still searched, but
+# their hits are marked for attribution review rather than trusted outright.
+MAINSTREAM_OLD_BOOK_YEARS = 20
 
 
 # ── State management ──────────────────────────────────────────────
@@ -128,22 +145,48 @@ def get_significant_words(title):
     return [w for w in re.findall(r"[a-zA-Z]{3,}", title)]
 
 
-def get_candidate_books(min_reviews=3):
-    """Query DB for books with enough academic reviews to search mainstream."""
+def get_candidate_books(min_reviews=3, active_since_days=None):
+    """Query DB for books with enough academic reviews to search mainstream.
+
+    Args:
+        min_reviews: Minimum number of academic reviews a book must have.
+        active_since_days: If set, only include books where at least one review
+            was added to the DB within the last N days. Used for incremental
+            weekly scans to limit API quota.
+    """
     conn = sqlite3.connect(db.DB_PATH)
     conn.row_factory = sqlite3.Row
 
-    # Get books with min_reviews+ reviews
-    rows = conn.execute("""
-        SELECT book_title, book_author_first_name, book_author_last_name,
-               COUNT(*) as cnt
-        FROM reviews
-        WHERE book_title IS NOT NULL AND book_title != ''
-          AND book_author_last_name IS NOT NULL AND book_author_last_name != ''
-        GROUP BY LOWER(book_title), LOWER(book_author_last_name)
-        HAVING COUNT(*) >= ?
-        ORDER BY cnt DESC
-    """, (min_reviews,)).fetchall()
+    # Get books with min_reviews+ reviews, optionally filtered by recent activity
+    if active_since_days:
+        rows = conn.execute("""
+            SELECT book_title, book_author_first_name, book_author_last_name,
+                   COUNT(*) as cnt,
+                   MIN(NULLIF(SUBSTR(publication_date, 1, 4), '')) as first_year
+            FROM reviews
+            WHERE book_title IS NOT NULL AND book_title != ''
+              AND book_author_last_name IS NOT NULL AND book_author_last_name != ''
+              AND LOWER(book_title) || '|' || LOWER(book_author_last_name) IN (
+                  SELECT LOWER(book_title) || '|' || LOWER(book_author_last_name)
+                  FROM reviews
+                  WHERE created_at >= datetime('now', '-' || ? || ' days')
+              )
+            GROUP BY LOWER(book_title), LOWER(book_author_last_name)
+            HAVING COUNT(*) >= ?
+            ORDER BY cnt DESC
+        """, (int(active_since_days), min_reviews)).fetchall()
+    else:
+        rows = conn.execute("""
+            SELECT book_title, book_author_first_name, book_author_last_name,
+                   COUNT(*) as cnt,
+                   MIN(NULLIF(SUBSTR(publication_date, 1, 4), '')) as first_year
+            FROM reviews
+            WHERE book_title IS NOT NULL AND book_title != ''
+              AND book_author_last_name IS NOT NULL AND book_author_last_name != ''
+            GROUP BY LOWER(book_title), LOWER(book_author_last_name)
+            HAVING COUNT(*) >= ?
+            ORDER BY cnt DESC
+        """, (min_reviews,)).fetchall()
 
     # Get existing mainstream venue coverage to exclude
     existing_mainstream = set()
@@ -175,6 +218,12 @@ def get_candidate_books(min_reviews=3):
         if len(sig_words) < MIN_TITLE_WORDS:
             continue
 
+        # Classic/perennial? Still searched, but hits need attribution review.
+        fy = row["first_year"] if "first_year" in row.keys() else None
+        needs_attr_check = bool(
+            fy and fy.isdigit()
+            and datetime.now().year - int(fy) > MAINSTREAM_OLD_BOOK_YEARS)
+
         # Skip books that already have mainstream coverage
         book_key = f"{title.lower()}|{last.lower()}"
         if book_key in existing_mainstream:
@@ -186,6 +235,7 @@ def get_candidate_books(min_reviews=3):
             "book_author_last_name": last,
             "review_count": row["cnt"],
             "key": book_key,
+            "needs_attribution_check": needs_attr_check,
         })
 
     return candidates
@@ -267,6 +317,19 @@ def verify_result(result_title, result_snippet, result_url, book_title, author_l
     # Author last name must appear
     if author_last_lower not in combined:
         return False
+
+    # Reject if the byline matches the book author — this is the author's
+    # own article, not a review of their book. Catches the major April 12
+    # false-positive pattern (Zaretsky writing about Camus etc.)
+    byline_first, byline_last = extract_reviewer_from_snippet(result_snippet)
+    if byline_last and byline_last.lower() == author_last_lower:
+        return False
+    # URL slugs sometimes encode the byline (e.g. lareviewofbooks.org/article/...-by-robert-zaretsky)
+    slug_byline_m = re.search(r'/(?:article|story|post)/[^/]*?-by-([a-z][a-z-]+)$', result_url.lower())
+    if slug_byline_m:
+        slug_byline_last = slug_byline_m.group(1).split('-')[-1]
+        if slug_byline_last == author_last_lower:
+            return False
 
     # Tier 2: Title word matching
     sig_words = get_significant_words(book_title)
@@ -988,7 +1051,8 @@ class MainstreamReviewScraper(BaseScraper):
         return verified
 
     def run(self, min_reviews=3, limit=None, dry_run=False,
-            guardian_only=False, nyt_only=False, brave_only=False):
+            guardian_only=False, nyt_only=False, brave_only=False,
+            active_since_days=None):
         """Run the mainstream review scan.
 
         Args:
@@ -998,6 +1062,8 @@ class MainstreamReviewScraper(BaseScraper):
             guardian_only: If True, only run Guardian.
             nyt_only: If True, only run NYT.
             brave_only: If True, only run Brave Search.
+            active_since_days: Only scan books with recent review activity
+                (for incremental weekly runs).
         """
         if guardian_only and not self.guardian:
             self.log("Guardian API key not configured — nothing to do", "ERROR")
@@ -1015,8 +1081,9 @@ class MainstreamReviewScraper(BaseScraper):
             self.log("No API keys configured", "ERROR")
             return self.stats
 
-        self.log(f"Fetching candidate books (min {min_reviews} reviews)...")
-        candidates = get_candidate_books(min_reviews)
+        filter_desc = f" (active in last {active_since_days}d)" if active_since_days else ""
+        self.log(f"Fetching candidate books (min {min_reviews} reviews){filter_desc}...")
+        candidates = get_candidate_books(min_reviews, active_since_days=active_since_days)
         self.log(f"Found {len(candidates)} candidate books")
 
         all_reviews = []
@@ -1302,7 +1369,14 @@ class MainstreamReviewScraper(BaseScraper):
         return self.stats
 
     def _upload(self, reviews):
-        """Deduplicate and insert reviews into the database."""
+        """Deduplicate and insert reviews into the database.
+
+        Hits on classic/perennial books get a review_flags note asking for an
+        attribution check: the article is usually a real philosophy review, but
+        possibly of a DIFFERENT book than the one we searched for (see
+        MAINSTREAM_OLD_BOOK_YEARS). Flagging beats discarding — that is how the
+        1907 NYT notice of Stirner's "The Ego and His Own" was nearly lost.
+        """
         new_reviews = []
         for r in reviews:
             if not db.review_link_exists(r["review_link"]):
@@ -1312,8 +1386,34 @@ class MainstreamReviewScraper(BaseScraper):
 
         if new_reviews:
             db.insert_reviews(new_reviews)
+            self._flag_attribution(new_reviews)
         self.stats["uploaded"] = len(new_reviews)
         return len(new_reviews)
+
+    def _flag_attribution(self, new_reviews):
+        """Leave a note on hits attributed to classic/perennial books."""
+        flagged = [r for r in new_reviews if r.get("needs_attribution_check")]
+        if not flagged:
+            return
+        try:
+            with db._connect() as conn:
+                for r in flagged:
+                    row = conn.execute(
+                        "SELECT id FROM reviews WHERE review_link = ?",
+                        (r["review_link"],)).fetchone()
+                    if not row:
+                        continue
+                    conn.execute(
+                        "INSERT INTO review_flags (review_id, note, resolved) VALUES (?,?,0)",
+                        (row[0],
+                         f'Attribution check: found by searching for "{r["book_title"]}" '
+                         f'({r["book_author_last_name"]}), a book we have reviewed since '
+                         f'before {datetime.now().year - MAINSTREAM_OLD_BOOK_YEARS}. '
+                         f'Confirm this reviews THAT book — mainstream pieces on classics '
+                         f'are often reviews of a different book about the same thinker.'))
+            self.log(f"  {len(flagged)} hit(s) flagged for attribution check")
+        except Exception:
+            self.log("  (could not write attribution flags)", "WARNING")
 
     def _print_results(self, reviews):
         """Print found reviews for dry-run inspection."""
@@ -1383,6 +1483,10 @@ def main():
         "--brave-only", action="store_true",
         help="Use Brave Search API only",
     )
+    parser.add_argument(
+        "--since-days", type=int, default=None,
+        help="Only scan books with review activity in the last N days (weekly mode)",
+    )
     args = parser.parse_args()
 
     if args.status:
@@ -1429,6 +1533,7 @@ def main():
         guardian_only=args.guardian_only,
         nyt_only=args.nyt_only,
         brave_only=args.brave_only,
+        active_since_days=args.since_days,
     )
 
 

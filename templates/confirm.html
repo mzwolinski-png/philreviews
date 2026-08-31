@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Confirm your {{ kind }} &mdash; PhilReviews</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header class="site-header">
+    <a href="/" class="site-logo"><img src="{{ url_for('static', filename='logo.svg') }}" alt="PhilReviews" height="44"></a>
+</header>
+
+<div class="container" style="text-align: center; padding: 4rem 2rem;">
+    <h2 style="color: #1a3a5c;">One last step</h2>
+    {% if kind == 'alert' %}
+        <p>Click below to confirm your review alert. You&rsquo;ll get an email
+           whenever we index a new review that matches it.</p>
+    {% else %}
+        <p>Click below to confirm your subscription to the weekly digest of
+           newly published philosophy book reviews.</p>
+    {% endif %}
+
+    <form method="POST" action="{{ action_url }}" style="margin-top: 1.75rem;">
+        <input type="hidden" name="token" value="{{ token }}">
+        <button type="submit"
+                style="padding: 0.6rem 1.6rem; background: #1a3a5c; color: #fff;
+                       border: none; border-radius: 4px; font-family: inherit;
+                       font-size: 1rem; font-weight: 600; cursor: pointer;">
+            Yes, confirm
+        </button>
+    </form>
+
+    <p style="margin-top: 1.5rem; font-size: 0.85rem; color: #4a5a68;">
+        If you didn&rsquo;t request this, just close this page &mdash; nothing
+        will happen.
+    </p>
+    <p style="margin-top: 2rem;"><a href="/" style="color: #1a3a5c;">Back to PhilReviews</a></p>
+</div>
+
+</body>
+</html>

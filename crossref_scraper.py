@@ -39,6 +39,26 @@ from crossref_parsing import (
 
 
 
+# Genuinely-open license markers. Crossref's `license` field is NOT an
+# open-access signal on its own: subscription publishers attach their standard
+# terms-of-use URL there (Cambridge → cambridge.org/core/terms, Wiley →
+# onlinelibrary.wiley.com/terms-and-conditions, Springer → text-and-data-mining
+# terms). Treating any license as Open mismarked tens of thousands of paywalled
+# reviews as free (found 2026-07-31 — Cambridge RoP reviews, unpaywall is_oa=False).
+_OPEN_LICENSE_RE = re.compile(
+    r'creativecommons\.org|/licenses/by|\bcc-?by\b|open-?access|'
+    r'creative-?commons|publicdomain|/oa\b', re.I)
+
+
+def _access_type_from_license(crossref_item: dict) -> str:
+    """'Open' only when a license URL actually denotes open access."""
+    for lic in (crossref_item.get('license') or []):
+        url = (lic.get('URL') or '') if isinstance(lic, dict) else str(lic)
+        if _OPEN_LICENSE_RE.search(url):
+            return 'Open'
+    return 'Restricted'
+
+
 # --- Main scraper class ---
 
 class CrossrefReviewScraper(BaseScraper):
@@ -199,7 +219,7 @@ class CrossrefReviewScraper(BaseScraper):
             abstract = re.sub(r'<[^>]+>', '', abstract).strip()
 
         # Access type
-        access_type = 'Open' if crossref_item.get('license') else 'Restricted'
+        access_type = _access_type_from_license(crossref_item)
 
         # Parse the title to get book info
         parsed = parse_review_title(title, subtitle, crossref_item)
@@ -220,6 +240,10 @@ class CrossrefReviewScraper(BaseScraper):
             'Access Type': access_type,
             'DOI': doi,
         }
+
+        # A combined review covers several books; the extras become #bookN rows
+        if parsed.get('extra_books'):
+            record['_extra_books'] = parsed['extra_books']
 
         # Track if we need DOI scraping
         if parsed.get('needs_doi_scrape'):
@@ -375,6 +399,59 @@ class CrossrefReviewScraper(BaseScraper):
             self.log(f"  OpenAlex lookup error for '{search_title}': {e}", "WARNING")
             return None
 
+    def lookup_book_author_openlibrary(self, book_title: str, review_year: int = 0) -> Optional[Tuple[str, str]]:
+        """
+        Open Library fallback for books OpenAlex misses (common for recent
+        university-press titles, e.g. American Political Thought's review
+        subjects). Only accepts an exact normalized-title match, preferring
+        editions published at or before the review year. Returns
+        (first_name, last_name) with multi-author names joined per DB
+        convention ('A, B and C' -> all-but-last-surname / last surname).
+        """
+        main = (book_title or '').split(':')[0].strip().strip('"“”')
+        if len(main) < 8:
+            return None
+        try:
+            norm = lambda s: re.sub(r'[^a-z0-9 ]', '', (s or '').lower()).strip()
+            resp = self.session.get(
+                'https://openlibrary.org/search.json',
+                params={'title': main, 'limit': 5,
+                        'fields': 'title,author_name,first_publish_year'},
+                timeout=15,
+            )
+            if resp.status_code != 200:
+                return None
+            want = norm(main)
+            best = None
+            for doc in resp.json().get('docs', []):
+                if norm(doc.get('title')) != want:
+                    continue
+                names = [n for n in (doc.get('author_name') or []) if n]
+                if not (0 < len(names) <= 6):
+                    continue
+                oly = doc.get('first_publish_year') or 0
+                # Books are reviewed after they appear; skip later-published
+                # same-title matches when we know the review year.
+                if review_year and oly and oly > review_year + 1:
+                    continue
+                penalty = (review_year - oly) if (review_year and oly) else 50
+                if best is None or penalty < best[0]:
+                    best = (penalty, names)
+            if not best:
+                return None
+            names = best[1]
+            if len(names) == 1:
+                joined = names[0]
+            elif len(names) == 2:
+                joined = f"{names[0]} and {names[1]}"
+            else:
+                joined = ', '.join(names[:-1]) + ' and ' + names[-1]
+            first, _, last = joined.rpartition(' ')
+            return (first, last) if last else None
+        except Exception as e:
+            self.log(f"  Open Library lookup error for '{main}': {e}", "WARNING")
+            return None
+
     def enrich_with_openalex(self, records: List[Dict]) -> None:
         """
         Enrich records that have a book title but no author via OpenAlex.
@@ -389,6 +466,7 @@ class CrossrefReviewScraper(BaseScraper):
 
         self.log(f"Looking up {len(needs_author)} book authors via OpenAlex...")
         found = 0
+        ol_found = 0
         consecutive_failures = 0
         max_consecutive_failures = 30
         for i, record in enumerate(needs_author):
@@ -403,11 +481,20 @@ class CrossrefReviewScraper(BaseScraper):
                     review_year = int(pub_date[:4])
                 except ValueError:
                     pass
-            author = self.lookup_book_author(record['Book Title'], review_year=review_year)
+            oa_author = self.lookup_book_author(record['Book Title'], review_year=review_year)
+            # Open Library fallback: OpenAlex often lacks recent university-press
+            # books (APT audit 2026-07-19 — OL had 3/4 that OpenAlex missed).
+            author = oa_author or self.lookup_book_author_openlibrary(
+                record['Book Title'], review_year=review_year)
             if author:
                 record['Book Author First Name'] = author[0]
                 record['Book Author Last Name'] = author[1]
                 found += 1
+                if not oa_author:
+                    ol_found += 1
+            # The circuit breaker tracks OpenAlex specifically (rate-limit
+            # detector), so OL successes don't reset it.
+            if oa_author:
                 consecutive_failures = 0
             else:
                 consecutive_failures += 1
@@ -417,8 +504,10 @@ class CrossrefReviewScraper(BaseScraper):
 
             time.sleep(0.2)  # Rate limit
 
-        self.log(f"  OpenAlex enrichment: {found}/{len(needs_author)} authors found")
+        self.log(f"  OpenAlex enrichment: {found}/{len(needs_author)} authors found"
+                 + (f" ({ol_found} via Open Library fallback)" if ol_found else ""))
         self.stats['openalex_found'] = found
+        self.stats['openlibrary_found'] = ol_found
 
     # --- Semantic Scholar enrichment (Category D: generic "Book Review" titles) ---
 
@@ -602,6 +691,21 @@ class CrossrefReviewScraper(BaseScraper):
             # Remove internal metadata keys
             clean = {k: v for k, v in record.items() if not k.startswith('_') and v}
             new_records.append(clean)
+            # One review of several books gets one row per book, following the
+            # existing "<link>#bookN" / no-DOI convention.
+            for n, extra in enumerate(record.get('_extra_books') or [], start=2):
+                link = f"{record.get('Review Link', '')}#book{n}"
+                if db.review_link_exists(link):
+                    continue
+                co = dict(clean)
+                co.update({
+                    'Book Title': _normalize(extra['book_title']),
+                    'Book Author First Name': _normalize(extra['book_author_first']),
+                    'Book Author Last Name': _normalize(extra['book_author_last']),
+                    'Review Link': link,
+                })
+                co.pop('DOI', None)
+                new_records.append(co)
 
         if not new_records:
             return 0
@@ -886,7 +990,7 @@ class CrossrefReviewScraper(BaseScraper):
                     if review_link and not review_link.startswith('http'):
                         review_link = 'https://' + review_link
 
-                    access_type = 'Open' if item.get('license') else 'Restricted'
+                    access_type = _access_type_from_license(item)
 
                     # For precis entries, extract book author from title
                     book_author_first = ''

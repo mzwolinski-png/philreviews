@@ -667,6 +667,14 @@ JOURNALS = {
     'Teaching Philosophy': {
         'crossref_parseable': True, 'openalex_enrichable': True,
     },
+    # ── PDCNET journal added via Crossref survey (2026-07-18) ────
+    # "Review of <Title>, by <Author>" format — default 'all' mode catches "review of";
+    # validated clean. (Women's Philosophy Review + Berkeley Studies were also surveyed
+    # but their review-title formats — "<Reviewer> on <Title> by <Author>" and
+    # "Review: <Title> <Author>" — don't parse cleanly, so they were NOT enrolled.)
+    'Essays in Philosophy': {
+        'crossref_parseable': True, 'openalex_enrichable': True,
+    },
     # Top generalist — "Review of <i>Title</i>" or "Review of Author, Title" format
     'Philosophy and Phenomenological Research': {
         'crossref_parseable': True, 'openalex_enrichable': True,

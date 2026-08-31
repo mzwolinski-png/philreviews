@@ -307,6 +307,9 @@ def run_tir(dry_run=False):
         from tir_scraper import TIRScraper
         scraper = TIRScraper()
         stats = scraper.run(dry_run=dry_run)  # last 4 issues
+        if stats and stats.get("blocked"):
+            log.warning("TIR skipped: independent.org is behind a Cloudflare "
+                        "challenge (no Crossref DOIs exist as a fallback)")
         return stats
     except Exception:
         log.exception("TIR scraper failed")
@@ -475,7 +478,12 @@ def main():
         crb_stats = run_crb(dry_run=args.dry_run)
         quillette_stats = run_quillette(dry_run=args.dry_run)
         apa_stats = run_apa_blog(dry_run=args.dry_run)
-        tir_stats = run_tir(dry_run=args.dry_run)
+        # TIR retired 2026-08-30: independent.org sits behind a Cloudflare
+        # challenge sitewide and TIR deposits no Crossref DOIs, so there is no
+        # automated route in. It is quarterly (~22 reviews/issue) and Matt gets
+        # its TOC alerts, so those four emails a year replace the scraper.
+        # run_tir() and tir_scraper.py are kept for if the block is ever lifted.
+        tir_stats = None
         rp_stats = run_radical_philosophy(dry_run=args.dry_run)
         mm_stats = run_mm(dry_run=args.dry_run)
         atlantic_stats = run_atlantic(dry_run=args.dry_run)
@@ -603,7 +611,7 @@ def main():
             ("Unpopulist", unpop_stats), ("Philosophy Now", phil_now_stats),
             ("Law & Liberty", ll_stats), ("Public Discourse", pd_stats),
             ("BJPS", bjps_stats), ("Syndicate", syndicate_stats), ("CRB", crb_stats),
-            ("Quillette", quillette_stats), ("APA Blog", apa_stats), ("TIR", tir_stats),
+            ("Quillette", quillette_stats), ("APA Blog", apa_stats),
             ("Radical Philosophy", rp_stats), ("Markets & Morality", mm_stats),
             ("Atlantic", atlantic_stats),
         ]
@@ -639,6 +647,7 @@ def main():
     log.info(f"Net new reviews added: {net_new}")
     tier1_removed = 0
     reconcile_report_path = None
+    autofix = None
 
     # --- Post-processing ---
     if not args.dry_run and net_new > 0:
@@ -693,6 +702,17 @@ def main():
                 log.info(f"Tier 1 filter: removed {tier1_removed}/{t1['checked']} reviews")
         except Exception:
             log.exception("Tier 1 filter failed")
+
+        # LLM auto-fix: repair suspect entries (garbled title/author fields
+        # the deterministic pass missed) before sync + report, so the admin
+        # email lists what was changed instead of asking for manual fixes.
+        # Only high-confidence fixes are applied; the rest stay flagged.
+        autofix = None
+        try:
+            from auto_fix_suspects import auto_fix_recent
+            autofix = auto_fix_recent(since=start_utc)
+        except Exception:
+            log.exception("Auto-fix pass failed")
 
         # Title reconciliation: auto-apply Category A (pure case/punctuation
         # variants — cannot merge distinct works), and surface Category B
@@ -807,24 +827,41 @@ def main():
                 f"Title merges to review: file://{reconcile_report_path}")
         detail_lines.append(f"Subscribers: {_get_subscriber_count()}")
 
-        # Safety net: flag any newly added entries whose author/title fields still
-        # look garbled or non-review after the corrective integrity pass, so they
-        # can be spot-checked before they linger in production.
+        # Suspect entries: the auto-fix pass (before sync) repaired the
+        # high-confidence garbles; report what changed for spot-checking and
+        # list only the genuinely ambiguous leftovers for manual review.
         try:
-            from integrity_check import flag_suspect_recent
-            flagged = flag_suspect_recent(since=start_utc)
-            if flagged['count']:
+            if autofix and autofix['fixed']:
+                n = len(autofix['fixed'])
                 detail_lines.append(
-                    f"⚠ {flagged['count']} suspect entr"
-                    f"{'y' if flagged['count'] == 1 else 'ies'} needing review:")
-                for s in flagged['suspects']:
+                    f"🔧 {n} suspect entr{'y' if n == 1 else 'ies'} "
+                    f"auto-fixed (spot-check):")
+                for f in autofix['fixed']:
+                    if f['old_title'] != f['new_title']:
+                        detail_lines.append(
+                            f"   [{f['id']}] {f['source']}: title "
+                            f"\"{f['old_title'][:45]}\" -> \"{f['new_title'][:45]}\"")
+                    if f['old_author'] != f['new_author']:
+                        detail_lines.append(
+                            f"   [{f['id']}] {f['source']}: author "
+                            f"\"{f['old_author'][:40]}\" -> \"{f['new_author'][:40]}\"")
+            remaining = autofix['remaining'] if autofix else None
+            if remaining is None:
+                # Auto-fix pass didn't run — fall back to flag-only behavior
+                from integrity_check import flag_suspect_recent
+                remaining = flag_suspect_recent(since=start_utc)['suspects']
+            if remaining:
+                n = len(remaining)
+                detail_lines.append(
+                    f"⚠ {n} suspect entr{'y' if n == 1 else 'ies'} needing review:")
+                for s in remaining:
                     detail_lines.append(
                         f"   [{s['id']}] {s['source']}: \"{s['title'][:55]}\" "
-                        f"/ \"{s['author']}\"  ({', '.join(s['reasons'])})")
+                        f"/ \"{s['author']}\"  ({s.get('note') or ', '.join(s['reasons'])})")
                     log.warning(f"SUSPECT [{s['id']}] {s['source']}: "
                                 f"{s['title'][:60]!r} / {s['author']!r} <- {s['reasons']}")
         except Exception:
-            log.exception("Suspect-entry flagging failed")
+            log.exception("Suspect-entry reporting failed")
 
         # Interactive review queue: new entries are left at reviewed=0 for
         # Keep/Flag/Reject triage in the review app.
@@ -900,6 +937,16 @@ def main():
             log.exception("Failed to send email notification")
 
     # Note: subscriber digest runs separately on Monday 8 AM via LaunchAgent
+
+    # Per-book / per-author follow alerts: match this run's new entries
+    # against verified follows and email the followers. Runs after the sync
+    # so alert links point at live data. Quiet weeks send nothing.
+    if not args.dry_run and net_new > 0:
+        try:
+            from send_follow_alerts import send_follow_alerts
+            send_follow_alerts(since_utc=start_utc)
+        except Exception:
+            log.exception("Follow alerts failed")
 
 
 if __name__ == "__main__":

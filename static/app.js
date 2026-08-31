@@ -629,7 +629,8 @@
             : (r.type === "symposium" ? "Read Contribution" : "Read Review");
           html += '<a class="read-link" href="' + esc(r.link) + '" target="_blank" rel="noopener">' + readLabel + ' &rarr;</a> ';
         }
-        if (r.title) html += '<a class="read-link find-book-link" tabindex="0" role="link" data-title="' + esc(r.title) + '">Other reviews of this book &rarr;</a>';
+        if (r.title) html += '<a class="read-link find-book-link" tabindex="0" role="link" data-title="' + esc(r.title) + '">Other reviews of this book &rarr;</a> ';
+        if (r.title) html += '<a class="read-link follow-link" tabindex="0" role="link" data-title="' + esc(r.title) + '" data-author="' + esc(r.author || '') + '">&#128276; Alert me about new reviews</a>';
         if (r.type === "symposium" && r.peers && r.peers.length > 0) {
           html += '<div class="symposium-peers"><strong>Other contributions:</strong><ul>';
           r.peers.forEach(function(p) {
@@ -683,6 +684,63 @@
         state.expandedId = null;
         syncToUrl();
         fetchAndRender();
+      });
+    });
+
+    els.tbody.querySelectorAll(".follow-link").forEach((a) => {
+      onActivate(a, (e) => {
+        e.stopPropagation();
+        const holder = a.parentNode;
+        const existing = holder.querySelector(".follow-form");
+        if (existing) { existing.remove(); return; }
+        const title = a.dataset.title;
+        const author = a.dataset.author;
+        const openedAt = Date.now();
+        const div = document.createElement("div");
+        div.className = "follow-form";
+        let opts = '<label><input type="radio" name="ftype" value="book" checked> New reviews of <em>' + esc(title) + "</em></label>";
+        if (author) opts += '<label><input type="radio" name="ftype" value="author"> Any new review of a book by ' + esc(author) + "</label>";
+        div.innerHTML =
+          '<p class="follow-blurb">Get an email when we index new reviews. ' +
+          (author ? "(Authors: this is the easiest way to hear about reviews of your own books.)" : "") + "</p>" +
+          opts +
+          '<div class="follow-row"><input type="email" placeholder="you@example.edu" required> ' +
+          '<button type="button">Alert me</button></div>' +
+          '<div class="hp-field" aria-hidden="true"><label>Website' +
+          '<input type="text" class="hp" tabindex="-1" autocomplete="off"></label></div>' +
+          '<p class="follow-msg" style="display:none;"></p>';
+        div.addEventListener("click", (ev) => ev.stopPropagation());
+        holder.appendChild(div);
+        const btn = div.querySelector("button");
+        const doSubmit = () => {
+          const email = div.querySelector("input[type=email]").value.trim();
+          const ftype = div.querySelector("input[name=ftype]:checked").value;
+          const value = ftype === "book" ? title : author;
+          const msg = div.querySelector(".follow-msg");
+          if (!email) { msg.textContent = "Please enter your email address."; msg.style.display = "block"; return; }
+          const fd = new FormData();
+          fd.append("email", email); fd.append("type", ftype); fd.append("value", value);
+          const hp = div.querySelector(".hp");
+          fd.append("website", hp ? hp.value : "");
+          fd.append("ts", String(openedAt));
+          btn.disabled = true;
+          fetch("/follow", { method: "POST", body: fd })
+            .then((r) => r.json())
+            .then((j) => {
+              msg.textContent = j.message || j.error || "Something went wrong.";
+              msg.style.display = "block";
+              if (j.ok) { div.querySelector(".follow-row").style.display = "none"; }
+              else { btn.disabled = false; }
+              if (j.ok && typeof goatcounter !== "undefined" && goatcounter.count) {
+                goatcounter.count({ path: "follow-" + ftype, event: true });
+              }
+            })
+            .catch(() => { msg.textContent = "Network error — please try again."; msg.style.display = "block"; btn.disabled = false; });
+        };
+        btn.addEventListener("click", doSubmit);
+        div.querySelector("input[type=email]").addEventListener("keydown", (ev) => {
+          if (ev.key === "Enter") { ev.preventDefault(); doSubmit(); }
+        });
       });
     });
 

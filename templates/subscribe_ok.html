@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% if action == 'verified' %}Subscription Confirmed{% else %}Unsubscribed{% endif %} &mdash; PhilReviews</title>
+    <title>{% if action in ('verified', 'follow_verified') %}Confirmed{% else %}Unsubscribed{% endif %} &mdash; PhilReviews</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,6 +20,12 @@
     {% if action == 'verified' %}
         <h2 style="color: #1a3a5c;">Subscription confirmed!</h2>
         <p>You'll receive a weekly digest of newly published philosophy book reviews.</p>
+    {% elif action == 'follow_verified' %}
+        <h2 style="color: #1a3a5c;">Alert confirmed!</h2>
+        <p>We'll email you whenever we index a new review that matches your alert.</p>
+    {% elif action == 'unfollowed' %}
+        <h2 style="color: #1a3a5c;">Alert removed</h2>
+        <p>You won't receive any more alerts for that book or author. Your other alerts and subscriptions, if any, are unchanged.</p>
     {% else %}
         <h2 style="color: #1a3a5c;">You've been unsubscribed</h2>
         <p>You won't receive any more emails from PhilReviews.</p>

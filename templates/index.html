@@ -215,6 +215,11 @@
             <input type="email" name="email" placeholder="your@email.com" required>
             <button type="submit">Subscribe</button>
         </div>
+        <!-- bot traps: humans never see or fill these -->
+        <div class="hp-field" aria-hidden="true">
+            <label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+        </div>
+        <input type="hidden" name="ts" value="">
         <details class="subfield-picker">
             <summary>Filter by subfield (optional)</summary>
             <div class="subfield-checkboxes">
@@ -226,6 +231,11 @@
         </details>
     </form>
     <p id="subscribe-msg" class="subscribe-msg" style="display:none;"></p>
+    <p style="margin-top: 0.9rem; font-size: 0.88rem; color: #4a5a68;">
+        <strong>Written a book?</strong> Search for it above and click
+        &ldquo;&#128276; Alert me about new reviews&rdquo; to get an email whenever
+        a new review of it is published &mdash; no digest subscription needed.
+    </p>
 </div>
 
 <script>
@@ -249,6 +259,10 @@
             }, 500);
         });
     }
+})();
+(function () {
+    var f = document.getElementById('subscribe-form');
+    if (f && f.ts) f.ts.value = Date.now();
 })();
 document.getElementById('subscribe-form').addEventListener('submit', function(e) {
     e.preventDefault();

@@ -44,6 +44,13 @@ TIER1_SOURCES = frozenset([
     # Interdisciplinary humanities journal — mostly literary/cultural/art/film
     # theory, not philosophy. Keep only books already covered elsewhere in the DB.
     "Critical Inquiry",
+    # Utopian studies is dominated by SF/literary criticism (A Clockwork Orange,
+    # Tolkien's Legendarium, Metropolis BFI Film Classics, Robinson Crusoe
+    # sources) with occasional real philosophy. Same treatment as Critical
+    # Inquiry: keep a book only when a philosophy journal reviewed it too.
+    # Added 2026-08-19 at Matt's direction after a TOC alert of ten reviews,
+    # eight of which were literary studies.
+    "Utopian Studies",
 ])
 
 
@@ -140,6 +147,11 @@ STRICT_TITLE_OVERLAP_REQUIRED = frozenset([
     # fields, so author/reviewer-only signals over-admit. Require the actual
     # book to already be covered (Signal 1).
     "Critical Inquiry",
+    # Utopian Studies: same problem, and worse — its book authors carry very
+    # common surnames that collide with philosophers in the reference index
+    # (a Patagonia travel memoir by a "Whitehead" passed via Signal 2, "Oz
+    # Before the Rainbow" via a reviewer). Require Signal 1. Added 2026-08-19.
+    "Utopian Studies",
 ])
 
 

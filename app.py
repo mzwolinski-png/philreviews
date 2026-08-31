@@ -7,7 +7,7 @@ import time
 from collections import defaultdict, deque
 from urllib.parse import quote, quote_plus
 
-from flask import Flask, render_template, request, jsonify, make_response, abort, redirect
+from flask import Flask, render_template, request, jsonify, make_response, abort, redirect, url_for
 from markupsafe import escape
 
 import db
@@ -201,11 +201,48 @@ def old_static(filename):
 
 # --- Subscription endpoints ---
 
+def _looks_automated(form):
+    """Cheap bot checks for the signup forms.
+
+    A flood of ~67 signups/day in Aug 2026 — none ever verified, mostly Gmail
+    addresses with dots sprinkled through the local part — burned 80% of the
+    daily Resend quota on verification emails nobody asked for. Both forms
+    already submit via fetch(), so requiring JS costs real users nothing.
+
+    Returns a short reason string if the submission looks automated, else "".
+    """
+    # 1. Honeypot: a field hidden from humans; only a bot fills it in.
+    if (form.get("website") or "").strip():
+        return "honeypot"
+    # 2. Proof the page ran our JS and a human paused over the form.
+    ts = (form.get("ts") or "").strip()
+    if not ts.isdigit():
+        return "no-js"
+    elapsed = time.time() * 1000 - int(ts)
+    if elapsed < 2000:
+        return "too-fast"
+    if elapsed > 6 * 3600 * 1000:
+        return "stale-form"
+    return ""
+
+
+# Backstop so a flood can never exhaust the mail quota again. Resend's free
+# tier allows 100/day; the digest needs ~25 of those once a week.
+_VERIFY_SEND_CAP_PER_DAY = 40
+
+
 @app.route("/subscribe", methods=["POST"])
 def subscribe():
     email = (request.form.get("email") or "").strip().lower()
     if not _valid_email(email):
         return jsonify({"error": "Valid email required"}), 400
+
+    bot = _looks_automated(request.form)
+    if bot:
+        app.logger.info("subscribe rejected (%s): %s", bot, email)
+        # Same wording as success — don't teach a bot which check caught it.
+        return jsonify({"ok": True, "message":
+                        "Check your email to confirm your subscription."})
 
     # Rate-limit before generating a token / sending mail: max 5 attempts per IP
     # per hour, and per address max 2 verification emails/hour and 5/day.
@@ -228,20 +265,40 @@ def subscribe():
     token = secrets.token_urlsafe(32)
     db.add_subscriber(email, subfields, token)
 
-    # Send verification email
-    try:
-        from notify import send_verification_email
-        send_verification_email(email, token)
-    except Exception:
-        pass  # Email may fail on server (no SMTP creds) — subscriber is still saved
+    # Send verification email (subject to the daily quota backstop)
+    if _rate_limiter.allow("verify_sends_day", _VERIFY_SEND_CAP_PER_DAY, 86400):
+        try:
+            from notify import send_verification_email
+            send_verification_email(email, token)
+        except Exception:
+            pass  # Email may fail on server (no SMTP creds) — subscriber is still saved
+    else:
+        app.logger.warning("daily verification-send cap reached; skipped %s", email)
 
     return jsonify({"ok": True, "message": "Check your email to confirm your subscription. (Check your spam folder if you don't see it, and add updates@philreviews.org to your contacts.)"})
 
 
-@app.route("/verify")
+@app.route("/verify", methods=["GET", "POST"])
 def verify():
-    token = request.args.get("token", "")
-    if token and db.verify_subscriber(token):
+    """Two-step confirmation. A GET only renders a page with a confirm button;
+    the subscription is activated solely by the POST that button submits.
+
+    Why: corporate mail-security scanners fetch every link in an inbound email,
+    which silently completed the old one-click GET flow and produced 'verified'
+    subscribers who never opted in (found 2026-08-04 — e.g. addresses at
+    valvesoftware.com, wsjbuilding.com). Scanners follow links; they do not
+    submit forms.
+    """
+    token = (request.form.get("token") if request.method == "POST"
+             else request.args.get("token", "")) or ""
+    if not token:
+        abort(404)
+    if request.method == "GET":
+        if not db.pending_token_exists(token, "subscriber"):
+            abort(404)
+        return render_template("confirm.html", token=token, kind="subscription",
+                               action_url=url_for("verify"))
+    if db.verify_subscriber(token):
         return render_template("subscribe_ok.html", action="verified")
     abort(404)
 
@@ -251,6 +308,75 @@ def unsubscribe():
     token = request.args.get("token", "")
     if token and db.unsubscribe(token):
         return render_template("subscribe_ok.html", action="unsubscribed")
+    abort(404)
+
+
+@app.route("/follow", methods=["POST"])
+def follow():
+    """Register an alert for new reviews of a specific book or author."""
+    email = (request.form.get("email") or "").strip().lower()
+    ftype = (request.form.get("type") or "").strip()
+    value = (request.form.get("value") or "").strip()
+    if not _valid_email(email):
+        return jsonify({"error": "Valid email required"}), 400
+    if ftype not in ("book", "author") or not (2 < len(value) < 300):
+        return jsonify({"error": "Invalid follow request"}), 400
+
+    bot = _looks_automated(request.form)
+    if bot:
+        app.logger.info("follow rejected (%s): %s", bot, email)
+        return jsonify({"ok": True, "message": "Check your email to confirm this alert."})
+
+    ip = _client_ip()
+    if not _rate_limiter.allow(f"fol_ip:{ip}", 10, 3600):
+        return jsonify({"error": "Too many requests. Please try again later."}), 429
+    if not _rate_limiter.allow(f"fol_email_hr:{email}", 5, 3600) \
+            or not _rate_limiter.allow(f"fol_email_day:{email}", 15, 86400):
+        return jsonify({"error": "Too many requests for this address. Please try again later."}), 429
+
+    token = secrets.token_urlsafe(32)
+    status = db.add_follow(email, ftype, value, token)
+    what = f"reviews of “{value}”" if ftype == "book" else f"new reviews of books by {value}"
+    if status == "exists":
+        return jsonify({"ok": True, "message": f"You're already following {what}."})
+    if status == "active":
+        return jsonify({"ok": True, "message":
+            f"Done — you'll get an email when we index {what}."})
+    if _rate_limiter.allow("verify_sends_day", _VERIFY_SEND_CAP_PER_DAY, 86400):
+        try:
+            from notify import send_follow_verification_email
+            send_follow_verification_email(email, token, what)
+        except Exception:
+            pass
+    else:
+        app.logger.warning("daily verification-send cap reached; skipped follow %s", email)
+    return jsonify({"ok": True, "message":
+        "Check your email to confirm this alert. (Check spam if you don't see "
+        "it, and add updates@philreviews.org to your contacts.)"})
+
+
+@app.route("/follow/verify", methods=["GET", "POST"])
+def follow_verify():
+    """Same two-step confirmation as /verify — see the note there."""
+    token = (request.form.get("token") if request.method == "POST"
+             else request.args.get("token", "")) or ""
+    if not token:
+        abort(404)
+    if request.method == "GET":
+        if not db.pending_token_exists(token, "follow"):
+            abort(404)
+        return render_template("confirm.html", token=token, kind="alert",
+                               action_url=url_for("follow_verify"))
+    if db.verify_follow(token):
+        return render_template("subscribe_ok.html", action="follow_verified")
+    abort(404)
+
+
+@app.route("/unfollow")
+def unfollow():
+    token = request.args.get("token", "")
+    if token and db.unfollow(token):
+        return render_template("subscribe_ok.html", action="unfollowed")
     abort(404)
 
 

@@ -22,7 +22,12 @@ import nyt_backfill
 
 STATE = os.path.join(ROOT, "scripts", "nyt_backfill_state.json")
 START_YEAR = 2023   # 2024-2026 already backfilled manually
-FLOOR_YEAR = 1980   # NYT book-review metadata thins out below this
+# NYT only began attaching the structured book-title keyword (creative_works /
+# "Title (Book)") around 2013. Before that, Article Search still returns the
+# reviews (~1000/yr) but with no clean book-title field — nyt_backfill._book_title
+# finds nothing, so ~93% are dropped and philosophy yield is ~0. Diagnosed
+# 2026-07-17: the walk was already at 2006 (< floor), so this halts it gracefully.
+FLOOR_YEAR = 2013
 
 logging.basicConfig(
     filename=os.path.join(ROOT, "scripts", "nyt_backfill.log"),

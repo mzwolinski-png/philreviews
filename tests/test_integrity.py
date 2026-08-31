@@ -26,14 +26,17 @@ class IsPersonName(unittest.TestCase):
 
 
 class StripOrderSuffix(unittest.TestCase):
-    def test_strips_op(self):
+    # Convention (user decision 2026-07-06): order suffixes are KEPT, canonically
+    # as "Lastname, O.P." on the last-name field — not stripped.
+    def test_normalizes_op_to_lastname(self):
+        # suffix stranded in the first-name field is moved onto the last name
         self.assertEqual(ic._strip_order_suffix("Gregory O.P.", "Smith"),
-                         ("Gregory", "Smith"))
+                         ("Gregory", "Smith, O.P."))
 
     def test_particle_aware(self):
-        # "de Lubac" surname must stay together after dropping the order suffix
+        # "de Lubac" surname stays together; suffix kept as ", O.P." on the last name
         self.assertEqual(ic._strip_order_suffix("Henri", "de Lubac O.P."),
-                         ("Henri", "de Lubac"))
+                         ("Henri", "de Lubac, O.P."))
 
     def test_excludes_cm_cp_initials(self):
         # documented gotcha: C.M./C.P. collide with middle initials -> never strip

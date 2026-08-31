@@ -137,6 +137,7 @@ JOURNAL_SUBFIELD_MAP = {
     "Oxford Journal of Legal Studies": ("legal", None),
     "Legal Theory": ("legal", None),
     "The Canadian Journal of Law and Jurisprudence": ("legal", None),
+    "Criminal Law and Philosophy": ("legal", None),
 
     # Epistemology & Philosophy of Mind
     "Argumentation": ("epistemology", None),
@@ -253,6 +254,42 @@ JOURNAL_SUBFIELD_MAP = {
 
     # Utopian Studies → Political
     "Utopian Studies": ("political", None),
+
+    # Interdisciplinary / Aesthetics
+    "Critical Inquiry": ("aesthetics", None),
+    "Film-Philosophy": ("aesthetics", None),
+
+    # Philosophy of Religion (more)
+    "Modern Theology": ("religion", None),
+    "American Catholic Philosophical Quarterly": ("religion", None),
+
+    # Bioethics (more)
+    "Hastings Center Report": ("applied-ethics", None),
+    "Monash Bioethics Review": ("applied-ethics", None),
+
+    # Applied / Business
+    "Philosophy of Management": ("applied-ethics", None),
+
+    # Philosophy of Education (more)
+    "Theory and Research in Education": ("applied-ethics", "political"),
+
+    # History of Philosophy (more)
+    "Journal of Scottish Philosophy": ("history", "modern"),
+
+    # Continental (more)
+    "Journal of Phenomenological Psychology": ("continental", None),
+    "Derrida Today": ("continental", None),
+    "Graduate Faculty Philosophy Journal": ("continental", None),
+    "Journal of Transcendental Philosophy": ("continental", "metaphysics"),
+
+    # Philosophy of Science (more)
+    "International Studies in the Philosophy of Science": ("science", None),
+
+    # Political / Legal (more)
+    "Human Rights Review": ("political", "legal"),
+
+    # Ancient Philosophy (more)
+    "Ancient Philosophy Today": ("ancient", None),
 
     # Generalist journals with mild leanings — classify by journal as a fallback
     # These will still be sent to the LLM, but we provide a default

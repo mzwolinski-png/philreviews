@@ -29,6 +29,7 @@ import db
 from scraper_base import BaseScraper
 
 WP_API = "https://dailynous.com/wp-json/wp/v2/posts"
+RSS_FEED = "https://dailynous.com/feed/"
 SLUG_PREFIX = "online-philosophy-resources-weekly-update"
 
 # Patterns for the section header
@@ -101,20 +102,63 @@ class DailyNousScraper(BaseScraper):
         self.log.info(f"Found {len(posts)} Weekly Update posts")
         return posts
 
+    def _rss_weekly_posts(self):
+        """Fallback post discovery via the public RSS feed.
+
+        Daily Nous put Cloudflare in front of the site after a DDoS on
+        2026-08-17 (their "Site Attacked (?)" post: 127M requests, 135x
+        normal). The whole /wp-json/ API and even the homepage now answer 403
+        to non-browser clients, but /feed/ still serves 200 with full
+        content:encoded bodies. The feed only carries ~28 recent posts, which
+        is plenty for the incremental run.
+        """
+        import xml.etree.ElementTree as ET
+        resp = self.session.get(RSS_FEED, timeout=30)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+        ns = {"content": "http://purl.org/rss/1.0/modules/content/"}
+        posts = []
+        for item in root.iterfind(".//item"):
+            link = (item.findtext("link") or "").strip()
+            slug = link.rstrip("/").rsplit("/", 1)[-1]
+            if not slug.startswith(SLUG_PREFIX):
+                continue
+            body = item.findtext("content:encoded", default="", namespaces=ns) or ""
+            posts.append({
+                "id": link, "link": link, "slug": slug,
+                "date": (item.findtext("pubDate") or "").strip(),
+                "content": {"rendered": body},
+            })
+        return posts
+
     def fetch_recent_posts(self, count=5):
         """Fetch the N most recent Weekly Update posts (incremental)."""
         self.log.info(f"Fetching {count} most recent Weekly Update posts...")
-        posts = self._api_get(
-            {
-                "search": "online philosophy resources weekly update",
-                "per_page": count,
-                "orderby": "date",
-                "order": "desc",
-                "_fields": "id,date,slug,link,content",
-            },
-            max_pages=1,
-        )
-        posts = [p for p in posts if p.get("slug", "").startswith(SLUG_PREFIX)]
+        try:
+            posts = self._api_get(
+                {
+                    "search": "online philosophy resources weekly update",
+                    "per_page": count,
+                    "orderby": "date",
+                    "order": "desc",
+                    "_fields": "id,date,slug,link,content",
+                },
+                max_pages=1,
+            )
+            posts = [p for p in posts if p.get("slug", "").startswith(SLUG_PREFIX)]
+        except requests.HTTPError as e:
+            status = getattr(e.response, "status_code", None)
+            if status not in (401, 403, 429):
+                raise
+            self.log.warning(
+                f"WP API returned {status} (Cloudflare bot protection) — "
+                f"falling back to the RSS feed")
+            posts = self._rss_weekly_posts()[:count]
+        if not posts:
+            self.log.warning(
+                "No Weekly Update posts found. Daily Nous has published none "
+                "since late May 2026; the series appears to have stopped. "
+                "This is not a scraper failure — remove the source if it stays dry.")
         return posts
 
     # ── HTML parsing ───────────────────────────────────────────────
