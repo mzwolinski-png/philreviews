@@ -377,7 +377,10 @@ def _parse_eds_prefix(title: str):
     can be lifted cleanly.
     """
     t = re.sub(r'\s+', ' ', re.sub(r'</?[a-zA-Z]+>', '', title or '')).replace('&amp;', '&').strip()
-    m = re.match(r'^(.{3,140}?)\s*\(\s*(?:eds?|edited by)\.?\s*\)\s*[,.]\s*(.+)$', t, re.I)
+    # Springer and Hypatia use a colon after the marker and spell out "editor";
+    # without these the whole record was dropped (found 2026-09-06).
+    m = re.match(r'^(.{3,140}?)\s*\(\s*(?:eds?|editors?|edited by)\.?\s*\)\s*[,.:]\s*(.+)$',
+                 t, re.I)
     if not m:
         return None
     author, book = m.group(1).strip().rstrip(','), m.group(2).strip()
@@ -387,6 +390,8 @@ def _parse_eds_prefix(title: str):
     # \b matters: without it this ate 'Su(pp)lementary Letters', since the
     # roman-numeral class also matches the 'l' that follows.
     book = re.sub(r'[,.;]?\s*\bpp?\.?\s*[\divxl].*$', '', book, flags=re.I).strip().rstrip('.,;: ')
+    # cut a trailing imprint: "... Analytic Feminism. London: Bloomsbury, 2018"
+    book = re.split(r'\.\s+[A-ZÀ-Þ][\w.\s]{0,24}:\s+\S', book)[0].strip().rstrip('.,;: ')
     if len(book) < 4 or _pub_phrase(book):
         return None
     segs = [s.strip() for s in re.split(r',\s*|\s+and\s+|\s*&\s*', author) if s.strip()]
@@ -716,6 +721,22 @@ def parse_citation_byline(raw: str):
         if lengths[len(lengths) // 2] < 25:
             return books[:1]
     return books
+
+
+# A reference work names itself: "<The> <Publisher?> Handbook/Companion/Guide
+# of/to <subject>". Anchored at the start so "Some notes on The Palgrave
+# Handbook of Russian Thought" (a symposium contribution, not a review) and
+# "Introduction to the Special Issue" are both excluded.
+_REFWORK_NOUN = (r'(?:handbook|companion|guide|encyclopedia|encyclopaedia|anthology|'
+                 r'dictionary|reader|introduction|casebook|sourcebook)')
+_REFWORK_IMPRINT = (r'(?:Routledge|Blackwell|Bloomsbury|Continuum|Hackett|Palgrave|'
+                    r'Broadview|Polity|Springer|Brill|Wiley|Verso|Rowman|Oxford|'
+                    r'Cambridge|Princeton|Norton|Columbia|Edinburgh|Sage)')
+_REFERENCE_WORK = re.compile(
+    r'^(?:'
+    r'(?:the|a|an)\s+(?:[\w&.\u2019\'-]+\s+){0,3}' + _REFWORK_NOUN +
+    r'|' + _REFWORK_IMPRINT + r'\s+(?:[\w&.\u2019\'-]+\s+){0,2}' + _REFWORK_NOUN +
+    r')\s+(?:to|of)\s+\S', re.I)
 
 
 def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = None) -> Optional[Dict]:
@@ -1802,6 +1823,26 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
             'needs_doi_scrape': True,
             'format': 'generic_title',
         }
+
+    # --- Bare reference-work title: "The Routledge Handbook of X" ---
+    # Some journals deposit only the book's title for a review, with no byline
+    # and no imprint. is_book_review() accepts these but every parsing branch
+    # declined, so the review was dropped entirely (found 2026-09-06).
+    # Deliberately narrow: a blanket title-only fallback would also admit
+    # "Book Reviews" section records and article titles that slip the gate.
+    # The author (usually an editor) is left to OpenAlex/Open Library.
+    _bare = re.sub(r'<[^>]+>', '', stripped).strip().rstrip('.')
+    if _bare and len(_bare) < 140 and not re.search(r'\d\s*pp\b|ISBN|[£$€]', _bare):
+        if _REFERENCE_WORK.match(_bare):
+            return {
+                'book_title': _bare,
+                'book_author_first': '',
+                'book_author_last': '',
+                'is_edited_volume': True,
+                'has_multiple_authors': False,
+                'needs_doi_scrape': True,
+                'format': 'reference_work_title',
+            }
 
     # --- Fallback: try plain text "LastName, First. Title. Publisher..." ---
     plain = re.sub(r'<[^>]+>', '', stripped).strip()

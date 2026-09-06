@@ -675,3 +675,83 @@ class ReviewOfAuthorTitle(unittest.TestCase):
             'of Pennsylvania Press, 2024. 280 pp.')
         self.assertEqual(r['book_title'],
                          'Founding Fanatics: Extremism and the Formation of American Democracy')
+
+
+class BareReferenceWorkTitle(unittest.TestCase):
+    """Reviews deposited as nothing but the book's title.
+
+    is_book_review() accepts these, so dropping them lost the review entirely.
+    The branch is deliberately narrow — a blanket title-only fallback would
+    also admit "Book Reviews" section records and article titles.
+    """
+
+    def _fmt(self, t):
+        return (cp.parse_review_title(t) or {}).get('format')
+
+    def test_accepts_reference_works(self):
+        for t in ['The Routledge Handbook of Epistemic Injustice',
+                  'Routledge handbook of psychoanalytic political theory',
+                  'The Blackwell Guide to Continental Philosophy',
+                  'The Oxford Handbook of Philosophy of Mind']:
+            self.assertEqual(self._fmt(t), 'reference_work_title', t)
+
+    def test_title_and_flags(self):
+        r = cp.parse_review_title('The Routledge Handbook of Epistemic Injustice')
+        self.assertEqual(r['book_title'], 'The Routledge Handbook of Epistemic Injustice')
+        self.assertEqual(r['book_author_last'], '')
+        self.assertTrue(r['needs_doi_scrape'])   # author resolved by enrichment
+        self.assertTrue(r['is_edited_volume'])
+
+    def test_rejects_section_headers_and_articles(self):
+        for t in ['Book reviews', 'Book Reviews',
+                  'Whitehead and the Pittsburgh School: Preempting the Problem Intentionality']:
+            self.assertNotEqual(self._fmt(t), 'reference_work_title', t)
+
+    def test_rejects_symposium_contributions(self):
+        # these discuss a handbook; they are not reviews of it
+        for t in ['Some notes on The Palgrave Handbook of Russian Thought',
+                  'Comments for the book symposium "The Palgrave Handbook of Russian Thought"',
+                  'Introduction to the Special Issue on Epistemic Injustice']:
+            self.assertNotEqual(self._fmt(t), 'reference_work_title', t)
+
+    def test_rejects_when_citation_data_present(self):
+        # a full citation belongs to the dedicated branches, not this fallback
+        r = cp.parse_review_title(
+            'The Routledge Handbook of Philosophy of Empathy By HeidiMaibom, '
+            'London: Routledge, 2017. 400 pp. ISBN: 978-1-138-81719-5')
+        self.assertEqual(r['format'], 'wiley_by_citation')
+        self.assertEqual(r['book_author_last'], 'Maibom')
+
+
+class EdsPrefixVariants(unittest.TestCase):
+    """Springer/Hypatia editor bylines: colon separator, spelled-out "editor"."""
+
+    def test_colon_separator(self):
+        r = cp.parse_review_title(
+            'Sebastian Luft and Søren Overgaard (Eds.): The Routledge Companion '
+            'to Phenomenology')
+        self.assertEqual(r['book_title'], 'The Routledge Companion to Phenomenology')
+        self.assertEqual(r['book_author_last'], 'Overgaard')
+        self.assertTrue(r['is_edited_volume'])
+
+    def test_lowercase_eds_colon(self):
+        r = cp.parse_review_title(
+            'John Symons and Paco Calvo (eds): The Routledge Companion to the '
+            'Philosophy of Psychology')
+        self.assertEqual(r['book_title'],
+                         'The Routledge Companion to the Philosophy of Psychology')
+
+    def test_spelled_out_editor_and_imprint_tail(self):
+        r = cp.parse_review_title(
+            'Pieranna Garavaso (editor), The Bloomsbury Companion to Analytic '
+            'Feminism. London: Bloomsbury, 2018')
+        self.assertEqual(r['book_title'], 'The Bloomsbury Companion to Analytic Feminism')
+        self.assertEqual(r['book_author_first'], 'Pieranna')
+        self.assertEqual(r['book_author_last'], 'Garavaso')
+
+    def test_existing_utilitas_form_unchanged(self):
+        r = cp.parse_review_title(
+            'Philip Schofield, Tim Causer and Chris Riley (eds.), The Correspondence '
+            'of Jeremy Bentham (UCL Press, 2021)')
+        self.assertEqual(r['book_title'], 'The Correspondence of Jeremy Bentham')
+        self.assertEqual(r['book_author_last'], 'Riley')
