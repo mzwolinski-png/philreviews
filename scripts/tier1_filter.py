@@ -51,6 +51,20 @@ TIER1_SOURCES = frozenset([
     # Added 2026-08-19 at Matt's direction after a TOC alert of ten reviews,
     # eight of which were literary studies.
     "Utopian Studies",
+    # New Blackfriars is a Dominican theology journal: biblical studies, church
+    # history and liturgy alongside genuine philosophy of religion. Enrolled
+    # 2026-09-06 at Matt's direction after a weekly review turned up a large
+    # batch of non-philosophy. Uses NO_REVIEWER_SIGNAL (see below).
+    "New Blackfriars",
+])
+
+# Sources where the reviewer signal (Signal 3) is too weak on its own. A
+# theology journal's regular reviewers also review philosophy elsewhere, so
+# Signal 3 waves through church history, liturgy and biblical studies -- and
+# even non-reviews such as New Blackfriars' "Comment:" editorials. These
+# journals keep Signals 1 and 2 only.
+NO_REVIEWER_SIGNAL = frozenset([
+    "New Blackfriars",
 ])
 
 
@@ -167,6 +181,10 @@ def book_passes_filter(book_author_last_name, book_title, reference_index,
     3. The reviewer has >= 3 reviews in Tier 2 sources — signals an
        established philosophy reviewer (e.g. Feser at CRB).
 
+    For NO_REVIEWER_SIGNAL journals, Signal 3 is skipped: a theology
+    journal's reviewers also review philosophy elsewhere, so the reviewer
+    signal alone admits church history and non-review editorials.
+
     For STRICT_TITLE_OVERLAP_REQUIRED journals, only Signal 1 counts —
     Signals 2/3 alone are too permissive because reviewers and authors
     often work across philosophy / history-of-discipline boundaries.
@@ -180,7 +198,7 @@ def book_passes_filter(book_author_last_name, book_title, reference_index,
 
     # Signals 2/3 only apply for non-strict sources
     if not is_strict:
-        if reviewer_last_name:
+        if reviewer_last_name and publication_source not in NO_REVIEWER_SIGNAL:
             if _reviewer_key(reviewer_first_name, reviewer_last_name) in reviewers_set:
                 return True
         if last and last in authors_set:
@@ -271,5 +289,18 @@ def cleanup_tier1(dry_run=False):
 
 
 if __name__ == "__main__":
-    dry_run = "--dry-run" in sys.argv
-    cleanup_tier1(dry_run=dry_run)
+    # Deleting is opt-in. This used to run live for ANY argv (even --help),
+    # which silently removed 913 rows during a "what are the options?" call
+    # on 2026-09-06. The pipeline calls cleanup_tier1() directly and is
+    # unaffected by this guard.
+    args = set(sys.argv[1:])
+    known = {"--dry-run", "--apply"}
+    unknown = args - known
+    if unknown or not args:
+        if unknown:
+            print(f"Unrecognised argument(s): {' '.join(sorted(unknown))}\n")
+        print("Usage: tier1_filter.py [--dry-run | --apply]\n"
+              "  --dry-run   report what would be removed, change nothing (default)\n"
+              "  --apply     actually delete the failing entries")
+        sys.exit(0 if not unknown else 2)
+    cleanup_tier1(dry_run="--apply" not in args)

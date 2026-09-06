@@ -706,6 +706,15 @@ def parse_citation_byline(raw: str):
             'needs_doi_scrape': False,
             'format': 'citation_byline',
         })
+    # A review of a boxed commentary series lists a dozen pamphlets in one
+    # citation ("1 John, by B. Robinson; James, by L. Bright; ..."). Splitting
+    # those produced a row per pamphlet titled "Romans", "Galatians", "Daniel".
+    # A genuine combined review covers a handful of full-length books, so a long
+    # run of very short titles means a series listing, not separate books.
+    if len(books) > 4:
+        lengths = sorted(len(b['book_title']) for b in books)
+        if lengths[len(lengths) // 2] < 25:
+            return books[:1]
     return books
 
 
@@ -764,7 +773,8 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     # never touched; runs after the specialised citation parsers but ahead of the
     # looser ones, which otherwise read the
     # publisher as the author on these records (found 2026-08-31).
-    if re.search(r'\bpp\b|\u00a3\s?\d|\b\d+s\.\s|\bPress\b|\bPublish', title, re.I):
+    if (re.search(r'\bpp\b|\u00a3\s?\d|\b\d+s\.\s|\bPress\b|\bPublish', title, re.I)
+            and not re.match(r'\s*(?:book\s+)?review\s*(?::|\s+of\b)', title, re.I)):
         _cit = parse_citation_byline(re.sub(r'<[^>]+>', '', title))
         if _cit:
             _head = dict(_cit[0])
@@ -912,7 +922,15 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
         # "<Title>, by <Author>" — Sage's usual shape once the duplicated
         # citation is collapsed. Try it before falling back to title-only,
         # which would otherwise swallow the byline into book_title.
+        # An imprint may follow the byline: "…, by Author. Philadelphia:
+        # University of Pennsylvania Press, 2024. 280 pp." Cut it off first so
+        # the byline is the tail of what we match against.
+        _byline_part = re.split(
+            r'\.\s+(?=[A-ZÀ-Þ][\w\s]*:\s|\d)|,\s*(?=[A-ZÀ-Þ][a-z]+:\s)',
+            remainder, maxsplit=1)[0].strip().rstrip('.,;')
         by_m = re.match(
+            r"^(.{4,}?)\s*,\s*by\s+([A-ZÀ-Þ][^,]{2,40}(?:,\s*[A-ZÀ-Þ][\w.'-]{1,30})?)$",
+            _byline_part, re.I) or re.match(
             r"^(.{4,}?)\s*,\s*by\s+([A-ZÀ-Þ][^,]{2,40}(?:,\s*[A-ZÀ-Þ][\w.'-]{1,30})?)$",
             remainder, re.I)
         if by_m:
@@ -999,6 +1017,29 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
                         'needs_doi_scrape': False,
                         'format': 'review_of_eds',
                     }
+        # "Review of <Author>'s <Title>" / "Review of <Author>, <Title>"
+        plain = re.sub(r'<[^>]+>', '', remainder).strip()
+        plain = re.sub(r'\s+', ' ', plain)
+        av = re.match(
+            r"^([A-ZÀ-Þ][\w.'\u2019-]+(?:\s+[A-ZÀ-Þ][\w.'\u2019-]+){0,3})"
+            r"(?:['\u2019]s\s+|,\s+)(.{4,})$", plain)
+        if av and _looks_like_author_name(av.group(1)):
+            cand = av.group(2).strip()
+            # drop an edition/editor parenthetical and any imprint tail
+            cand = re.sub(r'\s*\((?:new\s+)?(?:annotated\s+)?edition[^)]*\)', '', cand, flags=re.I)
+            cand = re.split(r'\.\s+(?:[A-Z][a-z]+:\s|Cham\b|London\b|Oxford\b|New York\b)', cand)[0]
+            cand = cand.strip().rstrip('.,;')
+            if len(cand) > 3 and not _pub_phrase(cand):
+                names = av.group(1).split()
+                return {
+                    'book_title': cand,
+                    'book_author_first': ' '.join(names[:-1]),
+                    'book_author_last': names[-1],
+                    'is_edited_volume': False,
+                    'has_multiple_authors': False,
+                    'needs_doi_scrape': False,
+                    'format': 'review_of_author_title',
+                }
         # Title-only: "Review of Title"
         clean = re.sub(r'<[^>]+>', '', remainder).strip().rstrip('.')
         if clean and len(clean) > 3:

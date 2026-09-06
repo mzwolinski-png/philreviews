@@ -623,3 +623,55 @@ class BibCitationAuthors(unittest.TestCase):
         self.assertEqual(r['book_title'], 'The Blackwell Companion to Jesus')
         self.assertEqual(r['book_author_first'], 'Delbert')
         self.assertEqual(r['book_author_last'], 'Burkett')
+
+    def test_commentary_series_is_not_split_per_pamphlet(self):
+        # one review of a boxed Bible-study series, not 10 separate books
+        books = cp.parse_citation_byline(
+            "John—John, by G. Hibbert; 1 John, by B. Robinson; James, by L. Bright. "
+            "Sheed & Ward, London, 1972. 256 pp. £1.45. - Paul I—Paul's Theology, by "
+            "D. Macpherson; Galatians, by L. Swain; Romans, by A. Walker; Ephesians, "
+            "by D. Macpherson; Revelation, by J. Challenor. 250 pp. £1.50.")
+        self.assertEqual(len(books), 1)
+
+    def test_genuine_multi_book_review_still_splits(self):
+        books = cp.parse_citation_byline(
+            "Jesus. God and Man. Modern Biblical Reflections, by Raymond E. Brown. "
+            "Geoffrey Chapman, 1968. 109 pp. - Christ for Us Today. Papers read at the "
+            "Conference of Modern Churchmen, by Norman Pittenger. SCM, 1968. 200 pp. - "
+            "Christologie. Essai dogmatique, by Piet Schoonenberg. Cerf, 1971. 180 pp. - "
+            "God Our Saviour. A Study of the Atonement, by Frank Lake. SCM, 1970. 150 pp.")
+        self.assertEqual(len(books), 4)
+
+
+class ReviewOfAuthorTitle(unittest.TestCase):
+    """'Review of <Author>'s <Title>' must not leave the author in the title."""
+
+    def test_possessive_form(self):
+        r = cp.parse_review_title(
+            "Review of Jon D. Wisman's Why We Must Work: Economic Freedom, "
+            "Fulfilling Work, and Workplace Democracy. Cham: Palgrave Macmillan, 2024.")
+        self.assertEqual(r['book_title'],
+                         'Why We Must Work: Economic Freedom, Fulfilling Work, '
+                         'and Workplace Democracy')
+        self.assertEqual(r['book_author_first'], 'Jon D.')
+        self.assertEqual(r['book_author_last'], 'Wisman')
+
+    def test_comma_form_drops_edition_parenthetical(self):
+        r = cp.parse_review_title(
+            'Review of Francisco J. Varela, Principles of Biological Autonomy '
+            '(new annotated edition, edited by Ezequiel Di Paolo and Evan Thompson)')
+        self.assertEqual(r['book_title'], 'Principles of Biological Autonomy')
+        self.assertEqual(r['book_author_last'], 'Varela')
+
+    def test_plain_review_of_title_unchanged(self):
+        r = cp.parse_review_title('Review of Ethics and the Contemporary World')
+        self.assertEqual(r['format'], 'review_of_title_only')
+        self.assertEqual(r['book_title'], 'Ethics and the Contemporary World')
+
+    def test_book_review_prefix_not_claimed_by_citation_parser(self):
+        r = cp.parse_review_title(
+            'Book Review: Founding Fanatics: Extremism and the Formation of '
+            'American Democracy, by Eber-Schmid Noah. Philadelphia: University '
+            'of Pennsylvania Press, 2024. 280 pp.')
+        self.assertEqual(r['book_title'],
+                         'Founding Fanatics: Extremism and the Formation of American Democracy')
