@@ -541,3 +541,85 @@ class CitationBylineBoundaries(unittest.TestCase):
                          'Biblical Studies: The Medieval Irish Contribution')
         self.assertEqual(b[0]['book_author_last'], 'McNamara')
         self.assertTrue(b[0]['is_edited_volume'])
+
+
+class PublisherNamedTitles(unittest.TestCase):
+    """A publisher name inside the book's own title must not reject the record."""
+
+    def test_hackett_introduction(self):
+        r = cp.parse_review_title(
+            'The Hackett Introduction to Medical Ethics: A Guide for Students, '
+            'Clinicians, and Ethics Committees By Matthew C.Altman and Cynthia D.Coe, '
+            'Indianapolis: Hackett Publishing Company, Inc, 2025. 464 pp. $35. '
+            'ISBN: 978-1-64792-218-4')
+        self.assertIsNotNone(r)
+        self.assertTrue(r['book_title'].startswith('The Hackett Introduction to Medical Ethics'))
+        self.assertEqual(r['book_author_first'], 'Matthew C. Altman and Cynthia D.')
+        self.assertEqual(r['book_author_last'], 'Coe')
+
+    def test_routledge_handbook(self):
+        r = cp.parse_review_title(
+            'The Routledge Handbook of Philosophy of Empathy By HeidiMaibom, '
+            'London: Routledge, 2017. 400 pp. ISBN: 978-1-138-81719-5')
+        self.assertEqual(r['book_title'], 'The Routledge Handbook of Philosophy of Empathy')
+        self.assertEqual(r['book_author_last'], 'Maibom')
+
+    def test_imprint_still_rejected(self):
+        # "Routledge" as an actual imprint must still read as publisher text
+        self.assertTrue(cp._pub_phrase('London: Routledge'))
+        self.assertFalse(cp._pub_phrase('The Routledge Handbook of Ethics'))
+
+
+class GluedNameHandling(unittest.TestCase):
+    """Wiley drops spaces between names; restoring them must not split surnames."""
+
+    def test_internal_capitals_preserved(self):
+        self.assertEqual(cp._unglue_names('L.Brunning and N.McKeever'),
+                         'L. Brunning and N. McKeever')
+        self.assertEqual(cp._unglue_names('AlasdairMacIntyre'), 'Alasdair MacIntyre')
+        self.assertEqual(cp._unglue_names('PeterFitzGerald'), 'Peter FitzGerald')
+
+    def test_ordinary_glued_names_split(self):
+        self.assertEqual(cp._unglue_names('TrudoLemmens'), 'Trudo Lemmens')
+        self.assertEqual(cp._unglue_names('K.SonuGaind'), 'K. Sonu Gaind')
+
+    def test_glued_middle_initial(self):
+        self.assertEqual(cp._unglue_names('MatthewC.Altman'), 'Matthew C. Altman')
+
+
+class BibCitationAuthors(unittest.TestCase):
+    """JAP-style citations keep the whole author list, not just the lead."""
+
+    def test_two_authors(self):
+        r = cp.parse_review_title(
+            'The Philosophy of Love, Sex, and Relationships. L.Brunning and '
+            'N.McKeever, 2026. Cambridge, Polity Press. 233 pp, $26.95 (pb)')
+        self.assertEqual(r['book_title'], 'The Philosophy of Love, Sex, and Relationships')
+        self.assertEqual(r['book_author_first'], 'L. Brunning and N.')
+        self.assertEqual(r['book_author_last'], 'McKeever')
+        self.assertTrue(r['has_multiple_authors'])
+
+    def test_spaced_initial_does_not_end_the_title(self):
+        r = cp.parse_review_title(
+            'Anti-Racism as Communism. P. Gomberg, 2024. London, Bloomsbury '
+            'Academic. xiii + 252 pp, £95 (hb) £28.99 (pb)')
+        self.assertEqual(r['book_title'], 'Anti-Racism as Communism')
+        self.assertEqual(r['book_author_last'], 'Gomberg')
+
+    def test_hyphenated_imprint_in_title(self):
+        r = cp.parse_review_title(
+            'The Wiley-Blackwell Companion to Christian Mysticism. Edited by '
+            'Julia A.Lamm. Pp. xx, 642, Chichester, Wiley-Blackwell, 2013, £120.00.')
+        self.assertEqual(r['book_title'],
+                         'The Wiley-Blackwell Companion to Christian Mysticism')
+        self.assertEqual(r['book_author_last'], 'Lamm')
+        self.assertTrue(r['is_edited_volume'])
+
+    def test_roman_numeral_page_count(self):
+        # Heythrop prints "Pp. xv, 556"; the byline must end before it
+        r = cp.parse_review_title(
+            'The Blackwell Companion to Jesus. Edited by DelbertBurkett. '
+            'Pp. xv, 556, London, Wiley-Blackwell, 2011, $170.40.')
+        self.assertEqual(r['book_title'], 'The Blackwell Companion to Jesus')
+        self.assertEqual(r['book_author_first'], 'Delbert')
+        self.assertEqual(r['book_author_last'], 'Burkett')

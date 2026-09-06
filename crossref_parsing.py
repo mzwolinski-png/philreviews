@@ -39,6 +39,51 @@ _PUB_PHRASE = re.compile(
     r'Littlefield|Hackett|Broadview|Verso|Continuum)', re.I)
 
 
+# A publisher name is not a publisher when it is part of the book's own title:
+# "The Routledge Handbook of ...", "The Blackwell Companion to ...", "The
+# Hackett Introduction to Medical Ethics". Rejecting those silently dropped
+# whole reference works from Wiley-style citations (found 2026-09-06).
+_TITLE_IMPRINT = re.compile(
+    r'\b(?:[A-Z][\w]*[-‐–])?'          # "Wiley-Blackwell Companion"
+    r'(?:Routledge|Blackwell|Bloomsbury|Continuum|Hackett|Palgrave|Broadview|'
+    r'Polity|Springer|Brill|Wiley|Verso|Rowman|Littlefield|Princeton|Cambridge|'
+    r'Oxford|Columbia|Norton)\s+'
+    r'(?=(?:Handbook|Companion|Introduction|Guide|Reader|Anthology|Dictionary|'
+    r'Encyclopedia|Encyclopaedia|Library|Series|Casebook|Sourcebook)\b)', re.I)
+
+
+def _pub_phrase(text: str):
+    """True when `text` carries a real publisher phrase.
+
+    Publisher names that head a reference-work title are ignored, so
+    "The Routledge Handbook of Ethics" is a title, while "London: Routledge"
+    still reads as an imprint.
+    """
+    return bool(_PUB_PHRASE.search(_TITLE_IMPRINT.sub('', text or '')))
+
+
+# Wiley drops the space between a first and last name ("TrudoLemmens").
+# Re-inserting it must not break names that legitimately carry an internal
+# capital: McKeever, MacIntyre, FitzGerald. Once a name is glued the word
+# boundary is gone, so the guard inspects the preceding run of characters
+# rather than relying on \b (found 2026-09-06).
+_GLUED_NAME = re.compile(r"([a-zà-ÿ])([A-ZÀ-Þ][a-zà-ÿ])")
+_NAME_PREFIX = re.compile(r"(?:Mc|Mac|Fitz|O')$")
+
+
+def _unglue_names(text: str) -> str:
+    """Restore dropped spaces in a Wiley author string."""
+    text = re.sub(r'(\.)([A-ZÀ-Þ])', r'\1 \2', text or '')   # K.Sonu -> K. Sonu
+    text = re.sub(r'([a-zà-ÿ])([A-ZÀ-Þ]\.)', r'\1 \2', text)   # MatthewC. -> Matthew C.
+
+    def _split(m):
+        if _NAME_PREFIX.search(text[:m.end(1)]):
+            return m.group(0)                              # McKeever, MacIntyre
+        return m.group(1) + ' ' + m.group(2)
+
+    return _GLUED_NAME.sub(_split, text)
+
+
 def _parse_bib_citation(title: str):
     """Parse the 'Title. Author, Year. [Place,] Publisher. pp, price (binding)'
     citation format (e.g. Journal of Applied Philosophy, Wiley's non-italic review
@@ -61,7 +106,7 @@ def _parse_bib_citation(title: str):
     if not ym:
         return None
     head = t[:ym.start(1)].rstrip(' .,')
-    m = re.search(r'^(.*[.?!])\s+(.+)$', head)
+    m = re.search(r'^(.*(?<![A-Z])[.?!])\s+(.+)$', head)
     if not (m and len(m.group(1)) > 4):
         return None
     book_title = m.group(1).strip().rstrip('.')
@@ -70,14 +115,22 @@ def _parse_bib_citation(title: str):
     if (_CITE_PUB.search(author) or re.search(r'\d|\bpp\b|University|Press', author, re.I)
             or _CITE_PUB.search(book_title) or re.search(r'\d\s*pp\b|[£$€]', book_title)):
         return None
-    author = re.sub(r'(\.)([A-ZÀ-Þ])', r'\1 \2', author)              # N.Dobos -> N. Dobos
-    author = re.sub(r'([a-zà-ÿ])([A-ZÀ-Þ][a-zà-ÿ])', r'\1 \2', author)  # EdmundFawcett -> Edmund Fawcett
+    author = _unglue_names(author)                # N.Dobos -> N. Dobos, EdmundFawcett -> Edmund Fawcett
     author = re.sub(r'\s+', ' ', author).strip().rstrip(',')
     first_seg = re.split(r'\s+(?:and|&)\s+|\s*\(eds?\.?\)|,\s*eds?\.?', author)[0].strip().rstrip('.,')
     p = first_seg.split()
     if not (1 <= len(p) <= 6) or len(book_title) < 4:
         return None
-    af, al = (' '.join(p[:-1]), p[-1]) if len(p) > 1 else ('', first_seg)
+    # Keep the whole author list, following the DB convention of
+    # book_author_first = everything up to the final surname
+    # ("L. Brunning and N." / "McKeever"). Only the lead author is
+    # sanity-checked above; a runaway list falls back to it.
+    full = re.sub(r'\s*\(eds?\.?\)', '', author, flags=re.I)
+    full = re.sub(r',\s*eds?\.?$', '', full, flags=re.I).strip().rstrip('.,')
+    words = full.split()
+    if not (2 <= len(words) <= 12):
+        words = p
+    af, al = (' '.join(words[:-1]), words[-1]) if len(words) > 1 else ('', first_seg)
     if not al:
         return None
     return {
@@ -116,11 +169,11 @@ def _parse_wiley_by_citation(title: str):
     # Reject only on an unambiguous publisher PHRASE in the title — a bare
     # "Cambridge"/"Oxford" is frequently part of a real book title
     # ("The Cambridge Companion to Augustine's Sermons").
-    if (len(book_title) < 5 or _PUB_PHRASE.search(book_title)
+    if (len(book_title) < 5 or _pub_phrase(book_title)
             or re.search(r'\d\s*pp\b|ISBN', book_title)):
         return None
     # Heythrop-style tail: 'Author. Pp. 451, Publisher...' — cut before Pp.
-    rest = re.split(r'\.?\s*\bPp\.\s*\d', rest)[0].strip()
+    rest = re.split(r'\.?\s*\bPp\.?\s*(?:[ivxlcIVXLC]+\b|\d)', rest)[0].strip()
     # "Title. Edited by X" / "Title. Translated by X" — the verb belongs to the
     # byline, not the title; strip it and remember that it's an edited volume.
     _tail_verb = re.search(r'[.,]?\s*(Edited|Ed|Translated|Trans|Compiled)\.?$',
@@ -134,8 +187,7 @@ def _parse_wiley_by_citation(title: str):
     else:
         is_edited_tail = False
     # unglue Wiley's dropped spaces on the author side only
-    rest = re.sub(r'(\.)([A-ZÀ-Þ])', r'\1 \2', rest)                 # K.Sonu -> K. Sonu
-    rest = re.sub(r'([a-zà-ÿ])([A-ZÀ-Þ][a-zà-ÿ])', r'\1 \2', rest)  # TrudoLemmens -> Trudo Lemmens
+    rest = _unglue_names(rest)                    # K.Sonu -> K. Sonu, TrudoLemmens -> Trudo Lemmens
     segs = [s.strip() for s in rest.split(',')]
     names, is_edited = [], False
     for i, s in enumerate(segs):
@@ -220,7 +272,7 @@ def _parse_glued_citation(title: str):
     if not _PUB_PHRASE.search(tail):
         return None
     book_title = re.sub(r'[.,;:]\s*$', '', book_title).strip()
-    if len(book_title) < 5 or _PUB_PHRASE.search(book_title):
+    if len(book_title) < 5 or _pub_phrase(book_title):
         return None
     parts = author.split()
     af, al = ' '.join(parts[:-1]), parts[-1]
@@ -283,7 +335,7 @@ def _parse_paren_citation(title: str):
         r'Preface\b|With an?\s+(?:foreword|introduction|preface)\b)'
         r'|,\s+(?:edited|translated|with an?\s+(?:foreword|introduction))\s+by\b'
         r'|\s*\(trans\.', book, flags=re.I)[0].strip().rstrip('.,;')
-    if len(book) < 4 or _PUB_PHRASE.search(book) or re.search(r'\bPp\.|\d+\s*pp\b', book):
+    if len(book) < 4 or _pub_phrase(book) or re.search(r'\bPp\.|\d+\s*pp\b', book):
         return None
     is_edited = bool(re.search(r',?\s*\beds?\.?\b|\beditors?\b', author, re.I))
     author = re.sub(r',?\s*\(?\beds?\.?\)?\s*$', '', author, flags=re.I).strip().rstrip(',')
@@ -335,7 +387,7 @@ def _parse_eds_prefix(title: str):
     # \b matters: without it this ate 'Su(pp)lementary Letters', since the
     # roman-numeral class also matches the 'l' that follows.
     book = re.sub(r'[,.;]?\s*\bpp?\.?\s*[\divxl].*$', '', book, flags=re.I).strip().rstrip('.,;: ')
-    if len(book) < 4 or _PUB_PHRASE.search(book):
+    if len(book) < 4 or _pub_phrase(book):
         return None
     segs = [s.strip() for s in re.split(r',\s*|\s+and\s+|\s*&\s*', author) if s.strip()]
     if not segs or len(segs) > 6:
@@ -369,7 +421,7 @@ def _parse_author_title_editedby(title: str):
     if not m:
         return None
     author, book = m.group(1).strip(), m.group(2).strip().rstrip('.,;: ')
-    if len(book) < 4 or _PUB_PHRASE.search(book) or re.search(r'\bpp\.|\d{4}', book):
+    if len(book) < 4 or _pub_phrase(book) or re.search(r'\bpp\.|\d{4}', book):
         return None
     w = author.split()
     if not (2 <= len(w) <= 5) or re.search(r'\d', author):
@@ -430,7 +482,7 @@ def _parse_wiley_glued_authorlist(title: str):
         if not re.fullmatch(r"[A-ZÀ-Þ][\w.'-]*(?:\s+[A-ZÀ-Þ][\w.'-]*){0,3}", s):
             return None
         names.append(s)
-    if len(book) < 5 or _PUB_PHRASE.search(book) or len(names) > 6:
+    if len(book) < 5 or _pub_phrase(book) or len(names) > 6:
         return None
     joined = (', '.join(names[:-1]) + ' and ' + names[-1]) if len(names) > 1 else names[0]
     af, _, al = joined.rpartition(' ')
