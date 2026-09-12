@@ -739,6 +739,269 @@ _REFERENCE_WORK = re.compile(
     r')\s+(?:to|of)\s+\S', re.I)
 
 
+# ---------------------------------------------------------------------------
+# "Review of: <Author>, <Title>, <Place>, <Publisher>, <Year>, <N> pages, ISBN"
+#
+# Studies in East European Thought (and other Springer titles) deposit the whole
+# citation behind a "Review of:" marker. Every generic branch mis-split these --
+# 28 of 55 recent records were dropped outright and the rest kept publisher text
+# in the title (found 2026-09-12).
+# ---------------------------------------------------------------------------
+
+_BIB_JUNK = re.compile(
+    r'ISBN|\bpages?\b|\bpp\b|[€$£]|\b(?:hardback|paperback|hbk|pbk|cloth|e-?book|'
+    r'open access|print)\b', re.I)
+# a segment ENDING in "(eds.)" puts the editors before the title; one STARTING
+# with "eds." puts them after it -- opposite meanings, so they are matched apart
+_ED_SUFFIX = re.compile(
+    r'\(?\b(?:eds?|editors?|editors?\s+and\s+compilers?|comps?)\b\.?\)?\s*:?\s*$', re.I)
+_ED_PREFIX = re.compile(r'^(?:eds?\.|edited\s+by|trans\.|translated\s+by|'
+                        r'with\s+an?\s+\w+\s+by)\s', re.I)
+_ROLE_MARK = re.compile(r'\s*\((?:author|editor|translator|trans\.?|ed\.?)s?\)\s*$', re.I)
+_PARTICLES = {'de', 'del', 'van', 'von', 'der', 'den', 'di', 'du', 'la', 'le', 'and', '&'}
+
+# Publishing cities. Without this the tail-trimmer cannot tell a place from a
+# word in the title: "Russian Political Philosophy: Anarchy, Authority,
+# Autocracy, Edinburgh, Edinburgh University Press" lost two subtitle terms
+# because they look exactly like city names in isolation (found 2026-09-12).
+_PUB_CITY = {
+    'london', 'new york', 'oxford', 'cambridge', 'chicago', 'boston', 'princeton',
+    'ithaca', 'berkeley', 'stanford', 'evanston', 'madison', 'minneapolis',
+    'bloomington', 'baltimore', 'philadelphia', 'pittsburgh', 'durham', 'toronto',
+    'montreal', 'edinburgh', 'manchester', 'leiden', 'cham', 'dordrecht', 'berlin',
+    'munich', 'münster', 'muenster', 'frankfurt', 'paris', 'moscow', 'moskva',
+    'amsterdam', 'stockholm', 'helsinki', 'vienna', 'wien', 'zurich', 'zürich',
+    'basel', 'milan', 'milano', 'rome', 'roma', 'madrid', 'barcelona', 'warsaw',
+    'warszawa', 'prague', 'praha', 'budapest', 'kyiv', 'kiev', 'st petersburg',
+    'saint petersburg', 'indianapolis', 'notre dame', 'albany', 'lanham', 'farnham',
+    'aldershot', 'burlington', 'abingdon', 'basingstoke', 'houndmills', 'brighton',
+    'copenhagen', 'oslo', 'tallinn', 'riga', 'vilnius', 'belgrade', 'sofia',
+    'bucharest', 'istanbul', 'tokyo', 'beijing', 'singapore', 'sydney', 'melbourne',
+    'los angeles', 'san francisco', 'seattle', 'atlanta', 'nashville', 'lincoln',
+    'lawrence', 'athens', 'columbia', 'charlottesville', 'ann arbor', 'east lansing',
+    'dublin', 'cardiff', 'swansea', 'leuven', 'louvain', 'brussels', 'ghent',
+    # Central and Eastern European imprints show up constantly in this corpus
+    'zielona gora', 'zielona góra', 'zeliona gura', 'lublin', 'krakow', 'kraków',
+    'katowice', 'poznan', 'poznań', 'gdansk', 'gdańsk', 'torun', 'toruń',
+    'wroclaw', 'wrocław', 'lodz', 'łódź', 'minsk', 'tbilisi', 'yerevan', 'baku',
+    'almaty', 'novosibirsk', 'kazan', 'ekaterinburg', 'yekaterinburg', 'perm',
+    'voronezh', 'rostov', 'nizhnii novgorod', 'sankt-peterburg', 'oberägeri',
+    'fairfax', 'cham', 'wiesbaden', 'göttingen', 'tübingen', 'heidelberg',
+    'hamburg', 'cologne', 'köln', 'stuttgart', 'leipzig', 'dresden', 'bern',
+}
+
+
+def _split_outside_parens(text):
+    """Split on commas that are not inside brackets.
+
+    "(Galle, 1887-1901)" and "[Marxism and the classics: from Lenin, to X]"
+    are single units; splitting inside them stranded half a title and made the
+    year-anchor fire in the middle of a book's own title.
+    """
+    out, buf, depth = [], [], 0
+    for ch in text or '':
+        if ch in '([{\u201c\u2018':
+            depth += 1
+        elif ch in ')]}\u201d\u2019':
+            depth = max(0, depth - 1)
+        if ch == ',' and depth == 0:
+            out.append(''.join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    out.append(''.join(buf))
+    return [x.strip() for x in out]
+
+
+def _seg_is_name(seg):
+    """A comma-segment that reads as a personal name, or a short "A and B" list."""
+    seg = _ROLE_MARK.sub('', (seg or '').strip())
+    seg = _ED_SUFFIX.sub('', seg).strip().rstrip(',')
+    seg = re.sub(r'^(?:and|&)\s+', '', seg, flags=re.I).strip()
+    if not seg or re.search(r'\d', seg) or _BIB_JUNK.search(seg):
+        return False
+    names = [n.strip() for n in re.split(r'\s+and\s+|\s*&\s*', seg) if n.strip()]
+    if not (1 <= len(names) <= 4):
+        return False
+    for name in names:
+        toks = name.split()
+        if not (1 <= len(toks) <= 4):
+            return False
+        for t in toks:
+            if t.lower() in _PARTICLES:
+                continue
+            # allow deGraffenried / d'Alembert / O'Neill as well as plain caps
+            if not re.match(r"^(?:[A-ZÀ-Þ]|[a-z]{1,3}(?=[A-ZÀ-Þ])|[dolDOL][’'])"
+                            r"[\w.’'-]*$", t):
+                return False
+    return True
+
+
+def _strong_imprint(seg):
+    """Unmistakable publisher or physical-description text.
+
+    Deliberately excludes a bare city (_CITE_PUB lists "Oxford", "Edinburgh"
+    and friends, which are equally at home in a book's title).
+    """
+    seg = (seg or '').strip()
+    if not seg:
+        return True
+    if _BIB_JUNK.search(seg):
+        return True
+    if re.fullmatch(r'[^A-Za-zÀ-ÿ]*(?:1[6-9]|20)\d{2}[^A-Za-zÀ-ÿ]*', seg):
+        return True                       # a bare year / year range
+    if _PUB_PHRASE.search(seg):
+        return True
+    return bool(re.search(r'\b(?:Press|University|Univ|Verlag|Publications?|Publishers?|'
+                          r'Publishing|Books|Editions?|Izdatel\w*|Nauka|House)\b', seg, re.I))
+
+
+def _is_place(seg):
+    seg = (seg or '').strip().rstrip('.')
+    if not seg:
+        return False
+    if re.match(r'^[A-Z]{2}$', seg):             # US state code: "MA", "IL"
+        return True
+    parts = [x.strip() for x in re.split(r'\s+and\s+|\s*&\s*|/', seg) if x.strip()]
+    return bool(parts) and all(p.lower() in _PUB_CITY or re.match(r'^[A-Z]{2}$', p)
+                               for p in parts)
+
+
+def _trim_citation_tail(segs, cut_at_year):
+    """Drop the place/publisher tail without eating the title.
+
+    A greedy rule ate whole titles here -- "Marx's Russian Moment" and even
+    "Vesa Oittinen" look like capitalised place names in isolation. So: strong
+    imprint text unbounded, known cities unbounded, and at most one unknown
+    segment where the year told us a publisher must sit.
+    """
+    segs = list(segs)
+    # The one segment we may drop on faith is the publisher sitting immediately
+    # before the year -- and only there. Spending this budget later ate real
+    # titles ("Vremya antiistorii", ", Ideas").
+    unknown_budget = 1 if cut_at_year else 0
+    first = True
+    while segs:
+        last = segs[-1].strip()
+        if _strong_imprint(last) or _is_place(last):
+            state_code = bool(re.match(r'^[A-Z]{2}$', last.strip().rstrip('.')))
+            segs.pop()
+            first = False
+            if state_code and segs and len(segs) > 2 and len(segs[-1].split()) <= 2 \
+                    and re.match(r'^[A-ZÀ-Þ]', segs[-1].strip()):
+                segs.pop()               # "Fairfax, VA" -- the town before the code
+            continue
+        if (first and unknown_budget and len(segs) > 2
+                and len(last.split()) <= 3 and re.match(r'^[A-ZÀ-Þ]', last)):
+            segs.pop()
+            unknown_budget = 0
+            first = False
+            continue
+        break
+    return segs
+
+
+def _parse_review_of_citation(title):
+    """'Review of: <Author>, <Title>, <Place>, <Publisher>, <Year>, <N> pages, ISBN'
+
+    Studies in East European Thought and other Springer journals deposit the
+    whole citation behind a "Review of:" marker. Every generic branch mis-split
+    these: 28 of 55 recent records were dropped outright and the rest kept
+    publisher text in the title (found 2026-09-12).
+    """
+    t = re.sub(r'\s+', ' ', re.sub(r'</?[a-zA-Z]+>', '', title or '')).replace('&amp;', '&').strip()
+    m = re.match(r'^review\s+of\s*:\s*(.+)$', t, re.I)
+    if not m:
+        return None
+    body = m.group(1).strip()
+    # "Cucciolla (ed.): Dimensions and challenges…" has no comma after the
+    # marker, so the whole citation arrives as one segment
+    body = re.sub(r'\s*\((eds?|editors?)\.?\)\s*:\s*', r' (\1.), ', body, flags=re.I)
+    segs = _split_outside_parens(body)
+
+    cut_at_year = False
+    for i, seg in enumerate(segs):
+        # a bare year segment, or a year immediately followed by an extent
+        # ("2021", "2021.", "1998, 300 pages"). A year that merely opens a
+        # longer segment belongs to the title: "(1906-1943): Idee - Institution".
+        if (re.match(r'^\(?(?:1[6-9]|20)\d{2}\)?[.,;]?$', seg)
+                or re.match(r'^\(?(?:1[6-9]|20)\d{2}\)?[.,;]?\s+\d+\s*(?:pp|pages)\b',
+                            seg, re.I)):
+            segs, cut_at_year = segs[:i], True
+            break
+    # people credited AFTER the title end it ("…, eds. Barbara Hallensleben, …")
+    for i, seg in enumerate(segs):
+        if _ED_PREFIX.match(seg):
+            segs, cut_at_year = segs[:i], False
+            break
+    segs = [s for s in _trim_citation_tail(segs, cut_at_year) if s]
+    if not segs:
+        return None
+
+    author, title_segs, edited = '', [], False
+    roles = [bool(re.search(r'\((?:author|editor|translator)s?\)', s, re.I)) for s in segs]
+
+    # "<Name> (author), <Name> (translator), <Title>"
+    if any(roles):
+        keep = [s for s in segs if re.search(r'\((?:author|editor)s?\)', s, re.I)]
+        rest = [s for s in segs if not re.search(r'\((?:author|editor|translator)s?\)', s, re.I)]
+        if keep and rest:
+            author = ', '.join(_ROLE_MARK.sub('', k).strip() for k in keep)
+            title_segs = rest
+            edited = any(re.search(r'\(editors?\)', k, re.I) for k in keep)
+    if not title_segs:
+        # "<Editors…> (eds.), <Title>"  /  "<A>, <B>, and <C> eds., <Title>"
+        # A title whose own commas make a list ("Poles, Polonia, and the Quest
+        # for Liberty") must not be read as "<Author>, <Title>". A continuation
+        # segment starting with a lowercase connective gives it away, but only
+        # when the first segment is a lone word that could belong to the list.
+        _list_title = (len(segs[0].split()) == 1
+                       and any(re.match(r'^(?:and|or|the|a|an|with|in|of)\s', x, re.I)
+                               for x in segs[1:]))
+
+        def _closes_editor_list(x):
+            return _ED_SUFFIX.search(x) and (_seg_is_name(x)
+                                             or re.fullmatch(r'\(?eds?\b\.?\)?', x.strip(), re.I))
+        ed_at = next((i for i, s in enumerate(segs) if _closes_editor_list(s)), None)
+        if (ed_at is not None and ed_at + 1 < len(segs)
+                and all(_seg_is_name(s) or _closes_editor_list(s) for s in segs[:ed_at + 1])):
+            names = [_ED_SUFFIX.sub('', s).strip().rstrip(',') for s in segs[:ed_at + 1]]
+            author = ', '.join(n for n in names if n)
+            title_segs, edited = segs[ed_at + 1:], True
+        # inverted "Last, First, <Title>"
+        elif _list_title:
+            title_segs = segs
+        elif (len(segs) >= 3 and len(segs[0].split()) == 1 and _seg_is_name(segs[0])
+              and _seg_is_name(segs[1]) and len(segs[1].split()) <= 2
+              and not _seg_is_name(segs[2])
+              and re.match(r'^[A-ZÀ-Þ\u201c\u2018\"\'(\[]', segs[2])):
+            author, title_segs = f'{segs[1]} {segs[0]}', segs[2:]
+        # "<Author>, <Title>"
+        elif _seg_is_name(segs[0]) and len(segs) >= 2:
+            author, title_segs = segs[0], segs[1:]
+        # "<Title>, <Author>"
+        elif len(segs) >= 2 and _seg_is_name(segs[-1]) and not _is_place(segs[-1]):
+            author, title_segs = segs[-1], segs[:-1]
+        else:
+            title_segs = segs
+
+    book = ', '.join(title_segs).strip().rstrip('.,;: ')
+    if len(book) < 4 or _pub_phrase(book):
+        return None
+    author = re.sub(r'^(?:and|&)\s+', '', author).strip().rstrip('.,')
+    parts = author.split()
+    af, al = (' '.join(parts[:-1]), parts[-1]) if len(parts) > 1 else ('', author)
+    return {
+        'book_title': book,
+        'book_author_first': af,
+        'book_author_last': al,
+        'is_edited_volume': edited,
+        'has_multiple_authors': bool(re.search(r',|\band\b|&', author)),
+        'needs_doi_scrape': not al,
+        'format': 'review_of_citation',
+    }
+
+
 def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = None) -> Optional[Dict]:
     """
     Auto-detect the format of a Crossref book review title and parse it.
@@ -751,6 +1014,13 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     title = _normalize(title)
     title = _collapse_duplicated_citation(title)
     subtitle = _normalize(subtitle) if subtitle else ''
+
+    # --- "Review of: Author, Title, Place, Publisher, Year, pp, ISBN" ---
+    # Runs before the generic splitters, which mistake the publisher or the
+    # reviewer's own byline for the book author on these records.
+    _roc = _parse_review_of_citation(title)
+    if _roc:
+        return _roc
 
     # --- "Title. Author, Year. Publisher. pp, price" citation (JAP-style) ---
     # High-priority, tightly gated so it can't hijack other formats.

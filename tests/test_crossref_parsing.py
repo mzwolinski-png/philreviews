@@ -755,3 +755,96 @@ class EdsPrefixVariants(unittest.TestCase):
             'of Jeremy Bentham (UCL Press, 2021)')
         self.assertEqual(r['book_title'], 'The Correspondence of Jeremy Bentham')
         self.assertEqual(r['book_author_last'], 'Riley')
+
+
+class ReviewOfCitation(unittest.TestCase):
+    """'Review of: <Author>, <Title>, <Place>, <Publisher>, <Year>, <N> pages'
+
+    Studies in East European Thought and other Springer journals. Every generic
+    branch mis-split these; 28 of 55 recent records were dropped outright.
+    """
+
+    def _p(self, t):
+        return cp.parse_review_title(t) or {}
+
+    def test_plain_author_title(self):
+        r = self._p('Review of: Vesa Oittinen, Marx’s Russian Moment, Cham, '
+                    'Palgrave Macmillan, 2023, 179 pages, hardcover ISBN 978-3-031-33099-4')
+        self.assertEqual(r['format'], 'review_of_citation')
+        self.assertEqual(r['book_title'], "Marx's Russian Moment")
+        self.assertEqual(r['book_author_first'], 'Vesa')
+        self.assertEqual(r['book_author_last'], 'Oittinen')
+
+    def test_inverted_author(self):
+        r = self._p('Review of: Bulgakov, Sergij, Sofija—Premudrost’ Bozhija. Ocherk '
+                    'sofiologii, eds. Barbara Hallensleben, Regula Zwahlen, Münster, '
+                    'Aschendorff, 2026, 220 pages, Print: ISBN 978-3-402-12521-2, €28')
+        self.assertEqual(r['book_title'], "Sofija-Premudrost' Bozhija. Ocherk sofiologii")
+        self.assertEqual(r['book_author_first'], 'Sergij')
+        self.assertEqual(r['book_author_last'], 'Bulgakov')
+
+    def test_subtitle_list_is_not_mistaken_for_places(self):
+        # "Anarchy, Authority, Autocracy" are subtitle terms, not cities
+        r = self._p('Review of: Evert van der Zweerde, Russian Political Philosophy: '
+                    'Anarchy, Authority, Autocracy, Edinburgh, Edinburgh University '
+                    'Press, 2022, 288 pages')
+        self.assertEqual(r['book_title'],
+                         'Russian Political Philosophy: Anarchy, Authority, Autocracy')
+        self.assertEqual(r['book_author_last'], 'Zweerde')
+
+    def test_city_and_state_code_stripped(self):
+        r = self._p('Review of: Joshua Zimmerman, Pilsudski: Founding Father of Modern '
+                    'Poland, Cambridge, MA, Harvard University Press, 2022, 592 pages')
+        self.assertEqual(r['book_title'], 'Pilsudski: Founding Father of Modern Poland')
+        self.assertEqual(r['book_author_last'], 'Zimmerman')
+
+    def test_date_range_inside_title_survives(self):
+        # the year anchor must not fire inside the book's own title
+        r = self._p('Review of: N. V. Motroshilova, Ranniaia filosofiia Ėdmunda '
+                    'Gusserlia (Galle, 1887-1901), Moskva, Progress-Traditsiia, '
+                    '2018, 471 pages')
+        self.assertEqual(r['book_title'],
+                         'Ranniaia filosofiia Ėdmunda Gusserlia (Galle, 1887-1901)')
+        self.assertEqual(r['book_author_last'], 'Motroshilova')
+
+    def test_editor_list_before_title(self):
+        r = self._p('Review of: D. N. Drozdova, O. L. Granovskaia, and A. M. Rutkevich, '
+                    'eds., Perekrestki kul’tur: Aleksandr Koire, Moskva, Nauka, 2021, 400 pages')
+        self.assertTrue(r['book_title'].startswith("Perekrestki kul'tur"))
+        self.assertTrue(r['is_edited_volume'])
+        self.assertIn('Granovskaia', r['book_author_first'])
+
+    def test_editor_marker_with_colon(self):
+        r = self._p('Review of: Riccardo Mario Cucciolla (ed.): Dimensions and challenges '
+                    'of Russian liberalism. Historical drama and new prospects, Cham, '
+                    'Springer, 2019, 220 pages')
+        self.assertTrue(r['book_title'].startswith('Dimensions and challenges'))
+        self.assertEqual(r['book_author_last'], 'Cucciolla')
+
+    def test_role_markers(self):
+        r = self._p('Review of: Kateryna Zarembo (author), Tetiana Savchynska (translator), '
+                    'Ukrainian Sunrise Stories of the Donetsk and Luhansk Regions, '
+                    'Stuttgart, ibidem, 2024, 300 pages')
+        self.assertTrue(r['book_title'].startswith('Ukrainian Sunrise'))
+        self.assertEqual(r['book_author_last'], 'Zarembo')
+
+    def test_not_claimed_without_the_colon_marker(self):
+        # "Review of Title" (no colon) belongs to the existing Format S branch
+        self.assertNotEqual(
+            self._p('Review of Ethics and the Contemporary World').get('format'),
+            'review_of_citation')
+
+    def test_title_with_its_own_comma_list(self):
+        # "Poles, Polonia, and the Quest for Liberty" is one title, not
+        # author + title; the lowercase "and …" continuation gives it away
+        r = self._p('Review of: Poles, Polonia, and the Quest for Liberty, Lanham, '
+                    'Lexington Books, 2021, 300 pages')
+        self.assertEqual(r['book_title'], 'Poles, Polonia, and the Quest for Liberty')
+        self.assertEqual(r['book_author_last'], '')
+
+    def test_author_before_a_comma_list_title(self):
+        # but a real two-word author in front of such a title still parses
+        r = self._p('Review of: Emily Wang, Pushkin, the Decembrists, and Civic '
+                    'Sentimentalism, Madison, University of Wisconsin Press, 2023, 250 pages')
+        self.assertEqual(r['book_title'], 'Pushkin, the Decembrists, and Civic Sentimentalism')
+        self.assertEqual(r['book_author_last'], 'Wang')
