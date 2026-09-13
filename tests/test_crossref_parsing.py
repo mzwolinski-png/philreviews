@@ -848,3 +848,54 @@ class ReviewOfCitation(unittest.TestCase):
                     'Sentimentalism, Madison, University of Wisconsin Press, 2023, 250 pages')
         self.assertEqual(r['book_title'], 'Pushkin, the Decembrists, and Civic Sentimentalism')
         self.assertEqual(r['book_author_last'], 'Wang')
+
+
+class EditorListVariants(unittest.TestCase):
+    """Long editor lists ahead of a reference-work title."""
+
+    def test_parenthesised_editors_with_trailing_and(self):
+        r = cp.parse_review_title(
+            'Ann Garry, Serene J. Khader, and Alison Stone (editors), The Routledge '
+            'Companion to Feminist Philosophy. New York: Routledge, 2017. 700 pp.')
+        self.assertEqual(r['book_title'], 'The Routledge Companion to Feminist Philosophy')
+        self.assertEqual(r['book_author_last'], 'Stone')
+        self.assertIn('Khader', r['book_author_first'])
+
+    def test_bare_eds_marker_without_parentheses(self):
+        r = cp.parse_review_title(
+            'John Yolton, Roy Porter, Pat Rogers, and Barbara Maria Stafford, eds., '
+            'The Blackwell Companion to the Enlightenment. Oxford: Blackwell, 1991.')
+        self.assertEqual(r['book_title'], 'The Blackwell Companion to the Enlightenment')
+        self.assertEqual(r['book_author_last'], 'Stafford')
+
+    def test_repeated_series_name_dropped(self):
+        r = cp.parse_review_title(
+            'Nicholas Bunnin and E. P. Tsui-James, eds., The Blackwell Companion to '
+            'Philosophy, Blackwell Companions to Philosophy, Oxford: Blackwell, 1996.')
+        self.assertEqual(r['book_title'], 'The Blackwell Companion to Philosophy')
+        self.assertEqual(r['book_author_last'], 'Tsui-James')
+
+    def test_volume_subtitle_is_not_an_imprint(self):
+        r = cp.parse_review_title(
+            'Philip Schofield, Tim Causer and Chris Riley (eds.), The Correspondence '
+            'of Jeremy Bentham, Volume 14: Supplementary Letters (UCL Press, 2021)')
+        self.assertEqual(r['book_title'],
+                         'The Correspondence of Jeremy Bentham, Volume 14: Supplementary Letters')
+
+    def test_trailing_ed_marker_stripped_from_title(self):
+        r = cp.parse_review_title(
+            'The Bloomsbury Handbook of Chinese Philosophy Methodologies ed. by Sorhoon Tan')
+        self.assertEqual(r['book_title'],
+                         'The Bloomsbury Handbook of Chinese Philosophy Methodologies')
+        self.assertEqual(r['book_author_last'], 'Tan')
+
+    def test_compound_city_imprint_stripped(self):
+        # Kant-Studien: "Berlin/Boston: De Gruyter" — the place is compound
+        r = cp.parse_review_title(
+            '<b>Achim Brosch:</b> <i>Haus, Markt, Staat: Ökonomie in Kants '
+            'praktischer Philosophie und Anthropologie.</i> Berlin/Boston: '
+            'De Gruyter, 2024. xii + 360 pages. ISBN: 978-3-11-137103-0.')
+        self.assertEqual(r['book_title'],
+                         'Haus, Markt, Staat: Ökonomie in Kants praktischer '
+                         'Philosophie und Anthropologie')
+        self.assertEqual(r['book_author_last'], 'Brosch')

@@ -301,6 +301,36 @@ def is_obituary_or_profile(title, url):
 
 # ── Verification pipeline ─────────────────────────────────────────
 
+# Search engines happily return an outlet's front page, an issue index or a tag
+# page when the article they quote lives behind a paywall. Those carry the
+# snippet text that passes every content check, so the URL itself has to be
+# vetted: five NYRB rows for one Lukes book pointed at nybooks.com, an issue
+# index and two unrelated essays (found 2026-09-13).
+_NON_ARTICLE_PATH = re.compile(
+    r'^/?(?:$|issues?/|tags?/|topics?/|category/|categories/|section/|search|'
+    r'contributors?/|authors?/|profiles?/|newsletters?/|subscribe|archive|'
+    r'browse|collections?/|series/|podcasts?/?$|about/?$|index\b)', re.I)
+
+
+def is_article_url(url):
+    """True when the URL looks like a single article rather than an index page."""
+    try:
+        from urllib.parse import urlparse
+        path = urlparse(url).path or '/'
+    except Exception:
+        return False
+    segments = [p for p in path.split('/') if p]
+    if not segments:
+        return False                       # bare domain
+    if _NON_ARTICLE_PATH.match(path):
+        return False
+    # an article slug is wordy; an index path is usually just dates or ids
+    slug = segments[-1]
+    if re.fullmatch(r'[\d\-]+', slug):
+        return False                       # ".../2026/09/24"
+    return len(slug) >= 8 or '-' in slug
+
+
 def verify_result(result_title, result_snippet, result_url, book_title, author_last):
     """Check if a search result is actually a review of this book.
 
@@ -309,6 +339,10 @@ def verify_result(result_title, result_snippet, result_url, book_title, author_l
     # Tier 1: Domain check
     domain = domain_from_url(result_url)
     if domain not in DOMAIN_TO_VENUE:
+        return False
+
+    # Tier 1b: the URL must point at an article, not a front page or index
+    if not is_article_url(result_url):
         return False
 
     combined = f"{result_title} {result_snippet}".lower()
@@ -321,7 +355,7 @@ def verify_result(result_title, result_snippet, result_url, book_title, author_l
     # Reject if the byline matches the book author — this is the author's
     # own article, not a review of their book. Catches the major April 12
     # false-positive pattern (Zaretsky writing about Camus etc.)
-    byline_first, byline_last = extract_reviewer_from_snippet(result_snippet)
+    byline_first, byline_last = extract_reviewer_from_snippet(result_snippet, author_last)
     if byline_last and byline_last.lower() == author_last_lower:
         return False
     # URL slugs sometimes encode the byline (e.g. lareviewofbooks.org/article/...-by-robert-zaretsky)
@@ -361,26 +395,53 @@ def verify_result(result_title, result_snippet, result_url, book_title, author_l
         return match_ratio >= 0.60
 
 
-def extract_reviewer_from_snippet(snippet):
-    """Try to extract a reviewer name from a search snippet.
+def extract_reviewer_from_snippet(snippet, book_author_last=""):
+    """Try to extract the REVIEWER's name from a search snippet.
 
-    Looks for patterns like "By Name" or "by Name" anywhere in the text.
+    A snippet usually names the book's author first ("The Diversity of Morals
+    by Steven Lukes, reviewed by Susan Neiman"), so taking the first "by" got
+    the author, not the reviewer -- and the caller's "byline == book author"
+    guard then threw the real review away (found 2026-09-13). Explicit reviewer
+    phrasing is tried first; a bare "by" is only accepted when it is not the
+    book's own author.
+
     Returns (first_name, last_name) or ("", "").
     """
     if not snippet:
         return ("", "")
 
-    # Match "By First Last" or "by First Last" anywhere in snippet
-    # Handles hyphenated names (Wallace-Wells), middle initials (A.), apostrophes (O'Brien)
-    m = re.search(
-        r"[Bb]y\s+([A-Z][a-zA-Z'-]+(?:\s+[A-Z]\.?\s+)?(?:\s+[A-Z][a-zA-Z'-]+)+)",
-        snippet,
-    )
-    if m:
-        parts = m.group(1).strip().split()
+    name = r"([A-Z][a-zA-Z'-]+(?:\s+[A-Z]\.?\s+)?(?:\s+[A-Z][a-zA-Z'-]+)+)"
+
+    def _split(raw):
+        parts = raw.strip().split()
         if 2 <= len(parts) <= 4:
             return (" ".join(parts[:-1]), parts[-1])
+        return ("", "")
 
+    # explicit reviewer phrasing wins outright
+    for pat in (rf"reviewed\s+by\s+{name}",
+                rf"review(?:ed)?\s+by\s+{name}",
+                rf"reviewer[:\s]\s*{name}"):
+        m = re.search(pat, snippet, re.I)
+        if m:
+            first, last = _split(m.group(1))
+            if last:
+                return (first, last)
+
+    # otherwise the first byline that is not the book's own author
+    author_last = (book_author_last or "").lower()
+    for m in re.finditer(rf"[Bb]y\s+{name}", snippet):
+        first, last = _split(m.group(1))
+        if not last:
+            continue
+        if author_last and last.lower() == author_last:
+            continue
+        return (first, last)
+
+    # nothing but the author's own name: hand it back so the caller can reject
+    m = re.search(rf"[Bb]y\s+{name}", snippet)
+    if m:
+        return _split(m.group(1))
     return ("", "")
 
 
@@ -913,6 +974,7 @@ class MainstreamReviewScraper(BaseScraper):
             "results_checked": 0,
             "results_verified": 0,
             "duplicates_skipped": 0,
+            "unattributable_skipped": 0,
             "uploaded": 0,
         }
         self.found_reviews = []
@@ -963,9 +1025,18 @@ class MainstreamReviewScraper(BaseScraper):
                 domain = domain_from_url(url)
                 venue_name, access_type = DOMAIN_TO_VENUE[domain]
                 pub_date = extract_date_from_snippet(snippet)
-                r_first, r_last = extract_reviewer_from_snippet(snippet)
+                r_first, r_last = extract_reviewer_from_snippet(snippet, last)
                 if not r_last:
                     r_first, r_last = extract_reviewer_from_url(url)
+
+                # Every field so far except these two comes from the book we
+                # searched for, not from the page. With neither a reviewer nor
+                # a date there is nothing tying the page to the book, which is
+                # exactly how one Lukes book acquired five unrelated NYRB URLs.
+                if not r_last and not pub_date:
+                    self.stats["unattributable_skipped"] += 1
+                    self.log(f"  skipped (no reviewer or date): {url}")
+                    continue
 
                 verified.append({
                     "book_title": title,
@@ -1282,7 +1353,15 @@ class MainstreamReviewScraper(BaseScraper):
                     venue_name, access_type = DOMAIN_TO_VENUE[domain]
 
                     pub_date = extract_date_from_snippet(r_desc)
-                    r_first, r_last = extract_reviewer_from_snippet(r_desc)
+                    r_first, r_last = extract_reviewer_from_snippet(r_desc, author)
+                    if not r_last:
+                        r_first, r_last = extract_reviewer_from_url(r_url)
+
+                    # nothing from the page itself ties it to the book
+                    if not r_last and not pub_date:
+                        self.stats["unattributable_skipped"] += 1
+                        self.log(f"  skipped (no reviewer or date): {r_url}")
+                        continue
 
                     all_reviews.append({
                         "book_title": title,

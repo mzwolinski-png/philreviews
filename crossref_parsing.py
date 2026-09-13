@@ -382,6 +382,9 @@ def _parse_eds_prefix(title: str):
     m = re.match(r'^(.{3,140}?)\s*\(\s*(?:eds?|editors?|edited by)\.?\s*\)\s*[,.:]\s*(.+)$',
                  t, re.I)
     if not m:
+        # same shape without parentheses: "A, B, and C, eds., <Title>"
+        m = re.match(r'^(.{3,140}?),\s*(?:eds?|editors?)\.\s*[,.:]\s*(.+)$', t, re.I)
+    if not m:
         return None
     author, book = m.group(1).strip().rstrip(','), m.group(2).strip()
     # drop the trailing publisher parenthetical and any page/price tail
@@ -390,13 +393,40 @@ def _parse_eds_prefix(title: str):
     # \b matters: without it this ate 'Su(pp)lementary Letters', since the
     # roman-numeral class also matches the 'l' that follows.
     book = re.sub(r'[,.;]?\s*\bpp?\.?\s*[\divxl].*$', '', book, flags=re.I).strip().rstrip('.,;: ')
-    # cut a trailing imprint: "... Analytic Feminism. London: Bloomsbury, 2018"
+    # cut a trailing imprint: "... Analytic Feminism. London: Bloomsbury, 2018".
+    # A period is enough of a boundary on its own; after a comma the place must
+    # be a real city, or this eats subtitles like ", Volume 14: Supplementary
+    # Letters" (found 2026-09-13).
     book = re.split(r'\.\s+[A-ZÀ-Þ][\w.\s]{0,24}:\s+\S', book)[0].strip().rstrip('.,;: ')
+    _cm = re.search(r',\s+([A-ZÀ-Þ][\w.\s-]{0,24}):\s+\S', book)
+    if _cm and _cm.group(1).strip().lower() in _PUB_CITY:
+        book = book[:_cm.start()].strip().rstrip('.,;: ')
+    # a comma-separated imprint tail with no colon at all:
+    # "…to the Enlightenment, Oxford, Blackwell, 1991"
+    _segs = _split_outside_parens(book)
+    if len(_segs) > 1:
+        _cut = False
+        for _i, _sg in enumerate(_segs):
+            if re.match(r'^\(?(?:1[6-9]|20)\d{2}\)?[.,;]?$', _sg):
+                _segs, _cut = _segs[:_i], True
+                break
+        _segs = _trim_citation_tail(_segs, _cut)
+        if _segs:
+            book = ', '.join(_segs).strip().rstrip('.,;: ')
+    # drop a trailing series name that restates the title
+    # ("The Blackwell Companion to Philosophy, Blackwell Companions to Philosophy")
+    if ',' in book:
+        head, _, tail = book.rpartition(',')
+        sig = lambda x: {w for w in re.findall(r'[a-z]{4,}', x.lower())}
+        if len(sig(head) & sig(tail)) >= 2:
+            book = head.strip().rstrip('.,;: ')
     if len(book) < 4 or _pub_phrase(book):
         return None
     segs = [s.strip() for s in re.split(r',\s*|\s+and\s+|\s*&\s*', author) if s.strip()]
     if not segs or len(segs) > 6:
         return None
+    segs = [re.sub(r'^(?:and|&)\s+', '', s, flags=re.I).strip() for s in segs]
+    segs = [s for s in segs if s]
     for s in segs:
         w = s.split()
         if not (1 <= len(w) <= 5) or not re.match(r'^[A-ZÀ-Þ]', s) or re.search(r'\d', s):
@@ -850,8 +880,8 @@ def _strong_imprint(seg):
         return True
     if re.fullmatch(r'[^A-Za-zÀ-ÿ]*(?:1[6-9]|20)\d{2}[^A-Za-zÀ-ÿ]*', seg):
         return True                       # a bare year / year range
-    if _PUB_PHRASE.search(seg):
-        return True
+    if _pub_phrase(seg):        # reference-work aware: "The Blackwell Companion…"
+        return True                # is a title, "Oxford: Blackwell" is an imprint
     return bool(re.search(r'\b(?:Press|University|Univ|Verlag|Publications?|Publishers?|'
                           r'Publishing|Books|Editions?|Izdatel\w*|Nauka|House)\b', seg, re.I))
 
@@ -876,12 +906,13 @@ def _trim_citation_tail(segs, cut_at_year):
     segment where the year told us a publisher must sit.
     """
     segs = list(segs)
+    floor = 1 if segs else 0          # something must survive the trim
     # The one segment we may drop on faith is the publisher sitting immediately
     # before the year -- and only there. Spending this budget later ate real
     # titles ("Vremya antiistorii", ", Ideas").
     unknown_budget = 1 if cut_at_year else 0
     first = True
-    while segs:
+    while len(segs) > floor:
         last = segs[-1].strip()
         if _strong_imprint(last) or _is_place(last):
             state_code = bool(re.match(r'^[A-Z]{2}$', last.strip().rstrip('.')))
@@ -1395,8 +1426,10 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
                     title_str = stripped[italic_match.end():]
                     title_str = re.sub(r'<[^>]+>', '', title_str)
                     title_str = re.sub(r'^[\s.:;,]+', '', title_str).strip()
-                    # cut at "City: Publisher" / "City : Publisher" (allow space)
-                    title_str = re.split(r'\.\s+[A-Z][a-zA-ZÀ-ſ]+\s*:\s', title_str)[0].strip()
+                    # cut at "City: Publisher" — the place may be compound
+                    # ("Berlin/Boston: De Gruyter", "New York: Routledge")
+                    title_str = re.split(r'\.\s+[A-Z][a-zA-ZÀ-ſ]+(?:[/\-\s][A-Za-zÀ-ſ.]+){0,3}\s*:\s',
+                                         title_str)[0].strip()
                     title_str = re.split(r'\bISBN\b', title_str)[0].strip()
                     title_str = re.split(r',?\s+\d+\s*(?:pages|pp|Seiten)\b', title_str, flags=re.IGNORECASE)[0].strip()
                     title_str = re.split(r',\s+\d{4}\b', title_str)[0].strip()
@@ -1659,6 +1692,10 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     if by_author_match:
         book_title = by_author_match.group(1).strip()
         author_str = by_author_match.group(2).strip()
+        # "…Chinese Philosophy Methodologies ed. by Sorhoon Tan" splits on the
+        # period inside "ed.", stranding a bare "ed" on the title
+        book_title = re.sub(r'[,;]?\s+(?:ed|eds|edited|trans|translated|comp)\.?$',
+                            '', book_title, flags=re.I).strip().rstrip(',;')
         # Strip publisher/city/year/page info from author string
         # Split at ", City:" or ", City," or ". Publisher" or ". Year" or ". Pages"
         # Strip city/publisher after author: ", West Lafayette..." or ", Lawrence & Wishart..."

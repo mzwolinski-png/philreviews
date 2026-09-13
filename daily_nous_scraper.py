@@ -41,6 +41,37 @@ HEADER_PATTERNS = [
 ]
 
 
+
+
+def _venue_from_url(url):
+    """Authoritative venue for a URL, when its domain is one we recognise."""
+    try:
+        from mainstream_review_scraper import DOMAIN_TO_VENUE, domain_from_url
+    except Exception:
+        return ""
+    try:
+        entry = DOMAIN_TO_VENUE.get(domain_from_url(url or ""))
+    except Exception:
+        return ""
+    return entry[0] if entry else ""
+
+
+
+def _rfc822_to_iso(value):
+    """"Mon, 07 Sep 2026 14:00:00 +0000" -> "2026-09-07". Passes ISO through."""
+    value = (value or "").strip()
+    if not value:
+        return ""
+    if re.match(r"^\d{4}-\d{2}-\d{2}", value):
+        return value
+    try:
+        from email.utils import parsedate_to_datetime
+        return parsedate_to_datetime(value).strftime("%Y-%m-%d")
+    except Exception:
+        return ""
+
+
+
 class DailyNousScraper(BaseScraper):
     """Scrapes book review listings from Daily Nous weekly update posts."""
 
@@ -126,7 +157,11 @@ class DailyNousScraper(BaseScraper):
             body = item.findtext("content:encoded", default="", namespaces=ns) or ""
             posts.append({
                 "id": link, "link": link, "slug": slug,
-                "date": (item.findtext("pubDate") or "").strip(),
+                # The WP API returns ISO dates and process_post slices [:10].
+                # RSS returns RFC-822 ("Mon, 07 Sep 2026 14:00:00 +0000"), which
+                # that slice turned into "Mon, 07 Se" -- so normalise here and
+                # leave the consumer alone (found 2026-09-13).
+                "date": _rfc822_to_iso(item.findtext("pubDate")),
                 "content": {"rendered": body},
             })
         return posts
@@ -645,6 +680,15 @@ class DailyNousScraper(BaseScraper):
         """Create a dict matching db.insert_reviews() column names."""
         venue = venue.strip(". ")
         venue = self.VENUE_ALIASES.get(venue, venue)
+        # The venue comes from the post's markup and the URL from its link, so
+        # the two can disagree -- one row arrived as "Philosophy Now" pointing
+        # at nybooks.com. The domain cannot be wrong about which outlet it is,
+        # so let it win whenever we recognise it (found 2026-09-13).
+        domain_venue = _venue_from_url(review_url)
+        if domain_venue and domain_venue != venue:
+            self.log.info(f"  venue corrected from {venue!r} to {domain_venue!r} "
+                          f"({review_url})")
+            venue = domain_venue
         return {
             "book_title": title.strip(),
             "book_author_first_name": a_first.strip(),
