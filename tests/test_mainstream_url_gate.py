@@ -79,3 +79,25 @@ class ReviewerExtraction(unittest.TestCase):
             ms.extract_reviewer_from_snippet("By Mark Lilla. The closing of the "
                                              "Straussian mind", "Lord"),
             ("Mark", "Lilla"))
+
+
+class DuplicateDetection(unittest.TestCase):
+    """Stored links keep the form they arrived in, so an exact string match
+    misses "www." and per-book "#anchor" variants of the same article."""
+
+    def test_normalise_collapses_www_and_fragment(self):
+        self.assertEqual(
+            ms.normalize_url("https://www.nybooks.com/articles/2024/06/20/the-tower/#a-book"),
+            ms.normalize_url("https://nybooks.com/articles/2024/06/20/the-tower"))
+
+    def test_already_indexed_matches_anchored_sibling(self):
+        # the Mark Lilla review is stored with a per-book anchor and "www."
+        url = ("https://nybooks.com/articles/2024/06/20/"
+               "the-tower-and-the-sewer-why-liberalism-failed-deneen")
+        self.assertTrue(ms.already_indexed(url, "Common Good Constitutionalism", "Vermeule"))
+
+    def test_already_indexed_allows_a_different_book_at_one_url(self):
+        # multi-book reviews legitimately share a URL
+        url = ("https://nybooks.com/articles/2024/06/20/"
+               "the-tower-and-the-sewer-why-liberalism-failed-deneen")
+        self.assertFalse(ms.already_indexed(url, "A Book Nobody Wrote", "Nobody"))

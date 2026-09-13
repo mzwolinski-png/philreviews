@@ -257,6 +257,50 @@ def normalize_url(url):
     return urlunparse((scheme, netloc, path, "", "", ""))
 
 
+
+def already_indexed(url, book_title, author_last):
+    """True when this book is already recorded at this article.
+
+    db.review_link_exists() is an exact string match, but stored links keep the
+    form they arrived in — "https://www.nybooks.com/…/#common-good-constitution"
+    from one importer versus a bare "https://nybooks.com/…" from search. So a
+    Mark Lilla review of five books picked up a sixth, duplicate row for one of
+    them. Compare the normalised article path instead, and require the same book
+    so genuine multi-book reviews at one URL are still allowed (2026-09-13).
+    """
+    import db as _db
+    target = normalize_url(url)
+    norm = lambda t: re.sub(r"[^a-z0-9]", "", (t or "").lower())
+    want, want_author = norm(book_title), (author_last or "").strip().lower()
+    if not want:
+        return False
+    try:
+        conn = _db._connect() if hasattr(_db, "_connect") else None
+    except Exception:
+        conn = None
+    try:
+        import sqlite3
+        conn = sqlite3.connect(_db.DB_PATH)
+        conn.row_factory = sqlite3.Row
+        like = "%" + target.split("://", 1)[-1].split("/", 1)[-1][:80] + "%"
+        for r in conn.execute(
+                "SELECT book_title, book_author_last_name, review_link "
+                "FROM reviews WHERE review_link LIKE ?", (like,)):
+            if normalize_url(r["review_link"] or "") != target:
+                continue
+            if norm(r["book_title"]) == want and \
+                    (r["book_author_last_name"] or "").strip().lower() == want_author:
+                return True
+    except Exception:
+        return False
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+    return False
+
+
 def domain_from_url(url):
     """Extract the registrable domain from a URL."""
     hostname = urlparse(url).hostname or ""
@@ -1014,7 +1058,7 @@ class MainstreamReviewScraper(BaseScraper):
                     continue
 
                 url = normalize_url(url)
-                if db.review_link_exists(url):
+                if db.review_link_exists(url) or already_indexed(url, title, last):
                     self.stats["duplicates_skipped"] += 1
                     continue
 
@@ -1341,7 +1385,7 @@ class MainstreamReviewScraper(BaseScraper):
                         continue
 
                     r_url = normalize_url(r_url)
-                    if db.review_link_exists(r_url):
+                    if db.review_link_exists(r_url) or already_indexed(r_url, title, author):
                         self.stats["duplicates_skipped"] += 1
                         continue
                     if any(r["review_link"] == r_url for r in all_reviews):
