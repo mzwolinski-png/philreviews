@@ -883,7 +883,7 @@ def _strong_imprint(seg):
     if _pub_phrase(seg):        # reference-work aware: "The Blackwell Companion…"
         return True                # is a title, "Oxford: Blackwell" is an imprint
     return bool(re.search(r'\b(?:Press|University|Univ|Verlag|Publications?|Publishers?|'
-                          r'Publishing|Books|Editions?|Izdatel\w*|Nauka|House)\b', seg, re.I))
+                          r'Publishing|Books|Editions?|Edizioni|Editrice|Izdatel\w*|Nauka|House)\b', seg, re.I))
 
 
 def _is_place(seg):
@@ -943,6 +943,14 @@ def _parse_review_of_citation(title):
     t = re.sub(r'\s+', ' ', re.sub(r'</?[a-zA-Z]+>', '', title or '')).replace('&amp;', '&').strip()
     m = re.match(r'^review\s+of\s*:\s*(.+)$', t, re.I)
     if not m:
+        # Springer journals sometimes head the piece with an essay title:
+        # "Kojève Without Unison: A Polyphonic Volume…—Review of: Tyrants at
+        # Work…". Only an em/en dash introduces it, so ordinary hyphenated
+        # titles are unaffected (found 2026-09-20).
+        # _normalize() has already folded em/en dashes to "-", so accept any of
+        # them; "- Review of:" is specific enough not to fire on ordinary text
+        m = re.match(r'^.{0,160}?[\u2014\u2013-]\s*review\s+of\s*:\s*(.+)$', t, re.I)
+    if not m:
         return None
     body = m.group(1).strip()
     # "Cucciolla (ed.): Dimensions and challenges…" has no comma after the
@@ -961,8 +969,22 @@ def _parse_review_of_citation(title):
             segs, cut_at_year = segs[:i], True
             break
     # people credited AFTER the title end it ("…, eds. Barbara Hallensleben, …")
+    trailing_editors = ''
     for i, seg in enumerate(segs):
         if _ED_PREFIX.match(seg):
+            # "…, eds. Marco Filoni and Massimo Palma, Pisa, …" — the title ends
+            # here, but for an edited volume those names ARE the book's author
+            tail = [re.sub(r'^(?:eds?\.|edited by)\s*', '', seg, flags=re.I).strip()]
+            for nxt in segs[i + 1:]:
+                # a further editor is a full name; a single capitalised word is
+                # the city ("Pisa") and ends the list
+                if (len(nxt.split()) >= 2 and _seg_is_name(nxt)
+                        and not _is_place(nxt) and not _strong_imprint(nxt)):
+                    tail.append(nxt.strip())
+                else:
+                    break
+            if re.match(r'^eds?\.|^edited by', seg, re.I):
+                trailing_editors = ', '.join(x for x in tail if x)
             segs, cut_at_year = segs[:i], False
             break
     segs = [s for s in _trim_citation_tail(segs, cut_at_year) if s]
@@ -1019,6 +1041,8 @@ def _parse_review_of_citation(title):
     book = ', '.join(title_segs).strip().rstrip('.,;: ')
     if len(book) < 4 or _pub_phrase(book):
         return None
+    if not author and trailing_editors:
+        author, edited = trailing_editors, True
     author = re.sub(r'^(?:and|&)\s+', '', author).strip().rstrip('.,')
     parts = author.split()
     af, al = (' '.join(parts[:-1]), parts[-1]) if len(parts) > 1 else ('', author)
@@ -1031,6 +1055,77 @@ def _parse_review_of_citation(title):
         'needs_doi_scrape': not al,
         'format': 'review_of_citation',
     }
+
+
+def _parse_author_period_title(title: str):
+    """Parse the Symbolic Logic house style:
+    "<Author>. <Title>. <Series>, <Publisher>, <Year>, <extent>."
+
+    The Journal and Bulletin of Symbolic Logic lead with the author, then the
+    title, then the imprint, all period-separated. Generic branches split on
+    the wrong period and produced things like author "Peter Smith. An
+    introduction to" / title "theorems" (found 2026-09-20).
+    """
+    t = re.sub(r'\s+', ' ', re.sub(r'</?[a-zA-Z]+>', '', title or '')).replace('&amp;', '&').strip()
+    if re.match(r'^\s*(?:book\s+)?review\s*(?::|of\b)', t, re.I):
+        return None                      # owned by the review-of branches
+    m = re.match(
+        r"^([A-ZÀ-Þ][\w.’'-]*(?:\s+[A-ZÀ-Þ][\w.’'-]*){0,3})\.\s+(.{6,}?)\.\s+(.+)$", t)
+    if not m:
+        return None
+    author, book, tail = (x.strip() for x in m.groups())
+    # the tail must read as an imprint, or this is just prose with full stops
+    if not re.search(r'\b(?:19|20)\d{2}\b|\bpp\b|\bPress\b|University|Verlag|'
+                     r'\bISBN\b|\bvol\b', tail, re.I):
+        return None
+    if not _looks_like_author_name(author) or re.search(r'\d', author):
+        return None
+    # an author run is 2-4 words; one bare word is usually a title fragment
+    if not (2 <= len(author.split()) <= 4):
+        return None
+    if len(book) < 6 or _pub_phrase(book) or re.search(r'\d\s*pp\b|ISBN', book):
+        return None
+    first, _, last = author.rpartition(' ')
+    return {
+        'book_title': book.rstrip('.,;: '),
+        'book_author_first': first,
+        'book_author_last': last,
+        'is_edited_volume': bool(re.search(r'\beds?\b\.?|\beditors?\b', tail, re.I)),
+        'has_multiple_authors': False,
+        'needs_doi_scrape': False,
+        'format': 'author_period_title',
+    }
+
+
+
+def _parse_title_translator(title: str):
+    """"<Title>. Tr./Trans. <Translator>, <Publisher>, <Year>. Pp. N."
+
+    Dialogue and others cite a translation with no author in the string at all
+    ("Aristotle's Categories and De Interpretatione. Tr. J. L. Ackrill, Oxford
+    University Press, 1963."). Generic branches split at the wrong period and
+    made the translator the title (found 2026-09-20).
+    """
+    t = re.sub(r'\s+', ' ', re.sub(r'</?[a-zA-Z]+>', '', title or '')).strip()
+    m = re.match(r'^(.{6,}?)[.,]\s+(?:Tr|Trans|Translated)\.?\s+(?:by\s+)?([A-ZÀ-Þ].{2,})$',
+                 t, re.I)
+    if not m:
+        return None
+    book, tail = m.group(1).strip().rstrip('.,;: '), m.group(2)
+    if not re.search(r'\b(?:19|20)\d{2}\b|\bpp\b|Press|University', tail, re.I):
+        return None
+    if len(book) < 6 or _pub_phrase(book):
+        return None
+    return {
+        'book_title': book,
+        'book_author_first': '',
+        'book_author_last': '',
+        'is_edited_volume': False,
+        'has_multiple_authors': False,
+        'needs_doi_scrape': True,      # author resolved by enrichment
+        'format': 'title_translator',
+    }
+
 
 
 def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = None) -> Optional[Dict]:
@@ -1088,6 +1183,18 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     _paren = _parse_paren_citation(title)
     if _paren:
         return _paren
+
+    # --- "<Title>. Tr. <Translator>, <Publisher>, <Year>." ---
+    _ttr = _parse_title_translator(title)
+    if _ttr:
+        return _ttr
+
+    # --- "<Author>. <Title>. <Publisher>, <Year>, <pp>." (Symbolic Logic) ---
+    # Runs after the established citation parsers: its shape is broad, so the
+    # tightly-gated formats get first refusal.
+    _apt = _parse_author_period_title(title)
+    if _apt:
+        return _apt
 
     # --- Full-citation byline: "Title, by Author. Publisher, City, Year. pp." ---
     # New Blackfriars and several other journals deposit the whole review header
@@ -1342,6 +1449,24 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
         # "Review of <Author>'s <Title>" / "Review of <Author>, <Title>"
         plain = re.sub(r'<[^>]+>', '', remainder).strip()
         plain = re.sub(r'\s+', ' ', plain)
+
+        # "Review of <Author(s)>. <Year>. \u201c<Title>\u201d" (Public Choice)
+        ym = re.match(r'^(.{4,80}?)\.\s*(?:19|20)\d{2}\.\s*[\u201c\u2018"\']'
+                      r'(.{6,200}?)[\u201d\u2019"\']', plain)
+        if ym:
+            names = re.split(r'\s+and\s+|\s*,\s*', ym.group(1))
+            lead = (names[0] or '').split()
+            if len(lead) >= 2 and _looks_like_author_name(' '.join(lead)):
+                return {
+                    'book_title': ym.group(2).strip(),
+                    'book_author_first': ' '.join(lead[:-1]),
+                    'book_author_last': lead[-1],
+                    'is_edited_volume': False,
+                    'has_multiple_authors': len(names) > 1,
+                    'needs_doi_scrape': False,
+                    'format': 'review_of_author_year_title',
+                }
+
         av = re.match(
             r"^([A-ZÀ-Þ][\w.'\u2019-]+(?:\s+[A-ZÀ-Þ][\w.'\u2019-]+){0,3})"
             r"(?:['\u2019]s\s+|,\s+)(.{4,})$", plain)
@@ -1945,7 +2070,9 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     # --- Format N: "Author, Title" (Journal of Value Inquiry style) ---
     # E.g. "Monica Mueller, Contrary to Thoughtlessness: Rethinking Practical Wisdom"
     # Author part: 1-4 words, looks like a name; Title part: at least 15 chars
-    author_comma_title = re.match(r'^([A-Z][a-zA-Z.\s-]{2,40}?),\s+([A-Z].{14,})$', stripped)
+    # the title may open with a quotation mark ("Cavalletti, 'The Immemorial…'")
+    author_comma_title = re.match(
+        r'^([A-Z][a-zA-Z.\s-]{2,40}?),\s+([“‘\'"]?[A-Z].{14,})$', stripped)
     if author_comma_title:
         author_str = author_comma_title.group(1).strip()
         book_title = author_comma_title.group(2).strip()
@@ -1959,6 +2086,16 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
         book_title = re.split(r'\.\s+(?:' + _pubs + r')', book_title)[0].strip()
         book_title = re.split(r',\s+(?:' + _cities + r')[,:]\s', book_title)[0].strip()
         book_title = re.split(r'\.\s+(?:ISBN|pp\b|\d+\s*pp|\d{4}\b)', book_title)[0].strip()
+        # a quoted title is the whole title, colons and all:
+        # "Andrea Cavalletti, 'The Immemorial: The Subject and Its Doubles.'"
+        _q = re.match(r'^[\u201c\u2018\'"](.{6,200}?)[\u201d\u2019\'"]', book_title)
+        if _q:
+            book_title = _q.group(1).strip()
+        # a trailing "City: Publisher, Year, ISBN" tail is not part of the title
+        _im = re.search(r'[.,]\s+([A-ZÀ-Þ][\w.\s-]{0,24}):\s+[A-ZÀ-Þ]', book_title)
+        if _im and _im.group(1).strip().lower() in _PUB_CITY:
+            book_title = book_title[:_im.start()]
+        book_title = re.split(r',?\s*\bISBN\b', book_title)[0]
         book_title = re.sub(r'[.,]\s*$', '', book_title).strip()
         if _looks_like_author_name(author_str):
             is_edited = bool(re.search(r'\beds?\.?\b|\beditors?\b', author_str, re.IGNORECASE))
@@ -1993,6 +2130,12 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
         _ct = crossref_data.get('container-title') or []
         _container = (_ct[0] if isinstance(_ct, list) and _ct else str(_ct)).lower()
     _skip_author_split = _container in _no_author_colon
+
+    # A quoted title carries its own colons: "Andrea Cavalletti, 'The Immemorial:
+    # The Subject and Its Doubles.'" Splitting on that colon strands half the
+    # title, so leave these to the comma-split branch (found 2026-09-20).
+    if re.search(r',\s*[\u201c\u2018\'"][^\u201d\u2019\'"]{8,}[\u201d\u2019\'"]', stripped):
+        _skip_author_split = True
 
     # O-1: "Author, ed(s). Title" or "Author, ed(s).: Title"
     ee_eds_match = None if _skip_author_split else re.match(

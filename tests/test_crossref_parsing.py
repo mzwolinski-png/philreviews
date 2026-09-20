@@ -899,3 +899,63 @@ class EditorListVariants(unittest.TestCase):
                          'Haus, Markt, Staat: Ökonomie in Kants praktischer '
                          'Philosophie und Anthropologie')
         self.assertEqual(r['book_author_last'], 'Brosch')
+
+
+class WeeklyReviewFormats20260920(unittest.TestCase):
+    """Formats surfaced by the 2026-09-20 weekly review."""
+
+    def _p(self, t):
+        return cp.parse_review_title(t) or {}
+
+    def test_essay_headline_before_review_of(self):
+        # Springer heads the piece with its own title before the citation
+        r = self._p('Kojève Without Unison: A Polyphonic Volume on Philosophy and '
+                    'Power—Review of: Tyrants at Work: Philosophy and Politics in '
+                    'Alexandre Kojève, eds. Marco Filoni and Massimo Palma, Pisa, '
+                    'Edizioni ETS, 2024, 168 pages, Paperback')
+        self.assertEqual(r['book_title'],
+                         'Tyrants at Work: Philosophy and Politics in Alexandre Kojève')
+        self.assertEqual(r['book_author_last'], 'Palma')
+        self.assertTrue(r['is_edited_volume'])
+
+    def test_symbolic_logic_house_style(self):
+        r = self._p("Peter Smith. An introduction to Gödel's theorems. Cambridge "
+                    "Introductions to Philosophy, Cambridge University Press, 2007, "
+                    "xiv + 362 pp.")
+        self.assertEqual(r['book_title'], "An introduction to Gödel's theorems")
+        self.assertEqual(r['book_author_first'], 'Peter')
+        self.assertEqual(r['book_author_last'], 'Smith')
+
+    def test_translator_clause_ends_the_title(self):
+        r = self._p("Aristotle's Categories and De Interpretatione. Tr. J. L. Ackrill, "
+                    "Oxford University Press, 1963. Pp. 162.")
+        self.assertEqual(r['book_title'],
+                         "Aristotle's Categories and De Interpretatione")
+        self.assertEqual(r['book_author_last'], '')   # author not in the string
+
+    def test_review_of_author_year_quoted_title(self):
+        r = self._p('Review of Douglas W. Allen and Bryan Leonard. 2025. “Why the '
+                    'rush: an institutional economic analysis of homesteading and '
+                    'the settlement of the west”')
+        self.assertTrue(r['book_title'].startswith('Why the rush'))
+        self.assertEqual(r['book_author_last'], 'Allen')
+        self.assertTrue(r['has_multiple_authors'])
+
+    def test_quoted_title_keeps_its_colon(self):
+        r = self._p("Andrea Cavalletti, 'The Immemorial: The Subject and Its "
+                    "Doubles.' (Trans. Max Matukhin)")
+        self.assertEqual(r['book_title'], 'The Immemorial: The Subject and Its Doubles')
+        self.assertEqual(r['book_author_last'], 'Cavalletti')
+
+    def test_imprint_tail_stripped_from_comma_split(self):
+        r = self._p('Paula M.L., Learning from experience: Minority identities, '
+                    'multicultural struggles. Berkeley: University of California '
+                    'Press, 2004, ISBN 0520230140')
+        self.assertEqual(r['book_title'],
+                         'Learning from experience: Minority identities, '
+                         'multicultural struggles')
+
+    def test_plain_author_colon_title_unaffected(self):
+        r = self._p('Robert Pippin: The Culmination: Heidegger, German Idealism, '
+                    'and the Fate of Philosophy')
+        self.assertEqual(r['book_author_last'], 'Pippin')
