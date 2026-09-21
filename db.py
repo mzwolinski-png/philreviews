@@ -166,6 +166,14 @@ def _create_indexes(conn):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_date_id ON reviews(publication_date DESC, id DESC)")
     # Composite index for type-filtered queries sorted by date
     conn.execute("CREATE INDEX IF NOT EXISTS idx_type_date ON reviews(entry_type, publication_date DESC, id DESC)")
+    # Journal and subfield listing pages filter on one column and sort by date.
+    # With only the single-column index SQLite sorted every matching row in a
+    # temp B-tree before it could page: measured 10.2 ms on journal page 40 and
+    # 31.1 ms on subfield page 50, against 0.2 ms with these (audit 2026-09-21).
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_source_date "
+                 "ON reviews(publication_source, publication_date DESC, id DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_subfield_date "
+                 "ON reviews(subfield_primary, publication_date DESC, id DESC)")
 
 
 def init_fts(conn):
