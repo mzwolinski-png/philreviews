@@ -1,6 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <script>
+    // Applied before paint: without this a dark-mode reader sees a white flash.
+    (function () {
+      try {
+        var t = localStorage.getItem("pr-theme");
+        if (t === "dark" || t === "light") {
+          document.documentElement.setAttribute("data-theme", t);
+        }
+      } catch (e) {}
+    })();
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% if action in ('verified', 'follow_verified') %}Confirmed{% else %}Unsubscribed{% endif %} &mdash; PhilReviews</title>
@@ -13,6 +24,11 @@
 <body>
 
 <header class="site-header">
+    <button type="button" class="theme-toggle" id="theme-toggle"
+            aria-label="Switch between light and dark theme">
+        <span aria-hidden="true" class="theme-toggle-icon"></span>
+    </button>
+
     <a href="/" class="site-logo"><img src="{{ url_for('static', filename='logo.svg') }}" alt="PhilReviews" height="44"></a>
 </header>
 
@@ -33,5 +49,34 @@
     <p style="margin-top: 2rem;"><a href="/" style="color: #1a3a5c;">Back to PhilReviews</a></p>
 </div>
 
+<script>
+// Cycles light -> dark -> system. "System" removes the attribute so the
+// prefers-color-scheme media query takes over again.
+(function () {
+    var btn = document.getElementById("theme-toggle");
+    if (!btn) return;
+    var root = document.documentElement;
+    function current() {
+        return root.getAttribute("data-theme") || "system";
+    }
+    function label() {
+        var c = current();
+        btn.setAttribute("title", "Theme: " + c + " (click to change)");
+        btn.dataset.theme = c;
+    }
+    btn.addEventListener("click", function () {
+        var next = { system: "light", light: "dark", dark: "system" }[current()];
+        if (next === "system") {
+            root.removeAttribute("data-theme");
+            try { localStorage.removeItem("pr-theme"); } catch (e) {}
+        } else {
+            root.setAttribute("data-theme", next);
+            try { localStorage.setItem("pr-theme", next); } catch (e) {}
+        }
+        label();
+    });
+    label();
+})();
+</script>
 </body>
 </html>
