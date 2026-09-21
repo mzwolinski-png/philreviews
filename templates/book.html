@@ -26,7 +26,7 @@
     <meta name="twitter:card" content="summary">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=Public+Sans:wght@400;600;700&family=Sometype+Mono:wght@400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script data-goatcounter="https://philreviews.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
     <script type="application/ld+json">{{ jsonld | safe }}</script>
@@ -66,7 +66,7 @@
                 <tr>
                     <td>{% if r.link %}<a href="{{ r.link }}" rel="nofollow">{{ r.reviewer or "Review" }}</a>{% else %}{{ r.reviewer or "—" }}{% endif %}</td>
                     <td><a href="/journal/{{ r.journal | url_encode }}">{{ r.journal }}</a></td>
-                    <td>{{ r.date }}</td>
+                    <td class="date">{{ r.date }}</td>
                     <td>{{ r.access or "—" }}</td>
                 </tr>
                 {% endfor %}

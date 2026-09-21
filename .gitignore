@@ -27,3 +27,4 @@ scripts/lrb_state.json
 scripts/order_suffix_state.json
 scripts/coauthor_state.json
 scripts/coauthor_expansion_report.txt
+csp_reports.db

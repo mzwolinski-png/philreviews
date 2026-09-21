@@ -1,35 +1,38 @@
-/* PhilReviews — academic design */
+/* PhilReviews — "Reading Room": cool-neutral ground, one petrol accent,
+   Literata over Public Sans. Chosen 2026-09-21 over three alternatives. */
 
 /* ---------- Design tokens ----------
    Extracted from the 59 hard-coded colours that were scattered through
-   this file. Values are unchanged: this pass is a refactor, not a
-   restyle. Every colour now resolves through a token, which is what
-   makes dark mode and any future re-theme a change in one place.
+   this file, which is what let the Reading Room re-theme land as an edit
+   to this block alone. The ramp is cool-neutral, and exactly one hue is
+   saturated: --brand petrol carries links, buttons and rules, --accent is
+   its deeper sibling for emphasis. Adding a second saturated hue would
+   undo the point of the direction.
 */
 :root {
-  --brand: #1a3a5c;
-  --brand-hover: #254d73;
-  --brand-deep: #1a2b4a;
-  --accent: #8b6914;
-  --accent-deep: #5d4e37;
-  --surface: #fff;
-  --surface-tint: #fdfcf9;
-  --bg: #faf9f6;
-  --surface-2: #f5f2eb;
-  --surface-3: #f0ece4;
-  --surface-4: #f0ece3;
-  --line: #e0dcd4;
-  --line-soft: #e8e4dc;
-  --line-strong: #d5cfc3;
-  --line-grey: #ccc;
-  --line-warm: #e8dcd0;
-  --ink: #222;
-  --ink-2: #333;
-  --ink-3: #555;
-  --ink-4: #666;
-  --ink-5: #777;
-  --ink-6: #888;
-  --ink-7: #767676;   /* was #999 — 2.85:1 on white, below AA even for large text */
+  --brand: #0E5B63;
+  --brand-hover: #14757F;
+  --brand-deep: #0A4249;
+  --accent: #123F45;
+  --accent-deep: #3B4A4F;
+  --surface: #ffffff;
+  --surface-tint: #FAFCFC;
+  --bg: #F2F5F6;
+  --surface-2: #E9EEF0;
+  --surface-3: #E2E9EC;
+  --surface-4: #E2E9EC;
+  --line: #D7DEE2;
+  --line-soft: #E1E7EA;
+  --line-strong: #C6CFD4;
+  --line-grey: #C4CCD1;
+  --line-warm: #DDE5E7;
+  --ink: #141A1D;
+  --ink-2: #232A2F;
+  --ink-3: #414C53;
+  --ink-4: #54606A;
+  --ink-5: #5B6873;
+  --ink-6: #64717C;
+  --ink-7: #64717C;   /* the faintest text allowed: 4.5:1 on --bg, AA for body copy */
   --ok-fg: #155724;
   --ok-bg: #d4edda;
   --ok-border: #c3e6cb;
@@ -48,12 +51,12 @@
   --violet-border: #d6ccf0;
   --rose-fg: #880e4f;
   --rose-bg: #fce4ec;
-  --ink-mid: #444;
-  --ink-slate: #4a5a68;
-  --line-faint: #eee;
-  --line-cool: #c3cfd9;
-  --line-cool-2: #d7e1ea;
-  --line-sand: #d0cdc6;
+  --ink-mid: #333C43;
+  --ink-slate: #44555F;
+  --line-faint: #EBEFF1;
+  --line-cool: #BFCBD2;
+  --line-cool-2: #D3DEE4;
+  --line-sand: #C9D1D4;
   --danger: #c33;
   --badge-green-fg: #2a7a2a;
   --badge-leaf-fg: #33691e;
@@ -65,7 +68,10 @@
   --badge-sand-bg: #f5e6cc;
   --badge-clay-bg: #d9ceb8;
   --badge-oat-bg: #e0d8c8;
-  --surface-cool: #f4f7fa;
+  --serif: "Literata", Georgia, serif;
+  --ui: "Public Sans", system-ui, -apple-system, sans-serif;
+  --mono: "Sometype Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --surface-cool: #EDF3F5;
 }
 
 /* ---------- Dark theme ----------
@@ -74,26 +80,26 @@
    "system" setting stamps nothing and is decided by prefers-color-scheme.
    The media query is guarded so an explicit light choice beats a dark OS.
 
-   Not an inversion — the cream ramp becomes a warm-neutral dark ramp, and the
-   navy brand lifts to a legible tint, because #1a3a5c on a dark ground fails
+   Not an inversion — the light grey ramp becomes a cool dark ramp, and the
+   petrol brand lifts to a pale tint, because #0E5B63 on a dark ground fails
    contrast.
 */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --brand: #8fb4d9; --brand-hover: #a9c8e6; --brand-deep: #c3d9ee;
-    --accent: #d8ab4a; --accent-deep: #c9a26a;
+    --brand: #5FB8C2; --brand-hover: #7FCBD3; --brand-deep: #A5DDE2;
+    --accent: #A8DDE0; --accent-deep: #9FB7B5;
 
-    --surface: #1b1f24; --surface-tint: #1f242a; --bg: #14171b;
-    --surface-2: #20252b; --surface-3: #252b32; --surface-4: #252b32;
-    --surface-cool: #1c2228;
+    --surface: #191E22; --surface-tint: #1D2328; --bg: #101518;
+    --surface-2: #1E252A; --surface-3: #232B31; --surface-4: #232B31;
+    --surface-cool: #1A2227;
 
-    --line: #303740; --line-soft: #2a313a; --line-strong: #3b434d;
-    --line-grey: #3b434d; --line-warm: #3a342c; --line-faint: #262c33;
-    --line-cool: #33404d; --line-cool-2: #2c3742; --line-sand: #3a3730;
+    --line: #2D373D; --line-soft: #273036; --line-strong: #38444B;
+    --line-grey: #38444B; --line-warm: #2F3A3D; --line-faint: #232B30;
+    --line-cool: #31404A; --line-cool-2: #2A363D; --line-sand: #343C3E;
 
-    --ink: #e7ebef; --ink-2: #dde3e9; --ink-3: #b9c2cb; --ink-4: #a6b0ba;
-    --ink-5: #98a3ad; --ink-6: #8b96a1; --ink-7: #7d8892;
-    --ink-mid: #cbd3da; --ink-slate: #9fb0c0;
+    --ink: #E4EBEC; --ink-2: #DAE3E5; --ink-3: #B4C0C3; --ink-4: #A1AEB2;
+    --ink-5: #93A1A6; --ink-6: #86959A; --ink-7: #79888D;
+    --ink-mid: #C7D2D5; --ink-slate: #9AB0B5;
 
     --ok-fg: #86d6a2; --ok-bg: #16281d; --ok-border: #24422f; --ok-solid: #4f9e6a;
     --err-fg: #f0a09a; --err-bg: #2e1a1b; --danger: #e8827c;
@@ -111,20 +117,20 @@
 }
 
 :root[data-theme="dark"] {
-  --brand: #8fb4d9; --brand-hover: #a9c8e6; --brand-deep: #c3d9ee;
-  --accent: #d8ab4a; --accent-deep: #c9a26a;
+  --brand: #5FB8C2; --brand-hover: #7FCBD3; --brand-deep: #A5DDE2;
+  --accent: #A8DDE0; --accent-deep: #9FB7B5;
 
-  --surface: #1b1f24; --surface-tint: #1f242a; --bg: #14171b;
-  --surface-2: #20252b; --surface-3: #252b32; --surface-4: #252b32;
-  --surface-cool: #1c2228;
+  --surface: #191E22; --surface-tint: #1D2328; --bg: #101518;
+  --surface-2: #1E252A; --surface-3: #232B31; --surface-4: #232B31;
+  --surface-cool: #1A2227;
 
-  --line: #303740; --line-soft: #2a313a; --line-strong: #3b434d;
-  --line-grey: #3b434d; --line-warm: #3a342c; --line-faint: #262c33;
-  --line-cool: #33404d; --line-cool-2: #2c3742; --line-sand: #3a3730;
+  --line: #2D373D; --line-soft: #273036; --line-strong: #38444B;
+  --line-grey: #38444B; --line-warm: #2F3A3D; --line-faint: #232B30;
+  --line-cool: #31404A; --line-cool-2: #2A363D; --line-sand: #343C3E;
 
-  --ink: #e7ebef; --ink-2: #dde3e9; --ink-3: #b9c2cb; --ink-4: #a6b0ba;
-  --ink-5: #98a3ad; --ink-6: #8b96a1; --ink-7: #7d8892;
-  --ink-mid: #cbd3da; --ink-slate: #9fb0c0;
+  --ink: #E4EBEC; --ink-2: #DAE3E5; --ink-3: #B4C0C3; --ink-4: #A1AEB2;
+  --ink-5: #93A1A6; --ink-6: #86959A; --ink-7: #79888D;
+  --ink-mid: #C7D2D5; --ink-slate: #9AB0B5;
 
   --ok-fg: #86d6a2; --ok-bg: #16281d; --ok-border: #24422f; --ok-solid: #4f9e6a;
   --err-fg: #f0a09a; --err-bg: #2e1a1b; --danger: #e8827c;
@@ -152,7 +158,7 @@
 
 body {
   margin: 0;
-  font-family: "Source Sans 3", "Source Sans Pro", sans-serif;
+  font-family: var(--ui);
   background: var(--bg);
   color: var(--ink);
   line-height: 1.5;
@@ -165,7 +171,7 @@ body {
   border-bottom: 3px solid var(--brand);
 }
 .site-header h1 {
-  font-family: "Libre Baskerville", Georgia, serif;
+  font-family: var(--serif);
   font-size: 2.25rem;
   color: var(--brand);
   margin: 0 0 0.25rem;
@@ -186,7 +192,9 @@ body {
 }
 .site-header .meta {
   color: var(--accent);
-  font-size: 0.9rem;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
   font-weight: 600;
 }
 
@@ -201,7 +209,7 @@ body {
 .search-panel {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 3px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   padding: 1.25rem 1.5rem;
   margin-bottom: 1.5rem;
@@ -218,7 +226,7 @@ body {
   font-size: 1rem;
   padding: 0.6rem 1rem;
   border: 1px solid var(--line-grey);
-  border-radius: 4px;
+  border-radius: 2px;
   font-family: inherit;
 }
 .global-search input:focus {
@@ -257,7 +265,7 @@ body {
   width: 100%;
   padding: 0.45rem 0.6rem;
   border: 1px solid var(--line-grey);
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: 0.9rem;
   font-family: inherit;
   background: var(--surface);
@@ -282,7 +290,7 @@ body {
   min-width: 280px;
   background: var(--surface);
   border: 1px solid var(--line-grey);
-  border-radius: 4px;
+  border-radius: 2px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   z-index: 100;
   margin-top: 2px;
@@ -297,7 +305,7 @@ body {
 .journal-dropdown-actions button {
   background: none;
   border: 1px solid var(--line-grey);
-  border-radius: 3px;
+  border-radius: 2px;
   padding: 0.2rem 0.6rem;
   font-size: 0.8rem;
   cursor: pointer;
@@ -343,7 +351,7 @@ body {
   width: 80px;
   padding: 0.45rem 0.6rem;
   border: 1px solid var(--line-grey);
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: 0.9rem;
   font-family: inherit;
 }
@@ -368,7 +376,7 @@ body {
 #clear-filters {
   background: none;
   border: 1px solid var(--line-grey);
-  border-radius: 4px;
+  border-radius: 2px;
   padding: 0.4rem 1rem;
   font-size: 0.85rem;
   cursor: pointer;
@@ -425,7 +433,7 @@ body {
   width: 100%;
   padding: 0.45rem 0.6rem;
   border: 1px solid var(--line-grey);
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: 0.9rem;
   font-family: inherit;
 }
@@ -466,7 +474,9 @@ body {
   gap: 0.5rem;
 }
 #result-count {
-  font-size: 0.95rem;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9rem;
   color: var(--ink-3);
 }
 .share-btn.copied {
@@ -483,7 +493,7 @@ body {
 .per-page-wrap select {
   padding: 0.25rem 0.4rem;
   border: 1px solid var(--line-grey);
-  border-radius: 3px;
+  border-radius: 2px;
   font-family: inherit;
 }
 
@@ -499,7 +509,7 @@ table {
 }
 thead th {
   background: var(--surface-4);
-  font-family: "Libre Baskerville", Georgia, serif;
+  font-family: var(--serif);
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--brand);
@@ -525,13 +535,20 @@ tbody td {
   vertical-align: top;
 }
 
+td.date {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85em;
+  color: var(--ink-6);
+  white-space: nowrap;
+}
 .review-row { cursor: pointer; }
 .review-row:hover { background: var(--surface-2); }
 .review-row.expanded { background: var(--surface-4); }
 .info-btn {
   background: none;
   border: 1px solid var(--line-grey);
-  border-radius: 3px;
+  border-radius: 2px;
   padding: 0.1rem 0.45rem;
   font-size: 0.72rem;
   font-family: inherit;
@@ -581,7 +598,7 @@ tbody td {
   font-size: 0.75rem;
   font-weight: 600;
   padding: 0.15rem 0.5rem;
-  border-radius: 3px;
+  border-radius: 2px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   vertical-align: middle;
@@ -599,7 +616,7 @@ tbody td {
   font-size: 0.72rem;
   font-weight: 600;
   padding: 0.12rem 0.45rem;
-  border-radius: 3px;
+  border-radius: 2px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
   vertical-align: middle;
@@ -629,7 +646,7 @@ tbody td {
   width: 100%;
   padding: 0.45rem 0.6rem;
   border: 1px solid var(--line-grey);
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: 0.9rem;
   font-family: inherit;
   background: var(--surface);
@@ -670,7 +687,7 @@ tbody td {
   min-width: 2rem;
   padding: 0.35rem 0.6rem;
   border: 1px solid var(--line-grey);
-  border-radius: 3px;
+  border-radius: 2px;
   background: var(--surface);
   cursor: pointer;
   font-size: 0.85rem;
@@ -732,7 +749,7 @@ tbody td {
   background: var(--brand-deep);
   color: var(--surface);
   padding: 0.6rem 1rem;
-  border-radius: 0 0 4px 0;
+  border-radius: 0 0 2px 0;
   text-decoration: none;
 }
 .skip-link:focus {
@@ -757,7 +774,7 @@ th[data-sort]:focus-visible,
   margin: 0.4rem 0.6rem 0.2rem;
   padding: 0.4rem 0.5rem;
   border: 1px solid var(--line-grey);
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: 0.9rem;
   box-sizing: border-box;
 }
@@ -791,7 +808,7 @@ html { scroll-behavior: smooth; }
   text-align: center;
   border-top: 1px solid var(--line);
   scroll-margin-top: 1rem;
-  border-radius: 8px;
+  border-radius: 4px;
 }
 /* Brief highlight when the user jumps to the form from the header CTA */
 .subscribe-section.flash {
@@ -802,7 +819,7 @@ html { scroll-behavior: smooth; }
   20% { background: var(--badge-amber-bg); }
 }
 .subscribe-section h3 {
-  font-family: "Libre Baskerville", Georgia, serif;
+  font-family: var(--serif);
   color: var(--brand);
   margin: 0 0 0.4rem;
   font-size: 1.1rem;
@@ -822,7 +839,7 @@ html { scroll-behavior: smooth; }
   max-width: 300px;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--line-grey);
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: 0.9rem;
   font-family: inherit;
 }
@@ -831,7 +848,7 @@ html { scroll-behavior: smooth; }
   background: var(--brand);
   color: var(--surface);
   border: none;
-  border-radius: 4px;
+  border-radius: 2px;
   font-size: 0.9rem;
   font-family: inherit;
   cursor: pointer;
@@ -898,7 +915,7 @@ html { scroll-behavior: smooth; }
 .breadcrumb a { color: var(--brand); text-decoration: none; }
 .breadcrumb a:hover { text-decoration: underline; }
 .page-title {
-  font-family: "Libre Baskerville", Georgia, serif;
+  font-family: var(--serif);
   font-size: 1.6rem;
   color: var(--brand);
   margin: 0.25rem 0 0.25rem;
@@ -941,7 +958,7 @@ html { scroll-behavior: smooth; }
   min-width: 2rem;
   text-align: center;
   border: 1px solid var(--line-sand);
-  border-radius: 4px;
+  border-radius: 2px;
   color: var(--brand);
   text-decoration: none;
   font-size: 0.85rem;
@@ -969,7 +986,7 @@ html { scroll-behavior: smooth; }
 .journal-index-item a:hover { text-decoration: underline; }
 .journal-count { color: var(--ink-6); font-size: 0.85rem; }
 .letter-heading {
-  font-family: "Libre Baskerville", Georgia, serif;
+  font-family: var(--serif);
   font-size: 1.2rem;
   color: var(--accent);
   margin: 1.5rem 0 0.5rem;
@@ -989,7 +1006,7 @@ html { scroll-behavior: smooth; }
   gap: 0.4rem;
   padding: 1rem;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 3px;
   text-decoration: none;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -1010,7 +1027,7 @@ html { scroll-behavior: smooth; }
   margin-bottom: 2rem;
 }
 .changelog-entry h2 {
-  font-family: "Libre Baskerville", Georgia, serif;
+  font-family: var(--serif);
   font-size: 1.1rem;
   color: var(--brand);
   margin: 0 0 0.5rem;
@@ -1032,7 +1049,7 @@ html { scroll-behavior: smooth; }
   margin-bottom: 1.5rem;
 }
 .sources-section h2 {
-  font-family: "Libre Baskerville", Georgia, serif;
+  font-family: var(--serif);
   font-size: 1.1rem;
   color: var(--brand);
   margin: 0 0 0.75rem;
@@ -1069,7 +1086,7 @@ html { scroll-behavior: smooth; }
   gap: 0.4rem;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 4px;
+  border-radius: 2px;
   padding: 0.4rem 0.75rem;
   cursor: pointer;
   font-family: inherit;
@@ -1098,7 +1115,7 @@ html { scroll-behavior: smooth; }
   background: var(--brand);
   color: var(--surface);
   border: none;
-  border-radius: 4px;
+  border-radius: 2px;
   padding: 0.5rem 1.25rem;
   font-size: 0.9rem;
   font-family: inherit;
@@ -1116,7 +1133,7 @@ html { scroll-behavior: smooth; }
   padding: 0.7rem 0.9rem;
   background: var(--surface-cool);
   border: 1px solid var(--line-cool-2);
-  border-radius: 6px;
+  border-radius: 3px;
   font-size: 0.88rem;
 }
 .follow-form label {
@@ -1139,7 +1156,7 @@ html { scroll-behavior: smooth; }
   min-width: 180px;
   padding: 0.35rem 0.55rem;
   border: 1px solid var(--line-cool);
-  border-radius: 4px;
+  border-radius: 2px;
   font-family: inherit;
   font-size: 0.88rem;
 }
@@ -1148,7 +1165,7 @@ html { scroll-behavior: smooth; }
   background: var(--brand);
   color: var(--surface);
   border: none;
-  border-radius: 4px;
+  border-radius: 2px;
   font-family: inherit;
   font-weight: 600;
   cursor: pointer;

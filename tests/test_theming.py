@@ -62,9 +62,21 @@ class Tokens(unittest.TestCase):
         used = set(re.findall(r"var\(--([\w-]+)\)", CSS))
         self.assertEqual(used - set(_root()), set())
 
-    def test_dark_overrides_every_token(self):
-        self.assertEqual(set(_root()) - set(_dark()), set(),
-                         "a token not overridden in dark renders light-on-dark")
+    def test_dark_overrides_every_colour_token(self):
+        # Typeface tokens (--serif/--ui/--mono) are the same in both themes by
+        # design; it is the colours that render light-on-dark if one is missed.
+        colours = {k for k, v in _root().items() if v.startswith("#")}
+        self.assertEqual(colours - set(_dark()), set(),
+                         "a colour token not overridden in dark renders light-on-dark")
+
+    def test_typeface_tokens_are_defined_and_used(self):
+        """The three faces go through tokens, so a re-theme is one block again."""
+        root = _root()
+        for face in ("serif", "ui", "mono"):
+            self.assertIn(face, root)
+        self.assertNotIn("Libre Baskerville", CSS)  # the pre-Reading-Room stack
+        for face in ("serif", "ui", "mono"):
+            self.assertIn(f"var(--{face})", CSS)
 
 
 class DarkMode(unittest.TestCase):

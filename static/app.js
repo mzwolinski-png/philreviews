@@ -606,7 +606,7 @@
       html += "<td>" + nameLink("author", r.author) + "</td>";
       html += "<td>" + nameLink("reviewer", r.reviewer) + "</td>";
       html += "<td>" + nameLink("journal", r.journal) + "</td>";
-      html += "<td>" + esc(r.date) + "</td>";
+      html += '<td class="date">' + esc(r.date) + "</td>";
       html += "</tr>";
       if (expanded) {
         html += '<tr class="detail-row"><td colspan="5"><div class="detail-content">';
