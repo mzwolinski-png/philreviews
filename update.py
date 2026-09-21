@@ -646,6 +646,8 @@ def main():
     log.info(f"Reviews after update: {after}")
     log.info(f"Net new reviews added: {net_new}")
     tier1_removed = 0
+    stale_sources = []
+    undecided_sources = []
     reconcile_report_path = None
     autofix = None
 
@@ -702,6 +704,24 @@ def main():
                 log.info(f"Tier 1 filter: removed {tier1_removed}/{t1['checked']} reviews")
         except Exception:
             log.exception("Tier 1 filter failed")
+
+        # Source health: a scraper that finds nothing reports success, so a
+        # broken detection rule is invisible. Classify sources once, then alarm
+        # only on ones that are supposed to be live (audit 2026-09-21).
+        try:
+            sys.path.insert(0, os.path.join(ROOT, "scripts"))
+            import source_health
+            source_health.seed()
+            stale_sources = source_health.check_stale()
+            undecided_sources = source_health.needs_decision()
+            if stale_sources:
+                log.warning(f"Source health: {len(stale_sources)} active source(s) have gone quiet")
+                for s in stale_sources[:10]:
+                    log.warning(f"  STALE {s['source']}: {s['why']} (last {s['last_reviewed']})")
+            if undecided_sources:
+                log.info(f"Source health: {len(undecided_sources)} source(s) awaiting a live/ceased decision")
+        except Exception:
+            log.exception("Source health check failed")
 
         # LLM auto-fix: repair suspect entries (garbled title/author fields
         # the deterministic pass missed) before sync + report, so the admin
@@ -924,10 +944,28 @@ def main():
             log.exception("Failed to generate weekly report")
 
         try:
+            # Surface source health in the email itself — a warning that only
+            # reaches the log is a warning nobody reads.
+            health_lines = []
+            if stale_sources:
+                health_lines.append("")
+                health_lines.append(f"SOURCES THAT HAVE GONE QUIET ({len(stale_sources)}):")
+                for sv in stale_sources[:15]:
+                    health_lines.append(
+                        f"  {sv['source']} — last issue {sv['last_reviewed']} ({sv['why']})")
+                if len(stale_sources) > 15:
+                    health_lines.append(f"  ...and {len(stale_sources) - 15} more")
+            if undecided_sources:
+                health_lines.append("")
+                health_lines.append(
+                    f"AWAITING A LIVE/CEASED DECISION ({len(undecided_sources)}): "
+                    "run scripts/source_health.py to review")
+
             send_run_summary("weekly update", {
                 "before": before,
                 "after": after,
-                "details": "\n".join(detail_lines) or "(no scrapers produced output)",
+                "details": ("\n".join(detail_lines) or "(no scrapers produced output)")
+                           + "\n".join(health_lines),
                 "errors": errors,
                 "duration_s": (datetime.now() - start_time).total_seconds(),
                 "added_reviews": added_reviews,
