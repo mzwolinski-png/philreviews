@@ -434,6 +434,116 @@ def subfield_page(code):
     return resp
 
 
+@app.route("/search")
+def search_page():
+    """Server-rendered search, so a query has a crawlable, shareable URL.
+
+    The JS front end stays as-is for interactive filtering; this exists so a
+    result set can be linked to and indexed, which a fragment (#q=) cannot be.
+    """
+    q = (request.args.get("q") or "").strip()[:200]
+    page = max(1, request.args.get("page", 1, type=int))
+    if not q:
+        return redirect("/", code=302)
+
+    result = db.search_reviews(q=q, sort="date", sort_dir="desc", page=page, per_page=50)
+    slugs = db.slugs_for_reviews([r.get("book_key") for r in result["reviews"]])
+
+    reviews = []
+    for r in result["reviews"]:
+        reviews.append({
+            "title": r.get("book_title") or "",
+            "author": " ".join(x for x in ((r.get("book_author_first_name") or "").strip(),
+                                           (r.get("book_author_last_name") or "").strip()) if x),
+            "reviewer": " ".join(x for x in ((r.get("reviewer_first_name") or "").strip(),
+                                             (r.get("reviewer_last_name") or "").strip()) if x),
+            "journal": r.get("publication_source") or "",
+            "date": (r.get("publication_date") or "")[:10],
+            "slug": slugs.get(r.get("book_key") or ""),
+        })
+
+    total = result["total"]
+    total_pages = max(1, (total + 49) // 50)
+    heading = f'Reviews matching \u201c{q}\u201d'
+    return render_template(
+        "search.html", q=q, heading=heading, reviews=reviews, total=total,
+        page=min(page, total_pages), total_pages=total_pages,
+        corpus=db.get_total_reviews(), sources=db.count_sources(),
+        BASE_URL=BASE_URL)
+
+
+@app.route("/book/<slug>")
+def book_page(slug):
+    """Every review of one book.
+
+    This is the unit people actually search for ("reviews of X"), and unlike a
+    per-review page it has real content: we hold no review text, so 227k
+    one-line review pages would read as thin/doorway content (audit 2026-09-21).
+    """
+    data = db.get_book(slug)
+    if not data:
+        abort(404)
+    book, rows = data["book"], data["reviews"]
+
+    reviews, seen_subfields = [], []
+    for r in rows:
+        reviewer = " ".join(x for x in ((r.get("reviewer_first_name") or "").strip(),
+                                        (r.get("reviewer_last_name") or "").strip()) if x)
+        reviews.append({
+            "reviewer": reviewer,
+            "journal": r.get("publication_source") or "",
+            "date": (r.get("publication_date") or "")[:10],
+            "access": r.get("access_type") or "",
+            "link": r.get("review_link") or "",
+        })
+        for code in (r.get("subfield_primary"), r.get("subfield_secondary")):
+            if code and code in SUBFIELD_NAMES and code not in seen_subfields:
+                seen_subfields.append(code)
+
+    byline = " ".join(x for x in ((book.get("author_first") or "").strip(),
+                                  (book.get("author_last") or "").strip()) if x)
+    n = book["review_count"]
+    review_count_text = f"{n:,} review{'' if n == 1 else 's'}"
+    lo, hi = (book.get("first_year") or ""), (book.get("last_year") or "")
+    years = lo if lo and lo == hi else (f"{lo}–{hi}" if lo and hi else "")
+
+    also_by = []
+    if book.get("author_last"):
+        also_by = db.get_books_by_author(book["author_last"], exclude_slug=slug, limit=8)
+
+    jsonld = {
+        "@context": "https://schema.org",
+        "@type": "Book",
+        "name": book["title"],
+        "url": f"{BASE_URL}/book/{book['slug']}",
+    }
+    if byline:
+        jsonld["author"] = {"@type": "Person", "name": byline}
+    graph = []
+    for r, raw in zip(reviews, rows):
+        node = {
+            "@type": "Review",
+            "itemReviewed": {"@type": "Book", "name": book["title"]},
+            "publisher": {"@type": "Periodical", "name": r["journal"]},
+        }
+        if r["reviewer"]:
+            node["author"] = {"@type": "Person", "name": r["reviewer"]}
+        if r["date"]:
+            node["datePublished"] = r["date"]
+        if r["link"]:
+            node["url"] = r["link"]
+        graph.append(node)
+    if graph:
+        jsonld["review"] = graph
+
+    return render_template(
+        "book.html", book=book, reviews=reviews, byline=byline,
+        review_count_text=review_count_text, years=years,
+        subfields=[(c, SUBFIELD_NAMES[c]) for c in seen_subfields],
+        also_by=also_by, jsonld=json.dumps(jsonld, ensure_ascii=False),
+        BASE_URL=BASE_URL)
+
+
 @app.route("/journals")
 def journals_index():
     meta = db.get_metadata()
@@ -459,7 +569,51 @@ def robots_txt():
     return resp
 
 
+# One sitemap file holds 50,000 URLs; there are ~155k book pages, so
+# /sitemap.xml is now an index and the URLs live in the files it names.
+SITEMAP_PAGE_SIZE = 45000
+
+
 @app.route("/sitemap.xml")
+def sitemap_index():
+    n_books = db.count_books()
+    pages = (n_books + SITEMAP_PAGE_SIZE - 1) // SITEMAP_PAGE_SIZE
+    xml = ['<?xml version="1.0" encoding="UTF-8"?>',
+           '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+           f'<sitemap><loc>{BASE_URL}/sitemap-pages.xml</loc></sitemap>']
+    for i in range(1, pages + 1):
+        xml.append(f'<sitemap><loc>{BASE_URL}/sitemap-books-{i}.xml</loc></sitemap>')
+    xml.append('</sitemapindex>')
+    resp = make_response("\n".join(xml))
+    resp.headers["Content-Type"] = "application/xml"
+    resp.headers["Cache-Control"] = "public, max-age=3600"
+    return resp
+
+
+@app.route("/sitemap-books-<int:part>.xml")
+def sitemap_books(part):
+    """Book pages, most-reviewed first so crawl budget lands on the best ones."""
+    if part < 1:
+        abort(404)
+    rows = db.get_books_for_sitemap(
+        limit=SITEMAP_PAGE_SIZE, offset=(part - 1) * SITEMAP_PAGE_SIZE)
+    if not rows:
+        abort(404)
+    xml = ['<?xml version="1.0" encoding="UTF-8"?>',
+           '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    for r in rows:
+        # a book reviewed many times is a better landing page than a singleton
+        priority = "0.7" if r["review_count"] >= 3 else ("0.6" if r["review_count"] >= 2 else "0.4")
+        xml.append(f'<url><loc>{BASE_URL}/book/{escape(r["slug"])}</loc>'
+                   f'<changefreq>monthly</changefreq><priority>{priority}</priority></url>')
+    xml.append('</urlset>')
+    resp = make_response("\n".join(xml))
+    resp.headers["Content-Type"] = "application/xml"
+    resp.headers["Cache-Control"] = "public, max-age=3600"
+    return resp
+
+
+@app.route("/sitemap-pages.xml")
 def sitemap():
     meta = db.get_metadata()
     xml = ['<?xml version="1.0" encoding="UTF-8"?>']

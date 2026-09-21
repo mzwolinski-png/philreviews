@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ book.title }}{% if byline %} by {{ byline }}{% endif %} — Reviews | PhilReviews</title>
+    <meta name="description" content="{{ review_count_text }} of {{ book.title }}{% if byline %} by {{ byline }}{% endif %}{% if years %}, {{ years }}{% endif %}. Where it was reviewed, by whom, with links to each review.">
+    <link rel="canonical" href="{{ BASE_URL }}/book/{{ book.slug }}">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <meta property="og:type" content="book">
+    <meta property="og:title" content="{{ book.title }}{% if byline %} by {{ byline }}{% endif %} — Reviews">
+    <meta property="og:description" content="{{ review_count_text }} indexed on PhilReviews.">
+    <meta property="og:url" content="{{ BASE_URL }}/book/{{ book.slug }}">
+    <meta property="og:image" content="https://philreviews.org/static/og-image.png">
+    <meta name="twitter:card" content="summary">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script data-goatcounter="https://philreviews.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+    <script type="application/ld+json">{{ jsonld | safe }}</script>
+</head>
+<body>
+
+<header class="site-header">
+    <a href="/" class="site-logo"><img src="{{ url_for('static', filename='logo.svg') }}" alt="PhilReviews" height="44"></a>
+    <p class="tagline">A comprehensive index of philosophy book reviews</p>
+</header>
+
+<div class="container">
+    <nav class="breadcrumb"><a href="/">Home</a> &rsaquo; Book</nav>
+
+    <h1 class="page-title">{{ book.title }}</h1>
+    <p class="page-stats">
+        {% if byline %}by {{ byline }} &middot; {% endif %}{{ review_count_text }}{% if years %} &middot; {{ years }}{% endif %}
+    </p>
+
+    <div class="table-wrap">
+        <table class="seo-table">
+            <thead>
+                <tr>
+                    <th>Reviewed by</th>
+                    <th>Journal</th>
+                    <th>Date</th>
+                    <th>Access</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in reviews %}
+                <tr>
+                    <td>{% if r.link %}<a href="{{ r.link }}" rel="nofollow">{{ r.reviewer or "Review" }}</a>{% else %}{{ r.reviewer or "—" }}{% endif %}</td>
+                    <td><a href="/journal/{{ r.journal | url_encode }}">{{ r.journal }}</a></td>
+                    <td>{{ r.date }}</td>
+                    <td>{{ r.access or "—" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if subfields %}
+    <p class="page-cta">
+        {% for code, name in subfields %}<a href="/subfield/{{ code }}" class="quick-action-btn">{{ name }}</a> {% endfor %}
+    </p>
+    {% endif %}
+
+    {% if also_by %}
+    <h2 class="page-subtitle">Also by {{ book.author_last }}</h2>
+    <ul class="plain-list">
+        {% for b in also_by %}
+        <li><a href="/book/{{ b.slug }}">{{ b.title }}</a> <span class="muted">({{ b.review_count }} review{{ '' if b.review_count == 1 else 's' }})</span></li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+
+    <p class="page-cta"><a href="/search?q={{ book.title | url_encode }}" class="quick-action-btn">Search PhilReviews for this title</a></p>
+</div>
+
+<footer class="site-footer">
+    PhilReviews &mdash; built by <a href="https://mzwolinski.com" target="_blank" rel="noopener">Matt Zwolinski</a> &middot; <a href="mailto:mzwolinski@sandiego.edu">Contact</a> &middot; <a href="/changelog">Update Log</a>
+    <br><small>&copy; 2026 Matt Zwolinski. PhilReviews is a bibliographic index. All review content is hosted by the original publishers.</small>
+</footer>
+
+</body>
+</html>

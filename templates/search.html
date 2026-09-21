@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ heading }} — PhilReviews</title>
+    <meta name="description" content="{{ "{:,}".format(total) }} philosophy book reviews matching {{ q }}. Searchable index of {{ "{:,}".format(corpus) }} reviews across {{ "{:,}".format(sources) }} journals.">
+    <link rel="canonical" href="{{ BASE_URL }}/search?q={{ q | url_encode }}{% if page > 1 %}&amp;page={{ page }}{% endif %}">
+    {% if page > 1 %}<link rel="prev" href="{{ BASE_URL }}/search?q={{ q | url_encode }}{% if page > 2 %}&amp;page={{ page - 1 }}{% endif %}">{% endif %}
+    {% if page < total_pages %}<link rel="next" href="{{ BASE_URL }}/search?q={{ q | url_encode }}&amp;page={{ page + 1 }}">{% endif %}
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{{ heading }}">
+    <meta property="og:url" content="{{ BASE_URL }}/search?q={{ q | url_encode }}">
+    <meta property="og:image" content="https://philreviews.org/static/og-image.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script data-goatcounter="https://philreviews.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+    <a href="/" class="site-logo"><img src="{{ url_for('static', filename='logo.svg') }}" alt="PhilReviews" height="44"></a>
+    <p class="tagline">A comprehensive index of philosophy book reviews</p>
+</header>
+
+<div class="container">
+    <nav class="breadcrumb"><a href="/">Home</a> &rsaquo; Search</nav>
+
+    <h1 class="page-title">{{ heading }}</h1>
+    <p class="page-stats">{{ "{:,}".format(total) }} result{{ '' if total == 1 else 's' }}{% if total_pages > 1 %} &middot; page {{ page }} of {{ total_pages }}{% endif %}</p>
+
+    <form class="search-panel" method="get" action="/search">
+        <label for="q">Search reviews</label>
+        <input type="search" id="q" name="q" value="{{ q }}" placeholder="Book title, author, or reviewer">
+        <button type="submit" class="quick-action-btn">Search</button>
+    </form>
+
+    {% if reviews %}
+    <div class="table-wrap">
+        <table class="seo-table">
+            <thead>
+                <tr><th>Book</th><th>Author</th><th>Reviewer</th><th>Journal</th><th>Date</th></tr>
+            </thead>
+            <tbody>
+                {% for r in reviews %}
+                <tr>
+                    <td>{% if r.slug %}<a href="/book/{{ r.slug }}">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}</td>
+                    <td>{{ r.author }}</td>
+                    <td>{{ r.reviewer }}</td>
+                    <td><a href="/journal/{{ r.journal | url_encode }}">{{ r.journal }}</a></td>
+                    <td>{{ r.date }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="page-cta">No reviews match that search. Try a book title, an author&rsquo;s surname, or a reviewer.</p>
+    {% endif %}
+
+    {% if total_pages > 1 %}
+    <div class="server-pagination">
+        {% if page > 1 %}<a href="?q={{ q | url_encode }}&amp;page={{ page - 1 }}" class="page-btn">&laquo; Prev</a>{% endif %}
+        <span class="page-btn active">{{ page }}</span>
+        {% if page < total_pages %}<a href="?q={{ q | url_encode }}&amp;page={{ page + 1 }}" class="page-btn">Next &raquo;</a>{% endif %}
+    </div>
+    {% endif %}
+
+    <p class="page-cta"><a href="/#q={{ q | url_encode }}" class="quick-action-btn">Open this search with filters</a></p>
+</div>
+
+<footer class="site-footer">
+    PhilReviews &mdash; built by <a href="https://mzwolinski.com" target="_blank" rel="noopener">Matt Zwolinski</a> &middot; <a href="mailto:mzwolinski@sandiego.edu">Contact</a> &middot; <a href="/changelog">Update Log</a>
+    <br><small>&copy; 2026 Matt Zwolinski. PhilReviews is a bibliographic index. All review content is hosted by the original publishers.</small>
+</footer>
+
+</body>
+</html>

@@ -878,6 +878,89 @@ def get_verified_follows() -> list[dict]:
         conn.close()
 
 
+def get_book(slug: str):
+    """One book and every review of it, for /book/<slug>.
+
+    Reviews carry the same normalised key the books table was built from, so a
+    book page can never show another book's reviews. Single indexed lookup.
+    """
+    conn = _get_read_conn()
+    conn.row_factory = sqlite3.Row
+    book = conn.execute("SELECT * FROM books WHERE slug = ?", (slug,)).fetchone()
+    if not book:
+        return None
+    reviews = conn.execute(
+        """SELECT * FROM reviews WHERE book_key = ?
+           ORDER BY publication_date DESC, id DESC""",
+        (book["book_key"],)).fetchall()
+    return {"book": dict(book), "reviews": [dict(r) for r in reviews]}
+
+
+def get_books_by_author(author_last: str, exclude_slug: str = "", limit: int = 8):
+    """Other books by the same author, for cross-linking book pages.
+
+    Surname-only, which is how the author is stored; a common surname will mix
+    two people, so this is presented as a browse aid rather than a claim.
+    """
+    if not (author_last or "").strip():
+        return []
+    conn = _get_read_conn()
+    conn.row_factory = sqlite3.Row
+    return [dict(r) for r in conn.execute(
+        """SELECT slug, title, review_count FROM books
+           WHERE lower(author_last) = lower(?) AND slug <> ?
+           ORDER BY review_count DESC, title LIMIT ?""",
+        (author_last.strip(), exclude_slug, limit))]
+
+
+def get_books_for_sitemap(min_reviews: int = 1, limit: int = 0, offset: int = 0):
+    """Slugs for the sitemap, most-reviewed first so crawl budget lands well."""
+    conn = _get_read_conn()
+    conn.row_factory = sqlite3.Row
+    sql = ("SELECT slug, review_count, last_year FROM books WHERE review_count >= ? "
+           "ORDER BY review_count DESC, slug")
+    params = [min_reviews]
+    if limit:
+        sql += " LIMIT ? OFFSET ?"
+        params += [limit, offset]
+    return [dict(r) for r in conn.execute(sql, params)]
+
+
+def slugs_for_reviews(book_keys):
+    """Map book_key -> slug for a page of results, in one query.
+
+    Search results link to book pages, and looking each up individually would
+    be 50 round trips per page.
+    """
+    keys = [k for k in dict.fromkeys(book_keys) if k]
+    if not keys:
+        return {}
+    conn = _get_read_conn()
+    out = {}
+    for i in range(0, len(keys), 400):
+        chunk = keys[i:i + 400]
+        ph = ",".join("?" * len(chunk))
+        for k, slug in conn.execute(
+                f"SELECT book_key, slug FROM books WHERE book_key IN ({ph})", chunk):
+            out[k] = slug
+    return out
+
+
+def get_total_reviews() -> int:
+    return _get_total_count()
+
+
+def count_sources() -> int:
+    conn = _get_read_conn()
+    return conn.execute("SELECT COUNT(DISTINCT publication_source) FROM reviews").fetchone()[0]
+
+
+def count_books(min_reviews: int = 1) -> int:
+    conn = _get_read_conn()
+    return conn.execute("SELECT COUNT(*) FROM books WHERE review_count >= ?",
+                        (min_reviews,)).fetchone()[0]
+
+
 def update_subscriber_last_sent(subscriber_id: int, date_str: str):
     """Update the last_sent_date for a subscriber."""
     with _sub_connect() as conn:

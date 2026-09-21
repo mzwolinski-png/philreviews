@@ -705,6 +705,18 @@ def main():
         except Exception:
             log.exception("Tier 1 filter failed")
 
+        # Rebuild book groupings: /book/<slug> pages and the sitemap are built
+        # from them, so they must reflect this run's new reviews.
+        try:
+            sys.path.insert(0, os.path.join(ROOT, "scripts"))
+            import build_books
+            bstats = build_books.rebuild()
+            log.info(f"Book index: {bstats['books']} books "
+                     f"({bstats['multi_review']} with 2+ reviews), "
+                     f"{bstats['reviews_keyed']} reviews keyed")
+        except Exception:
+            log.exception("Book index rebuild failed")
+
         # Source health: a scraper that finds nothing reports success, so a
         # broken detection rule is invisible. Classify sources once, then alarm
         # only on ones that are supposed to be live (audit 2026-09-21).
