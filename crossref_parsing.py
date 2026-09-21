@@ -2447,6 +2447,96 @@ def _extract_first_author(author_str: str) -> Tuple[str, str, bool]:
 
 # --- Book review detection ---
 
+# ---------------------------------------------------------------------------
+# Review-citation detection ('citation_required' mode)
+#
+# Some journals stopped depositing italic tags, so italic_only silently fell to
+# zero while the weekly run still reported success (Faith and Philosophy, 2023).
+# 'all' mode is not the answer: measured across those journals it flags ordinary
+# article titles at roughly a 1:1 rate. What actually separates a review is that
+# its title is a *citation* — it names the book's author, or sets the book's
+# title in caps with the author leading.
+#
+# The leading-name form ("Alister McGrath, Christian Apologetics: An
+# Introduction") is the risky one, because a noun phrase before a comma looks
+# the same. It is guarded three ways and, more importantly, this mode is opt-in
+# per journal: turn it on only after reading that journal's recent titles.
+# ---------------------------------------------------------------------------
+
+#: generic words that never sit inside a personal name. Deliberately short:
+#: a list tuned to kill specific false positives would not survive new data.
+_CITE_STOP = {
+    "on", "of", "the", "a", "an", "in", "for", "against", "or", "to", "from", "with",
+    "why", "how", "what", "is", "are", "be", "can", "does", "do", "not", "no", "without",
+    "beyond", "before", "after", "under", "over", "between", "through", "toward", "towards",
+    "some", "this", "that", "new", "two", "three", "reply", "response", "introduction",
+    "review", "essay", "case", "problem", "theory", "ethics", "philosophy", "nature",
+}
+_CITE_TOK = r"(?:[A-Z]\.|[A-Z][\w'\u2019\u00C0-\u024F-]+)"
+_CITE_NAME = r"%s(?:\s+%s){1,3}" % (_CITE_TOK, _CITE_TOK)
+# No re.I on the whole pattern: it would make [A-Z] match lowercase and the
+# capture would swallow the "and" joining two editors.
+_CITE_BY = re.compile(
+    r",\s*(?i:edited\s+by|written\s+by|translated\s+by|trans\.\s*by|by)\s+(%s)" % _CITE_NAME)
+_CITE_EXPLICIT = re.compile(
+    r"^\s*(book\s+)?review\b|\(review\)|^reviewed\s+work|critical\s+notice", re.I)
+_CITE_LEAD = re.compile(
+    r"^(%s(?:\s+and\s+%s)*)\s*,\s*(?:eds?\.\s*,?\s*)?(.+)$" % (_CITE_NAME, _CITE_NAME))
+
+
+def _cite_looks_like_name(s: str) -> bool:
+    """A personal name, rather than a noun phrase that happens to be capitalised."""
+    for part in re.split(r"\s+and\s+", s.strip()):
+        toks = part.split()
+        if not (2 <= len(toks) <= 4):
+            return False
+        if any(t.lower().strip(".,") in _CITE_STOP for t in toks):
+            return False
+        if not all(re.match(r"^(?:[A-Z]\.|[A-Z])", t) for t in toks):
+            return False
+        if not any(re.match(r"^[A-Z]\.$", t) or len(t) > 3 for t in toks):
+            return False
+    return True
+
+
+def _cite_title_cased(rest: str) -> bool:
+    """Book titles are set in title case or caps; article prose is not."""
+    words = [w for w in re.findall(r"[A-Za-z][\w'\u2019-]*", rest) if len(w) > 3]
+    if not words:
+        return False
+    return sum(1 for w in words if w[0].isupper()) / len(words) >= 0.8
+
+
+def looks_like_review_citation(title: str) -> bool:
+    """Is this title a book citation rather than an article title?"""
+    t = re.sub(r"\s+", " ", (title or "")).strip()
+    if not t:
+        return False
+    if _CITE_EXPLICIT.search(t):
+        return True
+    m = _CITE_BY.search(t)
+    if m and _cite_looks_like_name(m.group(1)):
+        return True
+    m = _CITE_LEAD.match(t)
+    if m and _cite_looks_like_name(m.group(1)):
+        rest = m.group(2).strip()
+        if len(rest) < 20:
+            return False
+        # "A, B, and C: subtitle" enumerates; that is an article title. This also
+        # costs the occasional real book whose title has an Oxford comma, which
+        # is the right side of the trade at a 13:1 ratio.
+        if re.search(r",\s*and\s+\S", rest):
+            return False
+        if not _cite_title_cased(rest):
+            return False
+        # a monograph cited this way carries a subtitle, or the journal sets the
+        # title in caps; "Taking Risks, With and Without Probabilities" has neither
+        if ":" not in rest and not rest.isupper():
+            return False
+        return rest[0].isupper() or rest[0] in "\u2018\u201c'\""
+    return False
+
+
 def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
     """Check if a Crossref work item is a book review.
 
@@ -2458,6 +2548,10 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
                            (safe for journals whose article titles use colons/subtitles)
             'dialogue'   — like italic_only but also detects ALL-CAPS author names
                            in the title (Dialogue's distinctive review format)
+            'citation_required' — accept only titles shaped like a book citation
+                           ("Title, by Author", "Author, TITLE: Subtitle",
+                           "written by"/"edited by"). For journals that stopped
+                           depositing italic tags. Opt-in per journal.
             'bib_required' — only accept items with explicit bibliographic markers
                            (Pp., ISBN, "by Author Name", "(review)", explicit "book
                            review" / "review of"). Italic tags alone are NOT enough.
@@ -2512,6 +2606,11 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
         )
         if not has_bib:
             return False
+
+    # citation_required mode: accept only titles that read as a book citation.
+    # Opt-in per journal — see the note above looks_like_review_citation.
+    if detection_mode == 'citation_required':
+        return looks_like_review_citation(raw_title_check)
 
     # Positive indicators
     # Italic/bold tags suggest a book title, but only if they dominate the title

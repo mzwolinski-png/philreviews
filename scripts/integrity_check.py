@@ -67,6 +67,49 @@ _NAME_PARTICLES = {
 }
 
 
+# Some journals deposit a book's title in full caps (Faith and Philosophy does
+# this for roughly a third of its reviews). Shouting is a presentation artefact,
+# never the book's real title, so it is normalised wherever it appears rather
+# than per journal. Titles with an ordinary mix of cases are left alone, which
+# keeps real acronyms ("The AI Mirror") intact.
+_TITLE_MINOR = {"and", "of", "the", "in", "on", "to", "for", "a", "an", "or",
+                "but", "as", "at", "by", "with", "from", "into", "over", "upon"}
+
+
+def _is_shouting(text):
+    letters = [c for c in (text or "") if c.isalpha()]
+    if len(letters) < 8:
+        return False
+    return sum(1 for c in letters if c.isupper()) / len(letters) > 0.7
+
+
+def titlecase_shouting(text):
+    """Turn AN ALL-CAPS TITLE into An All-Caps Title."""
+    out = []
+    words = re.split(r"(\s+)", (text or "").strip())
+    for w in words:
+        if not w.strip():
+            out.append(w)
+            continue
+        # keep roman numerals and pure numbers/ranges as they are
+        if re.fullmatch(r"[IVXLC]+\.?", w) or not re.search(r"[A-Za-z]", w):
+            out.append(w)
+            continue
+        # only fold words that are themselves shouting; a word already in lower
+        # case was set that way deliberately ("..., eds" after a caps author list)
+        if not w.isupper():
+            out.append(w)
+            continue
+        low = w.lower()
+        out.append("-".join(p[:1].upper() + p[1:] for p in low.split("-"))
+                   if low.strip(".,:;") not in _TITLE_MINOR else low)
+    res = "".join(out)
+    # first word, and the first word after a colon, always capitalise
+    res = re.sub(r"^(\W*)(\w)", lambda m: m.group(1) + m.group(2).upper(), res)
+    res = re.sub(r"([:;?!]\s+)(\w)", lambda m: m.group(1) + m.group(2).upper(), res)
+    return res
+
+
 def _is_person_name(s):
     """True if `s` plausibly is a personal name (1-4 name words, each
     capitalized or an allowed particle/initial), and not a title fragment.
@@ -626,6 +669,13 @@ def run_integrity_check(since=None, dry_run=False):
                         t = title_part
                         af = changes['book_author_first_name']
                         al = changes['book_author_last_name']
+
+        # --- Normalise shouted titles ---
+        if _is_shouting(t):
+            fixed_title = titlecase_shouting(t)
+            if fixed_title != t:
+                changes['book_title'] = fixed_title
+                t = fixed_title
 
         # --- Apply changes ---
         if changes:

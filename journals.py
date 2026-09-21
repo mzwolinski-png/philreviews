@@ -54,7 +54,11 @@ JOURNALS = {
                                          'openalex_enrichable': True,
                                          'detection_mode': 'italic_only'},
     # "<i>Title</i>" or "Title, by Author"
-    'Faith and Philosophy': {'crossref_parseable': True, 'openalex_enrichable': True, 'detection_mode': 'italic_only'},
+    # Stopped depositing italic tags around 2023, so italic_only went silently to
+    # zero while the weekly run reported success. Reviews are cited as
+    # "Title, by Author" or "Author, TITLE: Subtitle"; 12 of 32 items since 2025.
+    'Faith and Philosophy': {'crossref_parseable': True, 'openalex_enrichable': True,
+                             'detection_mode': 'citation_required'},
     # "<i>Title</i>" embedded in text — often no author parseable
     'British Journal for the History of Philosophy': {'crossref_parseable': False, 'openalex_enrichable': True, 'detection_mode': 'italic_only'},
     # Mixed: "<i>Title</i>" — often no author parseable
@@ -797,10 +801,9 @@ JOURNALS = {
         'detection_mode': 'italic_only',
     },
     # Continental/phenomenology — mixed: "Book Reviews" generic + "Author. Title" (~156 est.)
-    'Journal of Phenomenological Psychology': {
-        'crossref_parseable': False, 'semantic_scholar_enrichable': True,
-        'detection_mode': 'italic_only',
-    },
+    # Brill house style: "Title, written by Author" / "edited by Author".
+    'Journal of Phenomenological Psychology': {'crossref_parseable': True, 'openalex_enrichable': True,
+                                               'detection_mode': 'citation_required'},
     # Eastern European philosophy — "Review of Author, Title" format (~102 est.)
     'Studies in East European Thought': {
         'crossref_parseable': True, 'openalex_enrichable': True,
