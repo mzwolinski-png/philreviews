@@ -485,8 +485,22 @@ def sitemap():
 
 # --- API ---
 
+# Generous enough that no human — or our own front end, which fires a request
+# per filter change — will ever reach it, but it turns "pull the whole database
+# in ~910 requests" into a crawl. The limiter is per-process and we run a single
+# gunicorn worker; this becomes per-worker if that ever changes.
+_API_RATE_LIMIT = 120
+_API_RATE_WINDOW = 60
+
+
 @app.route("/api/reviews")
 def api_reviews():
+    if not _rate_limiter.allow(f"api:{_client_ip()}", _API_RATE_LIMIT, _API_RATE_WINDOW):
+        resp = jsonify({"error": "Too many requests. Please slow down."})
+        resp.status_code = 429
+        resp.headers["Retry-After"] = str(_API_RATE_WINDOW)
+        return resp
+
     q = request.args.get("q", "").strip() or None
     title = request.args.get("title", "").strip() or None
     author = request.args.get("author", "").strip() or None
@@ -569,10 +583,70 @@ def health():
         return jsonify({"status": "error", "detail": str(e)}), 503
 
 
+# Content-Security-Policy, assembled from what the pages actually load:
+#   scripts  — our own /static/app.js, GoatCounter's counter, inline blocks
+#   styles   — our own stylesheet, Google Fonts, inline style="" attributes
+#   fonts    — Google's font CDN
+#   connect  — our own /api/*, plus GoatCounter's hit endpoint
+# Shipped report-only first: a policy that silently blanks the page is worse
+# than no policy, so we collect violations at /csp-report before enforcing.
+_CSP = "; ".join([
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://gc.zgo.at",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data:",
+    "connect-src 'self' https://philreviews.goatcounter.com",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "object-src 'none'",
+    "report-uri /csp-report",
+])
+
+_SECURITY_HEADERS = {
+    # 1 year; no preload — that list is painful to leave
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "geolocation=(), camera=(), microphone=(), payment=(), usb=()",
+    "Cross-Origin-Opener-Policy": "same-origin",
+}
+
+
+@app.route("/csp-report", methods=["POST"])
+def csp_report():
+    """Collect CSP violations while the policy is report-only.
+
+    Rate limited per IP: a report endpoint is an open write path to the log,
+    and browsers will happily send one per blocked resource per page view.
+    """
+    if not _rate_limiter.allow(f"csp:{_client_ip()}", 20, 3600):
+        return "", 204
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+        report = payload.get("csp-report", payload)
+        app.logger.warning(
+            "CSP violation: blocked=%s directive=%s on %s",
+            str(report.get("blocked-uri"))[:200],
+            str(report.get("violated-directive"))[:100],
+            str(report.get("document-uri"))[:200],
+        )
+    except Exception:
+        pass
+    return "", 204
+
+
 @app.after_request
 def add_cache_headers(response):
     if request.path.startswith("/static/"):
         response.headers["Cache-Control"] = "public, max-age=86400"
+    for header, value in _SECURITY_HEADERS.items():
+        response.headers.setdefault(header, value)
+    # HTML only: a CSP on a JSON body or a font buys nothing
+    if response.mimetype == "text/html":
+        response.headers.setdefault("Content-Security-Policy-Report-Only", _CSP)
     return response
 
 
