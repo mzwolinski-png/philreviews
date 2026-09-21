@@ -340,6 +340,20 @@ def run_mm(dry_run=False):
         return None
 
 
+def run_cosmos_taxis(dry_run=False):
+    log.info("Starting Cosmos + Taxis scraper...")
+    try:
+        from cosmos_taxis_scraper import CosmosTaxisScraper
+        scraper = CosmosTaxisScraper()
+        # C+T deposits nothing with Crossref, so its own issue pages are the
+        # only route in. Defaults to this year and last: back issues never
+        # change, and --backfill walks the lot.
+        return scraper.run(dry_run=dry_run)
+    except Exception:
+        log.exception("Cosmos + Taxis scraper failed")
+        return None
+
+
 def run_atlantic(dry_run=False):
     log.info("Starting The Atlantic scraper...")
     try:
@@ -460,6 +474,7 @@ def main():
     rp_stats = None
     mm_stats = None
     atlantic_stats = None
+    ct_stats = None
     crossref_added = []
 
     if run_all or args.ndpr:
@@ -487,6 +502,7 @@ def main():
         rp_stats = run_radical_philosophy(dry_run=args.dry_run)
         mm_stats = run_mm(dry_run=args.dry_run)
         atlantic_stats = run_atlantic(dry_run=args.dry_run)
+        ct_stats = run_cosmos_taxis(dry_run=args.dry_run)
 
     if run_all or args.crossref:
         crossref_stats = run_crossref_delta(from_date, dry_run=args.dry_run)
@@ -613,7 +629,7 @@ def main():
             ("BJPS", bjps_stats), ("Syndicate", syndicate_stats), ("CRB", crb_stats),
             ("Quillette", quillette_stats), ("APA Blog", apa_stats),
             ("Radical Philosophy", rp_stats), ("Markets & Morality", mm_stats),
-            ("Atlantic", atlantic_stats),
+            ("Atlantic", atlantic_stats), ("Cosmos + Taxis", ct_stats),
         ]
     if run_all or args.crossref:
         attempted.append(("Crossref", crossref_stats))
@@ -829,6 +845,10 @@ def main():
             detail_lines.append(
                 f"The Atlantic: {atlantic_stats.get('uploaded', 0)} new "
                 f"({atlantic_stats.get('off_topic', 0)} off-topic skipped)")
+        if ct_stats:
+            detail_lines.append(
+                f"Cosmos + Taxis: {ct_stats.get('inserted', 0)} new "
+                f"({ct_stats.get('already_indexed', 0)} already indexed)")
         if crossref_stats:
             detail_lines.append(f"Crossref: {crossref_stats.get('new', 0)} new (across {crossref_stats.get('journals', 0)} journals)")
         if philosophia_symp_stats and (philosophia_symp_stats['inserted'] or philosophia_symp_stats['updated']):

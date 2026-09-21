@@ -37,6 +37,22 @@ JOURNALS = {
     'Dialogue': {'crossref_parseable': True, 'openalex_enrichable': True, 'detection_mode': 'dialogue'},
     # "Author <i>Title</i>. (Publisher, Year)" or "Author. Title. Pp."
     'Religious Studies': {'crossref_parseable': True},
+    # Springer deposits CPE's reviews with the *book's* title and no review
+    # marker, so a title search for "review" finds 12 of 903 works and misses
+    # every recent one. italic_only finds 9, all genuine, and catches the five
+    # since 2022 that the retired RePEc scraper found by hand. 'all' mode was
+    # measured at 42 hits with roughly half false positives ("Adam Smith's
+    # constitutional theory", "Vetoes Overridable by Simple Majorities"), so
+    # precision wins here: the journal runs about one review a year.
+    #
+    # Only the modern citation style parses well. CPE's pre-2006 form, "Author
+    # (Year) Title. City: Publisher, 222 pp", yields a publisher as the book
+    # title. That costs nothing in practice: the weekly run filters on
+    # from-index-date, so it never revisits those years, and all nine historical
+    # hits are already in the database from the retired RePEc scraper.
+    'Constitutional Political Economy': {'crossref_parseable': True,
+                                         'openalex_enrichable': True,
+                                         'detection_mode': 'italic_only'},
     # "<i>Title</i>" or "Title, by Author"
     'Faith and Philosophy': {'crossref_parseable': True, 'openalex_enrichable': True, 'detection_mode': 'italic_only'},
     # "<i>Title</i>" embedded in text — often no author parseable
