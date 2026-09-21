@@ -2,6 +2,7 @@ import json
 import os
 import re
 import secrets
+from datetime import datetime
 import threading
 import time
 from collections import defaultdict, deque
@@ -615,27 +616,80 @@ _SECURITY_HEADERS = {
 }
 
 
+# Violations are tallied on the persistent volume, not just the app log. Fly's
+# logs rotate, and the weekly sync replaces reviews.db wholesale — so neither
+# survives the week we need to watch before enforcing the policy.
+CSP_DB_PATH = os.environ.get(
+    "CSP_DB_PATH", os.path.join(os.path.dirname(db.SUBSCRIBERS_DB_PATH), "csp_reports.db"))
+
+
+def _csp_store(blocked, directive, document):
+    """Record one violation, keeping a count per distinct (directive, blocked)."""
+    import sqlite3
+    conn = sqlite3.connect(CSP_DB_PATH, timeout=5)
+    try:
+        conn.execute("""CREATE TABLE IF NOT EXISTS csp_violations (
+            directive TEXT NOT NULL, blocked TEXT NOT NULL,
+            hits INTEGER NOT NULL DEFAULT 0,
+            first_seen TEXT NOT NULL, last_seen TEXT NOT NULL,
+            sample_document TEXT,
+            PRIMARY KEY (directive, blocked))""")
+        now = datetime.utcnow().isoformat(timespec="seconds")
+        conn.execute("""INSERT INTO csp_violations
+              (directive, blocked, hits, first_seen, last_seen, sample_document)
+              VALUES (?,?,1,?,?,?)
+            ON CONFLICT(directive, blocked) DO UPDATE SET
+              hits = hits + 1, last_seen = excluded.last_seen""",
+            (directive, blocked, now, now, document))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 @app.route("/csp-report", methods=["POST"])
 def csp_report():
     """Collect CSP violations while the policy is report-only.
 
-    Rate limited per IP: a report endpoint is an open write path to the log,
-    and browsers will happily send one per blocked resource per page view.
+    Rate limited per IP: a report endpoint is an open write path, and browsers
+    send one report per blocked resource per page view.
     """
     if not _rate_limiter.allow(f"csp:{_client_ip()}", 20, 3600):
         return "", 204
     try:
         payload = request.get_json(force=True, silent=True) or {}
         report = payload.get("csp-report", payload)
-        app.logger.warning(
-            "CSP violation: blocked=%s directive=%s on %s",
-            str(report.get("blocked-uri"))[:200],
-            str(report.get("violated-directive"))[:100],
-            str(report.get("document-uri"))[:200],
-        )
+        blocked = str(report.get("blocked-uri") or "")[:300]
+        directive = str(report.get("violated-directive") or "")[:100]
+        document = str(report.get("document-uri") or "")[:300]
+        app.logger.warning("CSP violation: blocked=%s directive=%s on %s",
+                           blocked, directive, document)
+        _csp_store(blocked, directive, document)
     except Exception:
-        pass
+        app.logger.exception("could not record CSP violation")
     return "", 204
+
+
+@app.route("/csp-status")
+def csp_status():
+    """Summary of collected violations, so the policy can be judged remotely."""
+    import sqlite3
+    enforcing = "Content-Security-Policy" in _SECURITY_HEADERS
+    try:
+        conn = sqlite3.connect(CSP_DB_PATH, timeout=5)
+        conn.row_factory = sqlite3.Row
+        rows = [dict(r) for r in conn.execute(
+            "SELECT * FROM csp_violations ORDER BY hits DESC LIMIT 50")]
+        conn.close()
+    except Exception:
+        rows = []
+    return jsonify({
+        "mode": "enforcing" if enforcing else "report-only",
+        "distinct_violations": len(rows),
+        "total_hits": sum(r["hits"] for r in rows),
+        "violations": rows,
+        "verdict": ("No violations recorded — safe to enforce." if not rows
+                    else "Review the entries below before enforcing."),
+    })
 
 
 @app.after_request

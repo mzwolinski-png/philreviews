@@ -80,3 +80,40 @@ class CspReportEndpoint(unittest.TestCase):
 
     def test_survives_garbage(self):
         self.assertEqual(self.c.post("/csp-report", data="not json").status_code, 204)
+
+
+class CspStatus(unittest.TestCase):
+    """Violations must survive log rotation and the weekly DB sync."""
+
+    def setUp(self):
+        import tempfile, os
+        self.tmp = tempfile.mkdtemp()
+        appmod.CSP_DB_PATH = os.path.join(self.tmp, "csp_reports.db")
+        appmod.app.config["TESTING"] = True
+        self.c = appmod.app.test_client()
+        appmod._rate_limiter._hits.clear()
+
+    def test_clean_status_says_safe_to_enforce(self):
+        r = self.c.get("/csp-status").get_json()
+        self.assertEqual(r["mode"], "report-only")
+        self.assertEqual(r["distinct_violations"], 0)
+        self.assertIn("safe to enforce", r["verdict"])
+
+    def test_violations_are_recorded_and_counted(self):
+        for _ in range(3):
+            self.c.post("/csp-report", json={"csp-report": {
+                "blocked-uri": "https://cdn.example/x.js",
+                "violated-directive": "script-src",
+                "document-uri": "https://philreviews.org/"}})
+        r = self.c.get("/csp-status").get_json()
+        self.assertEqual(r["distinct_violations"], 1)
+        self.assertEqual(r["total_hits"], 3)          # deduplicated, counted
+        self.assertIn("Review the entries", r["verdict"])
+        self.assertEqual(r["violations"][0]["blocked"], "https://cdn.example/x.js")
+
+    def test_distinct_sources_are_kept_apart(self):
+        for uri in ("https://a.example/1.js", "https://b.example/2.css"):
+            self.c.post("/csp-report", json={"csp-report": {
+                "blocked-uri": uri, "violated-directive": "script-src",
+                "document-uri": "https://philreviews.org/"}})
+        self.assertEqual(self.c.get("/csp-status").get_json()["distinct_violations"], 2)
