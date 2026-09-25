@@ -260,6 +260,54 @@ def init_db():
             logging.getLogger(__name__).warning("FTS init failed (corrupted DB?), skipping")
 
 
+def _title_key(title: str) -> str:
+    """Normalise a title for identity matching: case, curly quotes, punctuation."""
+    t = (title or "").lower().replace("\u2019", "'").replace("\u2018", "'")
+    return "".join(ch for ch in t if ch.isalnum())
+
+
+# Links that stand in for a review we could not yet point at directly. A real
+# DOI link is always better, so an arriving DOI may replace these.
+_PLACEHOLDER_LINK_HOSTS = ("google.com/search", "ebsco.com")
+
+
+def _attach_doi_to_placeholder(conn, rec: dict) -> bool:
+    """If this record's DOI belongs to a review we already hold without one,
+    attach the DOI to that row and report True so the caller skips the insert.
+
+    Hand-added rows from TOC alerts arrive before the publisher deposits with
+    Crossref, and the Philosopher's Index carries no DOIs at all. Insert-time
+    dedupe was by DOI and link only, so the later Crossref record for the same
+    review went in as a second row. Matching is deliberately strict: same
+    journal, same *full* title, same reviewer surname. Matching on the part
+    before a colon is not enough; one reviewer can review several volumes of
+    "Rudolf Carnap: ..." for the same journal.
+    """
+    doi = (rec.get("doi") or "").strip()
+    reviewer = (rec.get("reviewer_last_name") or "").strip().lower()
+    key = _title_key(rec.get("book_title"))
+    if not doi or not reviewer or len(key) < 8:
+        return False
+    if (rec.get("entry_type") or "review") != "review":
+        return False  # symposium pieces share a title and often a contributor
+    rows = conn.execute(
+        """SELECT id, book_title, review_link FROM reviews
+           WHERE publication_source = ? AND (doi IS NULL OR doi = '')
+             AND lower(reviewer_last_name) = ?""",
+        (rec.get("publication_source", ""), reviewer),
+    ).fetchall()
+    matches = [r for r in rows if _title_key(r[1]) == key]
+    if len(matches) != 1:
+        return False  # none, or ambiguous: leave both alone rather than guess
+    rid, _, link = matches[0]
+    new_link = rec.get("review_link") or f"https://doi.org/{doi}"
+    if link and not any(h in link for h in _PLACEHOLDER_LINK_HOSTS):
+        new_link = link  # a real link already; keep it, just add the DOI
+    conn.execute("UPDATE reviews SET doi = ?, review_link = ? WHERE id = ?",
+                 (doi, new_link, rid))
+    return True
+
+
 def insert_review(fields: dict):
     """INSERT OR IGNORE a single review."""
     cols = [
@@ -272,6 +320,8 @@ def insert_review(fields: dict):
     placeholders = ", ".join("?" for _ in cols)
     col_names = ", ".join(cols)
     with _connect() as conn:
+        if _attach_doi_to_placeholder(conn, fields):
+            return
         conn.execute(
             f"INSERT OR IGNORE INTO reviews ({col_names}) VALUES ({placeholders})",
             values,
@@ -288,8 +338,9 @@ def insert_reviews(records: list[dict]):
     ]
     placeholders = ", ".join("?" for _ in cols)
     col_names = ", ".join(cols)
-    rows = [[r.get(c, "") for c in cols] for r in records]
     with _connect() as conn:
+        records = [r for r in records if not _attach_doi_to_placeholder(conn, r)]
+        rows = [[r.get(c, "") for c in cols] for r in records]
         conn.executemany(
             f"INSERT OR IGNORE INTO reviews ({col_names}) VALUES ({placeholders})",
             rows,
