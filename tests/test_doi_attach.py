@@ -91,5 +91,32 @@ class AttachDoi(unittest.TestCase):
         self.assertEqual(self.rows(), [("10.1177/x1", "https://journal.example/review/9")])
 
 
+
+class DoiCase(unittest.TestCase):
+    """Crossref returns 10.1017/s0034..., a publisher's TOC shows 10.1017/S0034..."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self._orig = real_db.DB_PATH
+        real_db.DB_PATH = os.path.join(self.tmp, "t.db")
+        real_db.init_db()
+
+    def tearDown(self):
+        real_db.DB_PATH = self._orig
+        shutil.rmtree(self.tmp)
+
+    def test_upper_and_lower_case_doi_are_one_review(self):
+        real_db.insert_review(rec(doi="10.1017/S0034412526101917",
+                                  review_link="https://doi.org/10.1017/S0034412526101917"))
+        real_db.insert_reviews([rec(doi="10.1017/s0034412526101917",
+                                    review_link="https://doi.org/10.1017/s0034412526101917")])
+        c = sqlite3.connect(real_db.DB_PATH)
+        self.assertEqual(c.execute("SELECT doi FROM reviews").fetchall(),
+                         [("10.1017/s0034412526101917",)])
+
+    def test_doi_exists_ignores_case(self):
+        real_db.insert_review(rec(doi="10.1017/s0034412526101917", review_link="x"))
+        self.assertTrue(real_db.doi_exists("10.1017/S0034412526101917"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -308,8 +308,23 @@ def _attach_doi_to_placeholder(conn, rec: dict) -> bool:
     return True
 
 
+def _normalise_doi(rec: dict) -> dict:
+    """DOIs are case-insensitive but the unique index is not. Crossref's API
+    returns them in lower case and publishers' TOC pages often in upper, so the
+    same review could be stored twice (7 pairs found 2026-09-25). Store lower."""
+    doi = (rec.get("doi") or "").strip()
+    if not doi:
+        return rec
+    rec = dict(rec, doi=doi.lower())
+    link = rec.get("review_link") or ""
+    if link.lower().startswith("https://doi.org/"):
+        rec["review_link"] = link.lower()
+    return rec
+
+
 def insert_review(fields: dict):
     """INSERT OR IGNORE a single review."""
+    fields = _normalise_doi(fields)
     cols = [
         "book_title", "book_author_first_name", "book_author_last_name",
         "reviewer_first_name", "reviewer_last_name", "publication_source",
@@ -338,6 +353,7 @@ def insert_reviews(records: list[dict]):
     ]
     placeholders = ", ".join("?" for _ in cols)
     col_names = ", ".join(cols)
+    records = [_normalise_doi(r) for r in records]
     with _connect() as conn:
         records = [r for r in records if not _attach_doi_to_placeholder(conn, r)]
         rows = [[r.get(c, "") for c in cols] for r in records]
@@ -354,7 +370,7 @@ def doi_exists(doi: str) -> bool:
         return False
     with _connect() as conn:
         row = conn.execute(
-            "SELECT 1 FROM reviews WHERE doi = ? LIMIT 1", (doi,)
+            "SELECT 1 FROM reviews WHERE doi = ? LIMIT 1", (doi.lower(),)
         ).fetchone()
         if row is not None:
             return True
