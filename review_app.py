@@ -93,17 +93,21 @@ def apply_decisions(accept, reject, flags):
         note = (r.get("note") or "").strip()
         row = conn.execute(
             "SELECT book_title, book_author_first_name, book_author_last_name, "
-            "publication_source, doi FROM reviews WHERE id = ?", (rid,)).fetchone()
+            "publication_source, doi, review_link FROM reviews WHERE id = ?", (rid,)).fetchone()
         if row:
             author = f"{row['book_author_first_name'] or ''} {row['book_author_last_name'] or ''}".strip()
             conn.execute(
                 "INSERT INTO rejection_log (review_id, book_title, book_author, "
                 "publication_source, doi, note) VALUES (?,?,?,?,?,?)",
                 (rid, row["book_title"], author, row["publication_source"], row["doi"], note))
+            reason = "Rejected in weekly review" + (f": {note}" if note else "")
             if row["doi"]:
-                reason = "Rejected in weekly review" + (f": {note}" if note else "")
                 conn.execute("INSERT OR IGNORE INTO excluded_dois (doi, reason) VALUES (?, ?)",
                              (row["doi"], reason))
+            # items without a DOI are only recognisable by link; exclude that too
+            if row["review_link"]:
+                conn.execute("INSERT OR IGNORE INTO excluded_links (review_link, reason) VALUES (?, ?)",
+                             (row["review_link"], reason))
         conn.execute("DELETE FROM reviews WHERE id = ?", (rid,))
     conn.commit()
     conn.close()

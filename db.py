@@ -41,6 +41,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_doi
     ON reviews(doi) WHERE doi IS NOT NULL AND doi != '';
 CREATE UNIQUE INDEX IF NOT EXISTS idx_review_link
     ON reviews(review_link) WHERE review_link IS NOT NULL AND review_link != '';
+-- Links rejected in the weekly review. excluded_dois only covers items that have
+-- a DOI; journals scraped from their own sites (Cosmos + Taxis, the magazines)
+-- have none, so without this a rejection came straight back the next Sunday.
+CREATE TABLE IF NOT EXISTS excluded_links (
+    review_link TEXT PRIMARY KEY,
+    reason TEXT,
+    excluded_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 
@@ -390,6 +398,15 @@ def review_link_exists(url: str) -> bool:
         row = conn.execute(
             "SELECT 1 FROM reviews WHERE review_link = ? LIMIT 1", (url,)
         ).fetchone()
+        if row is not None:
+            return True
+        # a rejected item counts as already seen, so scrapers skip it
+        try:
+            row = conn.execute(
+                "SELECT 1 FROM excluded_links WHERE review_link = ? LIMIT 1", (url,)
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return False  # table not created yet on an old database
         return row is not None
 
 

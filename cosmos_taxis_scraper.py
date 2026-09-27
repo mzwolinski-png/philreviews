@@ -69,7 +69,7 @@ REPLY_RE = re.compile(
     r"replies?\s+to\s+(my\s+)?critics)\s*$", re.I)
 PRECIS_RE = re.compile(r"^(symposium\s+)?(pr[ée]cis|summary|prologue)\s*$", re.I)
 INTRO_RE = re.compile(
-    r"^((symposium|editorial|editor'?s?|guest\s+editor'?s?)\s+)?introduction\s*$", re.I)
+    r"^((symposium|editorial|editor'?s?|guest\s+editor'?s?)\s+)?(introduction|preface)(\s+to\s+(the\s+)?symposium)?\s*$", re.I)
 
 # Surname particles stay lowercase when a caps name is folded back to normal.
 PARTICLES = {"van", "de", "der", "den", "von", "la", "le", "di", "du",
@@ -175,6 +175,104 @@ def _author_fields(author_string):
     return _clean(f"{head} and {last_first}".strip()), last_last
 
 
+# ---------------------------------------------------------------------------
+# Book citations from the review PDF (2025- layout)
+#
+# From 2025 the issue page lists the *review's* own title ("Thatcher at 100: The
+# Iron Lady Reconsidered") and no book author, so those rows arrived with the
+# wrong title and a blank author. The citation is on the PDF's first page,
+# between the reviewer's name and the drop-capital body, with the book title set
+# in italics - which is what makes it reliable to pull apart:
+#
+#   REVIEW / <review title> / OJEL L. RODRIGUEZ BURGOS / University of St Andrews
+#   <i>Elgar Companion to Margaret Thatcher</i>. Eds. Philip Norton and Matt Beech. 2025.
+#   M / argaret Thatcher remains one of ...
+#
+# Review essays have no citation block; those are left as they are.
+# ---------------------------------------------------------------------------
+_PARTICLE_CAPS = re.compile(r"^(De|Van|Von|Der|Den|La|Le|Di|Du|Da)\s", re.U)
+
+
+def _citation_spans(pdf_bytes):
+    """Spans of the citation block on page one, or [] if there is none."""
+    import fitz  # PyMuPDF; imported here so the page scraper needs nothing extra
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    except Exception:
+        return []
+    lines = []
+    for b in doc[0].get_text("dict")["blocks"]:
+        for ln in b.get("lines", []):
+            spans = [sp for sp in ln["spans"] if sp["text"].strip()]
+            if spans:
+                lines.append(spans)
+    # the reviewer is the first all-caps line after the REVIEW heading
+    try:
+        start = next(i for i, sp in enumerate(lines)
+                     if "".join(x["text"] for x in sp).strip().upper() == "REVIEW")
+    except StopIteration:
+        return []
+    out, body_font = [], None
+    for sp in lines[start + 1:]:
+        text = "".join(x["text"] for x in sp).strip()
+        font = sp[0]["font"].split("+")[-1]
+        if len(text) == 1 and text.isalpha():        # the drop capital: body begins
+            break
+        if body_font is None and not font.startswith("Minion"):
+            continue                                   # heading, reviewer, affiliation
+        body_font = font
+        out.extend(sp)
+        if len(out) > 60:
+            return []                                  # ran into body text: no citation
+    joined = "".join(x["text"] for x in out)
+    return out if re.search(r"\b(19|20)\d\d\b", joined) else []
+
+
+def citation_from_pdf(pdf_bytes):
+    """(book_title, author_string) from a review PDF, or (None, None)."""
+    spans = _citation_spans(pdf_bytes)
+    if not spans:
+        return None, None
+    # group into alternating italic / roman runs
+    runs = []
+    for sp in spans:
+        italic = bool(sp["flags"] & 2) or "It" in sp["font"]
+        if runs and runs[-1][0] == italic:
+            runs[-1][1].append(sp["text"])
+        else:
+            runs.append((italic, [sp["text"]]))
+    runs = [(it, "".join(t)) for it, t in runs]
+    # The title is the longest italic run that is not itself a name: some
+    # issues set the author's "Surname, Forename." in italics too.
+    name_like = re.compile(r"^\s*[A-Z][\w'\u2019-]+(?: [A-Z][\w'\u2019-]+)?,\s+[A-Z][\w. -]+\.?\s*$")
+    cands = [i for i, (it, t) in enumerate(runs) if it and not name_like.match(t)]
+    if not cands:
+        return None, None
+    k = max(cands, key=lambda i: len(runs[i][1]))
+    book = _clean(runs[k][1]).strip(" .,;:")
+    pre = [t for _, t in runs[:k]]
+    post = [t for _, t in runs[k + 1:]]
+    if not book:
+        return None, None
+    pre_s, post_s = _clean("".join(pre)), _clean("".join(post))
+    author = ""
+    if pre_s:
+        pre_s = re.sub(r"\b(19|20)\d\d\.?", "", pre_s).strip(" .,;")
+        m = re.match(r"^([^,]+),\s*([^,]+)$", pre_s)
+        if m and not re.match(r"^[A-Z]\.", m.group(1)):   # "De Marneffe, Peter"
+            last = _PARTICLE_CAPS.sub(lambda x: x.group(1).lower() + " ", m.group(1).strip())
+            author = f"{m.group(2).strip()} {last}"
+        else:                                              # "G. Barbieri"
+            author = pre_s
+    if not author and post_s:
+        m = re.match(r"^[.,]?\s*(?:Eds?\.|Edited\s+by|Ed\.\s+by|by)\s+(.+?)(?:\.\s|\.$|,\s*(?:19|20)\d\d|\s(?:19|20)\d\d)",
+                     post_s + " ", re.I)
+        if m:
+            author = m.group(1).strip()
+    author = re.sub(r",?\s*\(?eds?\.?\)?$", "", author, flags=re.I).strip()
+    return book, author
+
+
 class CosmosTaxisScraper:
     def __init__(self, session=None, delay=0.4):
         self.delay = delay
@@ -241,6 +339,13 @@ class CosmosTaxisScraper:
         section = None           # None until a heading is seen
         symposium_book = None
         symposium_authors = ""
+        # True between items: a line here that is neither a contribution nor a
+        # known heading is a heading we do not know, and must end the section.
+        # (2026-09-27: "Society for the Development of Austrian Economics, New
+        # Orleans 2023" followed a symposium, and its conference papers were
+        # filed as symposium pieces.) A wrapped title's second line never lands
+        # here, because it follows a title rather than a completed item.
+        at_boundary = False
         i = start + 1
         while i < len(lines):
             line = lines[i]
@@ -255,13 +360,21 @@ class CosmosTaxisScraper:
             if not is_item and SYMPOSIUM_RE.match(line):
                 section = "symposium"
                 symposium_book, symposium_authors, i = self._read_symposium_header(lines, i)
+                at_boundary = True
                 continue
             if not is_item and (low in REVIEW_SECTIONS or head in REVIEW_SECTIONS):
                 section, symposium_book = "review", None
+                at_boundary = True
                 i += 1
                 continue
             if not is_item and (low in SKIP_SECTIONS or head in SKIP_SECTIONS):
                 section, symposium_book = "skip", None
+                i += 1
+                continue
+
+            if at_boundary and not is_item and section in ("review", "symposium"):
+                section, symposium_book = "skip", None
+                at_boundary = False
                 i += 1
                 continue
 
@@ -270,12 +383,14 @@ class CosmosTaxisScraper:
                 author = lines[i + 1] if i + 1 < len(lines) else ""
                 if not self._looks_like_person(author):
                     log.debug("C+T: no contributor after %r on %s", title[:50], url)
+                    at_boundary = False
                     i += 1
                     continue
                 rec = self._build(section, title, author, links[title], year,
                                   volume, issue, symposium_book, symposium_authors)
                 if rec:
                     records.append(rec)
+                at_boundary = True
                 i += 2
                 continue
             i += 1
@@ -374,6 +489,26 @@ class CosmosTaxisScraper:
         })
         return rec
 
+    def cite_from_pdf(self, rec):
+        """Fill the book title and author from the review PDF when the issue
+        page gave neither (the 2025- layout). Returns 1 if it did, else 0."""
+        if rec.get("entry_type") != "review" or rec.get("book_author_last_name"):
+            return 0
+        try:
+            time.sleep(self.delay)
+            r = self.session.get(rec["review_link"], timeout=40)
+            r.raise_for_status()
+            book, author = citation_from_pdf(r.content)
+        except Exception as exc:
+            log.warning("C+T: could not read %s (%s)", rec["review_link"], exc)
+            return 0
+        if not book:
+            return 0          # a review essay with no citation block
+        first, last = _author_fields(author)
+        rec.update(book_title=book.replace("\u2019", "'"),
+                   book_author_first_name=first, book_author_last_name=last)
+        return 1
+
     # -- driver -------------------------------------------------------------
     def run(self, dry_run=False, years=None, backfill=False):
         """Scrape and insert. Defaults to this year and last year.
@@ -408,12 +543,14 @@ class CosmosTaxisScraper:
             unique.append(r)
 
         new = [r for r in unique if not db.review_link_exists(r["review_link"])]
+        cited = sum(self.cite_from_pdf(r) for r in new)
         stats = {
             "found": found,
             "unique": len(unique),
             "already_indexed": len(unique) - len(new),
             "new": len(new),
             "inserted": 0,
+            "cited_from_pdf": cited,
         }
         if new and not dry_run:
             db.insert_reviews(new)

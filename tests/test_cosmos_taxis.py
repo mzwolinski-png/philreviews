@@ -144,5 +144,23 @@ class Symposia(unittest.TestCase):
         self.assertEqual(labels, {"Symposium Introduction", "Précis", "Author's Reply"})
 
 
+class UnknownHeadings(unittest.TestCase):
+    def test_an_unknown_heading_ends_the_symposium(self):
+        """The McPherson symposium is followed by a conference section whose
+        papers were once filed as symposium pieces (2026-09-27)."""
+        recs = parse("ct_121112", 2024)
+        reviewers = {r["reviewer_last_name"] for r in recs}
+        for conference_author in ("Novak", "Holcombe", "Bylund", "Wenzel"):
+            self.assertNotIn(conference_author, reviewers)
+        # the reviews after the conference section are still found
+        self.assertIn("Hudik", reviewers)
+        sym = [r for r in recs if r["entry_type"] == "symposium"]
+        self.assertEqual(len(sym), 9)
+
+    def test_preface_is_the_symposium_introduction(self):
+        recs = parse("ct_121112", 2024)
+        self.assertTrue(any(r["book_title"].endswith("[Symposium Introduction]") for r in recs))
+
+
 if __name__ == "__main__":
     unittest.main()
