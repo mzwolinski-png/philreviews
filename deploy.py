@@ -141,7 +141,13 @@ def _sync_once():
 
         result = subprocess.run(
             ["fly", "ssh", "console", "-a", FLY_APP, "-C",
+             # The -wal/-shm files belong to the database being replaced. Left
+             # beside the new file, SQLite replays them into it on the next open
+             # and corrupts it: 2026-09-27 a deploy's schema migration wrote to
+             # the WAL, the swap kept it, and production went "database disk
+             # image is malformed". They go out with the old file.
              "sh -c 'mv /data/reviews.db /data/reviews_old.db 2>/dev/null;"
+             " rm -f /data/reviews.db-wal /data/reviews.db-shm;"
              " mv /data/reviews_new.db /data/reviews.db"
              " && rm -f /data/reviews_old.db'"],
             cwd=ROOT, capture_output=True, text=True, timeout=60,
