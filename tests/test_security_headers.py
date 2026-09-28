@@ -111,7 +111,7 @@ class CspStatus(unittest.TestCase):
         r = self.c.get("/csp-status").get_json()
         self.assertEqual(r["distinct_violations"], 1)
         self.assertEqual(r["total_hits"], 3)          # deduplicated, counted
-        self.assertIn("Review the entries", r["verdict"])
+        self.assertIn("Check the entries", r["verdict"])
         self.assertEqual(r["violations"][0]["blocked"], "https://cdn.example/x.js")
 
     def test_distinct_sources_are_kept_apart(self):
