@@ -1,4 +1,4 @@
-"""Security headers, CSP report-only, and API rate limiting."""
+"""Security headers, the enforced CSP, and API rate limiting."""
 import os, sys, unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,22 +20,25 @@ class SecurityHeaders(unittest.TestCase):
         self.assertEqual(r.headers["X-Content-Type-Options"], "nosniff")
         self.assertEqual(r.headers["X-Frame-Options"], "DENY")
 
-    def test_csp_is_report_only_on_html(self):
+    def test_csp_is_enforced_on_html(self):
         r = self.c.get("/")
-        self.assertIn("Content-Security-Policy-Report-Only", r.headers)
-        # enforcing header must NOT be set yet
-        self.assertNotIn("Content-Security-Policy", r.headers)
+        self.assertIn("Content-Security-Policy", r.headers)
+        # never both: a stale report-only copy would mask a weaker policy
+        self.assertNotIn("Content-Security-Policy-Report-Only", r.headers)
+        self.assertIn("report-uri /csp-report", r.headers["Content-Security-Policy"])
 
     def test_csp_allows_what_the_pages_actually_load(self):
-        csp = self.c.get("/").headers["Content-Security-Policy-Report-Only"]
+        csp = self.c.get("/").headers["Content-Security-Policy"]
         for needed in ("https://gc.zgo.at", "https://fonts.googleapis.com",
                        "https://fonts.gstatic.com", "https://philreviews.goatcounter.com"):
             self.assertIn(needed, csp, needed)
         self.assertIn("frame-ancestors 'none'", csp)
+        # GoatCounter's image fallback, the one legitimate report-only violation
+        self.assertIn("img-src 'self' data: https://philreviews.goatcounter.com", csp)
 
     def test_no_csp_on_json(self):
         r = self.c.get("/api/reviews?per_page=1")
-        self.assertNotIn("Content-Security-Policy-Report-Only", r.headers)
+        self.assertNotIn("Content-Security-Policy", r.headers)
         self.assertIn("X-Content-Type-Options", r.headers)   # plain headers still apply
 
 
@@ -95,9 +98,9 @@ class CspStatus(unittest.TestCase):
 
     def test_clean_status_says_safe_to_enforce(self):
         r = self.c.get("/csp-status").get_json()
-        self.assertEqual(r["mode"], "report-only")
+        self.assertEqual(r["mode"], "enforcing")
         self.assertEqual(r["distinct_violations"], 0)
-        self.assertIn("safe to enforce", r["verdict"])
+        self.assertIn("Enforcing", r["verdict"])
 
     def test_violations_are_recorded_and_counted(self):
         for _ in range(3):

@@ -743,14 +743,18 @@ def health():
 #   styles   — our own stylesheet, Google Fonts, inline style="" attributes
 #   fonts    — Google's font CDN
 #   connect  — our own /api/*, plus GoatCounter's hit endpoint
-# Shipped report-only first: a policy that silently blanks the page is worse
-# than no policy, so we collect violations at /csp-report before enforcing.
+# Shipped report-only on 2026-09-21 and enforced on 2026-09-28, after a week's
+# reports showed one legitimate gap (GoatCounter's image fallback, now allowed)
+# and otherwise only browser extensions: eval, wasm-eval, data: fonts and
+# scite.ai's icon font. report-uri stays, so anything enforcement breaks still
+# shows up at /csp-status.
 _CSP = "; ".join([
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' https://gc.zgo.at",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "font-src 'self' https://fonts.gstatic.com",
-    "img-src 'self' data:",
+    # GoatCounter falls back to an image request when sendBeacon is missing
+    "img-src 'self' data: https://philreviews.goatcounter.com",
     "connect-src 'self' https://philreviews.goatcounter.com",
     "form-action 'self'",
     "frame-ancestors 'none'",
@@ -758,6 +762,7 @@ _CSP = "; ".join([
     "object-src 'none'",
     "report-uri /csp-report",
 ])
+_CSP_HEADER = "Content-Security-Policy"   # was ...-Report-Only until 2026-09-28
 
 _SECURITY_HEADERS = {
     # 1 year; no preload — that list is painful to leave
@@ -802,7 +807,7 @@ def _csp_store(blocked, directive, document):
 
 @app.route("/csp-report", methods=["POST"])
 def csp_report():
-    """Collect CSP violations while the policy is report-only.
+    """Collect CSP violation reports (kept after enforcement, via report-uri).
 
     Rate limited per IP: a report endpoint is an open write path, and browsers
     send one report per blocked resource per page view.
@@ -827,7 +832,7 @@ def csp_report():
 def csp_status():
     """Summary of collected violations, so the policy can be judged remotely."""
     import sqlite3
-    enforcing = "Content-Security-Policy" in _SECURITY_HEADERS
+    enforcing = _CSP_HEADER == "Content-Security-Policy"
     try:
         conn = sqlite3.connect(CSP_DB_PATH, timeout=5)
         conn.row_factory = sqlite3.Row
@@ -841,8 +846,12 @@ def csp_status():
         "distinct_violations": len(rows),
         "total_hits": sum(r["hits"] for r in rows),
         "violations": rows,
-        "verdict": ("No violations recorded — safe to enforce." if not rows
-                    else "Review the entries below before enforcing."),
+        "verdict": (("Enforcing. Nothing blocked so far." if not rows else
+                     "Enforcing. Check the entries below for anything legitimate being blocked;"
+                     " extension noise (eval, wasm-eval, data: fonts) is expected.")
+                    if enforcing else
+                    ("No violations recorded — safe to enforce." if not rows
+                     else "Review the entries below before enforcing.")),
     })
 
 
@@ -854,7 +863,7 @@ def add_cache_headers(response):
         response.headers.setdefault(header, value)
     # HTML only: a CSP on a JSON body or a font buys nothing
     if response.mimetype == "text/html":
-        response.headers.setdefault("Content-Security-Policy-Report-Only", _CSP)
+        response.headers.setdefault(_CSP_HEADER, _CSP)
     return response
 
 
