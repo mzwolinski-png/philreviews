@@ -224,6 +224,13 @@ def _citation_spans(pdf_bytes):
         out.extend(sp)
         if len(out) > 60:
             return []                                  # ran into body text: no citation
+        # The citation ends at the first line that has a year and closes with
+        # "." or ")". Stop there: an epigraph can sit between the citation and
+        # the drop capital, and it is set in italics too (2026-10-04: a Hayek
+        # quotation was read as the book title of a review of G. Morgan).
+        joined = "".join(x["text"] for x in out).rstrip()
+        if re.search(r"\b(19|20)\d\d\b", joined) and joined.endswith((".", ")")):
+            return out
     joined = "".join(x["text"] for x in out)
     return out if re.search(r"\b(19|20)\d\d\b", joined) else []
 
@@ -270,6 +277,10 @@ def citation_from_pdf(pdf_bytes):
         if m:
             author = m.group(1).strip()
     author = re.sub(r",?\s*\(?eds?\.?\)?$", "", author, flags=re.I).strip()
+    # "Beckstein, Martin and David McGrogan": only the first name is inverted
+    m = re.match(r"^([A-Z][\w'\u2019-]+(?: [A-Z][\w'\u2019-]+)?),\s+([A-Z][\w. -]+?)\s+(and|&)\s+(.+)$", author)
+    if m:
+        author = f"{m.group(2)} {m.group(1)} and {m.group(4)}"
     return book, author
 
 

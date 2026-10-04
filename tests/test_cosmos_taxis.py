@@ -162,5 +162,28 @@ class UnknownHeadings(unittest.TestCase):
         self.assertTrue(any(r["book_title"].endswith("[Symposium Introduction]") for r in recs))
 
 
+class PdfCitations(unittest.TestCase):
+    """From 2025 the book's citation is only in the review PDF (italic title)."""
+    def cite(self, name):
+        from cosmos_taxis_scraper import citation_from_pdf
+        with open(os.path.join(FIX, f"{name}.pdf"), "rb") as fh:
+            return citation_from_pdf(fh.read())
+
+    def test_author_set_in_italics_is_not_taken_for_the_title(self):
+        self.assertEqual(self.cite("ct_pdf_italic_author"),
+                         ("The Early Austrian School of Economics: Money, Value, Capital",
+                          "Christopher Adair-Toteff"))
+
+    def test_an_italic_epigraph_after_the_citation_is_ignored(self):
+        """2026-10-04: a Hayek epigraph was read as the book title."""
+        self.assertEqual(self.cite("ct_pdf_epigraph"),
+                         ("The Rise and Fall of American Europe", "G. Morgan"))
+
+    def test_an_inverted_first_editor_is_turned_round(self):
+        self.assertEqual(self.cite("ct_pdf_inverted_editor"),
+                         ("The Conservative Critique of Liberalism",
+                          "Martin Beckstein and David McGrogan"))
+
+
 if __name__ == "__main__":
     unittest.main()
