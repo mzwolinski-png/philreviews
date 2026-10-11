@@ -231,6 +231,7 @@ JOURNAL_SUBFIELD_MAP = {
     "The Journal of Nietzsche Studies": ("continental", "modern"),
     "European Journal of Pragmatism and American Philosophy": ("continental", "history"),
     "Radical Philosophy": ("continental", "political"),
+    "Marx and Philosophy Review of Books": ("political", "continental"),
 
     # Feminist Philosophy
     "Hypatia": ("feminist", None),
