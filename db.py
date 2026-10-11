@@ -1084,6 +1084,28 @@ def count_sources() -> int:
     return conn.execute("SELECT COUNT(DISTINCT publication_source) FROM reviews").fetchone()[0]
 
 
+def book_links_for_reviews(book_keys, min_reviews: int = 2):
+    """Map book_key -> (slug, review_count) for books worth linking to.
+
+    A listing row links to its book page only when the book has other reviews:
+    for a book reviewed once, the book page repeats the row the reader is
+    already looking at. One query per page of results.
+    """
+    keys = [k for k in dict.fromkeys(book_keys) if k]
+    if not keys:
+        return {}
+    conn = _get_read_conn()
+    out = {}
+    for i in range(0, len(keys), 400):
+        chunk = keys[i:i + 400]
+        ph = ",".join("?" * len(chunk))
+        for k, slug, n in conn.execute(
+                f"SELECT book_key, slug, review_count FROM books "
+                f"WHERE review_count >= ? AND book_key IN ({ph})", [min_reviews, *chunk]):
+            out[k] = (slug, n)
+    return out
+
+
 def count_books(min_reviews: int = 1) -> int:
     conn = _get_read_conn()
     return conn.execute("SELECT COUNT(*) FROM books WHERE review_count >= ?",

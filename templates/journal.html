@@ -76,7 +76,7 @@
             <tbody>
                 {% for r in reviews %}
                 <tr>
-                    <td>{% if r.link %}<a href="{{ r.link }}">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}</td>
+                    <td>{% if r.link %}<a href="{{ r.link }}">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}{% if r.book_slug %} <a class="book-count" href="/book/{{ r.book_slug }}" title="All reviews of this book">{{ r.book_reviews }} reviews</a>{% endif %}</td>
                     <td>{{ r.author }}</td>
                     <td>{{ r.reviewer }}</td>
                     <td class="date">{{ r.date }}</td>

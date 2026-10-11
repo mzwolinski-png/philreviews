@@ -17,6 +17,7 @@
     <title>{{ book.title }}{% if byline %} by {{ byline }}{% endif %} — Reviews | PhilReviews</title>
     <meta name="description" content="{{ review_count_text }} of {{ book.title }}{% if byline %} by {{ byline }}{% endif %}{% if years %}, {{ years }}{% endif %}. Where it was reviewed, by whom, with links to each review.">
     <link rel="canonical" href="{{ BASE_URL }}/book/{{ book.slug }}">
+    {% if not indexable %}<meta name="robots" content="noindex, follow">{% endif %}
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <meta property="og:type" content="book">
     <meta property="og:title" content="{{ book.title }}{% if byline %} by {{ byline }}{% endif %} — Reviews">

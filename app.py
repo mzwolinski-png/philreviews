@@ -157,6 +157,26 @@ def normalize(record):
     }
 
 
+#: A book page is linked from listings, listed in the sitemap and left open to
+#: indexing only when the book has at least this many reviews. Search Console
+#: on 2026-10-11 showed none of 155,000 book pages indexed after three weeks:
+#: nothing linked to them, and four in five were a single review restated.
+BOOK_PAGE_MIN_REVIEWS = 2
+
+
+def with_book_links(rows):
+    """normalize() a page of rows and attach each row's book page, if it has one."""
+    links = db.book_links_for_reviews([r.get("book_key") for r in rows],
+                                      min_reviews=BOOK_PAGE_MIN_REVIEWS)
+    out = []
+    for r in rows:
+        item = normalize(r)
+        slug, n = links.get(r.get("book_key") or "", (None, 0))
+        item["book_slug"], item["book_reviews"] = slug, n
+        out.append(item)
+    return out
+
+
 # --- Main pages ---
 
 @app.route("/")
@@ -165,7 +185,7 @@ def index():
     # Server-render the first page of recent reviews so the homepage has
     # crawlable, no-JS-usable content (the JS re-renders on load).
     result = db.search_reviews(sort="date", sort_dir="desc", page=1, per_page=25)
-    initial_reviews = [normalize(r) for r in result["reviews"]]
+    initial_reviews = with_book_links(result["reviews"])
     return render_template(
         "index.html",
         total=meta["total"],
@@ -389,7 +409,7 @@ def journal_page(name):
     result = db.get_journal_reviews(name, page=page, per_page=50)
     if result is None:
         abort(404)
-    reviews = [normalize(r) for r in result["reviews"]]
+    reviews = with_book_links(result["reviews"])
     resp = make_response(render_template(
         "journal.html",
         journal_name=name,
@@ -412,7 +432,7 @@ def subfield_page(code):
     result = db.get_subfield_reviews(code, page=page, per_page=50)
     if result is None:
         abort(404)
-    reviews = [normalize(r) for r in result["reviews"]]
+    reviews = with_book_links(result["reviews"])
     # Top journals for this subfield
     meta = db.get_metadata()
     top_journals = []
@@ -541,6 +561,7 @@ def book_page(slug):
         review_count_text=review_count_text, years=years,
         subfields=[(c, SUBFIELD_NAMES[c]) for c in seen_subfields],
         also_by=also_by, jsonld=json.dumps(jsonld, ensure_ascii=False),
+        indexable=len(reviews) >= BOOK_PAGE_MIN_REVIEWS,
         BASE_URL=BASE_URL)
 
 
@@ -576,7 +597,7 @@ SITEMAP_PAGE_SIZE = 45000
 
 @app.route("/sitemap.xml")
 def sitemap_index():
-    n_books = db.count_books()
+    n_books = db.count_books(min_reviews=BOOK_PAGE_MIN_REVIEWS)
     pages = (n_books + SITEMAP_PAGE_SIZE - 1) // SITEMAP_PAGE_SIZE
     xml = ['<?xml version="1.0" encoding="UTF-8"?>',
            '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
@@ -596,6 +617,7 @@ def sitemap_books(part):
     if part < 1:
         abort(404)
     rows = db.get_books_for_sitemap(
+        min_reviews=BOOK_PAGE_MIN_REVIEWS,
         limit=SITEMAP_PAGE_SIZE, offset=(part - 1) * SITEMAP_PAGE_SIZE)
     if not rows:
         abort(404)
@@ -603,7 +625,7 @@ def sitemap_books(part):
            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
     for r in rows:
         # a book reviewed many times is a better landing page than a singleton
-        priority = "0.7" if r["review_count"] >= 3 else ("0.6" if r["review_count"] >= 2 else "0.4")
+        priority = "0.7" if r["review_count"] >= 3 else "0.6"
         xml.append(f'<url><loc>{BASE_URL}/book/{escape(r["slug"])}</loc>'
                    f'<changefreq>monthly</changefreq><priority>{priority}</priority></url>')
     xml.append('</urlset>')
@@ -693,7 +715,7 @@ def api_reviews():
         sort=sort, sort_dir=sort_dir, page=page, per_page=per_page,
     )
 
-    reviews = [normalize(r) for r in result["reviews"]]
+    reviews = with_book_links(result["reviews"])
 
     sym_groups = {}
     for rev in reviews:

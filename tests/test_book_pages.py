@@ -156,3 +156,54 @@ class Sitemap(unittest.TestCase):
         html = self.c.get("/").get_data(as_text=True)
         self.assertIn("philreviews.org/search?q={search_term_string}", html)
         self.assertNotIn("#q={search_term_string}", html)
+
+
+class BookPageReach(unittest.TestCase):
+    """Search Console, 2026-10-11: no book page indexed three weeks after launch.
+
+    Nothing linked to them from the pages Google already ranks, and four in
+    five were a single review restated. A book page is now linked, listed and
+    indexable only when the book has at least two reviews.
+    """
+    def setUp(self):
+        import db
+        self.db = db
+        appmod.app.config["TESTING"] = True
+        self.c = appmod.app.test_client()
+        if hasattr(appmod, "_rate_limiter"):
+            appmod._rate_limiter._hits.clear()
+
+    def test_listings_link_to_book_pages(self):
+        for url in ("/journal/Ethics", "/subfield/ethics"):
+            html = self.c.get(url).get_data(as_text=True)
+            m = re.search(r'class="book-count" href="/book/[^"]+"[^>]*>(\d+) reviews', html)
+            self.assertTrue(m, url)
+            self.assertGreaterEqual(int(m.group(1)), 2)
+
+    def test_the_title_still_goes_to_the_review(self):
+        html = self.c.get("/journal/Ethics").get_data(as_text=True)
+        self.assertIn('<td><a href="https://doi.org/', html)
+
+    def test_api_rows_carry_the_book_link(self):
+        rows = self.c.get("/api/reviews?per_page=50").get_json()["reviews"]
+        self.assertTrue(all("book_slug" in r and "book_reviews" in r for r in rows))
+        for r in rows:
+            if r["book_slug"]:
+                self.assertGreaterEqual(r["book_reviews"], 2)
+
+    def test_sitemap_lists_only_books_with_several_reviews(self):
+        listed = self.c.get("/sitemap-books-1.xml").get_data(as_text=True).count("<loc>")
+        self.assertEqual(listed, min(self.db.count_books(min_reviews=2), 45000))
+        self.assertLess(listed, self.db.count_books(min_reviews=1))
+
+    def test_single_review_book_pages_are_not_for_indexing(self):
+        offset = self.db.count_books(min_reviews=2) + 10
+        single = self.db.get_books_for_sitemap(min_reviews=1, limit=1, offset=offset)[0]
+        self.assertEqual(single["review_count"], 1)
+        html = self.c.get("/book/" + single["slug"]).get_data(as_text=True)
+        self.assertIn('name="robots" content="noindex, follow"', html)
+
+    def test_multi_review_book_pages_are_indexable(self):
+        many = self.db.get_books_for_sitemap(min_reviews=3, limit=1)[0]
+        html = self.c.get("/book/" + many["slug"]).get_data(as_text=True)
+        self.assertNotIn("noindex", html)

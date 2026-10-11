@@ -601,6 +601,10 @@
       } else {
         html += esc(r.title);
       }
+      if (r.book_slug) {
+        html += ' <a class="book-count" href="/book/' + encodeURIComponent(r.book_slug) +
+          '" title="All reviews of this book">' + r.book_reviews + " reviews</a>";
+      }
       html += ' <button class="info-btn">' + (expanded ? "Less" : "Info") + "</button>";
       html += "</td>";
       html += "<td>" + nameLink("author", r.author) + "</td>";
