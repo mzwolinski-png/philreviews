@@ -24,5 +24,18 @@ class SwapClearsWal(unittest.TestCase):
         self.assertLess(swap.index("reviews.db-wal"), swap.index("mv /data/reviews_new.db"))
 
 
+class UploadStaysOffTheVolume(unittest.TestCase):
+    """2026-10-11: the compressed upload on /data left no room to unpack it."""
+    def test_compressed_upload_goes_to_tmp(self):
+        src = inspect.getsource(deploy)
+        self.assertIn("/tmp/reviews_new.db.gz", src)
+        self.assertNotIn("put {gz_path} /data/", src)
+
+    def test_unpack_result_is_checked(self):
+        src = inspect.getsource(deploy)
+        self.assertIn("UNPACK_OK", src)
+        self.assertIn("Could not unpack", src)
+
+
 if __name__ == "__main__":
     unittest.main()

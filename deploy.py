@@ -92,13 +92,17 @@ def _sync_once():
         # Upload to a temp path (atomic swap: never delete old DB before new is verified)
         subprocess.run(
             ["fly", "ssh", "console", "-a", FLY_APP, "-C",
-             "rm -f /data/reviews_new.db.gz /data/reviews_new.db"],
+             "rm -f /tmp/reviews_new.db.gz /data/reviews_new.db.gz /data/reviews_new.db"],
             cwd=ROOT, capture_output=True, text=True, timeout=30,
         )
 
         result = subprocess.run(
             ["fly", "ssh", "sftp", "shell", "-a", FLY_APP],
-            input=f"put {gz_path} /data/reviews_new.db.gz\n",
+            # To the machine's own disk, not the 1 GB data volume: the volume
+            # then only ever holds the live database and the new one. With the
+            # compressed copy there as well it ran out of room on 2026-10-11
+            # ("No space left on device") and two syncs were lost.
+            input=f"put {gz_path} /tmp/reviews_new.db.gz\n",
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -111,11 +115,20 @@ def _sync_once():
             return False
 
         # Decompress on the remote (subscribers.db is separate, never touched)
-        subprocess.run(
+        unpack = subprocess.run(
             ["fly", "ssh", "console", "-a", FLY_APP, "-C",
-             "gunzip /data/reviews_new.db.gz"],
-            cwd=ROOT, capture_output=True, text=True, timeout=60,
+             "sh -c 'gunzip -c /tmp/reviews_new.db.gz > /data/reviews_new.db"
+             " && echo UNPACK_OK; rm -f /tmp/reviews_new.db.gz; df -h /data | tail -1'"],
+            cwd=ROOT, capture_output=True, text=True, timeout=300,
         )
+        # This step used to go unchecked, so a failed unpack surfaced one step
+        # later as "remote_rows=-1" with nothing to say why.
+        if "UNPACK_OK" not in (unpack.stdout or ""):
+            detail = " ".join(((unpack.stdout or "") + " " + (unpack.stderr or "")).split())[-300:]
+            log.error(f"Could not unpack the uploaded DB on Fly (is /data full?): {detail}")
+            subprocess.run(["fly", "ssh", "console", "-a", FLY_APP, "-C", "rm -f /data/reviews_new.db"],
+                           cwd=ROOT, capture_output=True, text=True, timeout=30)
+            return False
 
         # Verify the uploaded DB BEFORE swapping it into place: a truncated or
         # corrupt upload that still exited 0 would otherwise overwrite good
