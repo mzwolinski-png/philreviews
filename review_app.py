@@ -15,6 +15,7 @@ the background. Run:  python3 review_app.py  (then open http://localhost:8770)
 """
 
 import html
+import re
 import os
 import sqlite3
 import subprocess
@@ -27,18 +28,35 @@ import db
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 try:
-    from scripts.integrity_check import _author_junk_reasons
+    from scripts.integrity_check import (_author_junk_reasons, author_reads_as_a_title,
+                                         title_is_only_names)
 except Exception:
     def _author_junk_reasons(s):
         return []
+
+    def author_reads_as_a_title(first, last):
+        return False
+
+    def title_is_only_names(title):
+        return False
 
 PORT = 8770
 app = Flask(__name__)
 
 
-def _suspect_reasons(af, al, title, entry_type):
+def _suspect_reasons(af, al, title, entry_type, rf="", rl=""):
     reasons = [f"author:{w}" for w in _author_junk_reasons(af)]
     reasons += [f"author:{w}" for w in _author_junk_reasons(al)]
+    # Added 2026-10-11, after a week in which rows like "Michael Heidelberger
+    # and Gregor Schiemann" by "The Significance" were shown as fine.
+    if (af or al) and author_reads_as_a_title(af, al):
+        reasons.append("author:reads-as-title")
+    if title_is_only_names(title or ""):
+        reasons.append("title:only-names")
+    if title and (re.search(r",\s*eds?\.?$", title, re.I) or re.search(r"\s[A-Z]$", title)):
+        reasons.append("title:ends-like-a-name")
+    if al and al == (rl or "") and af == (rf or "") and (entry_type or "review") != "symposium":
+        reasons.append("author:same-as-reviewer")
     if not af and not al and (entry_type or "review") != "symposium":
         reasons.append("missing-author")
     if "<" in (title or ""):
@@ -62,7 +80,9 @@ def load_pending():
     items = []
     for r in rows:
         af, al = r["book_author_first_name"] or "", r["book_author_last_name"] or ""
-        reasons = _suspect_reasons(af, al, r["book_title"], r["entry_type"])
+        reasons = _suspect_reasons(af, al, r["book_title"], r["entry_type"],
+                                   (r["reviewer_first_name"] or "").strip(),
+                                   (r["reviewer_last_name"] or "").strip())
         items.append({
             "id": r["id"],
             "title": r["book_title"] or "(no title)",

@@ -110,6 +110,48 @@ def titlecase_shouting(text):
     return res
 
 
+_COMMON_WORDS = None
+
+
+def _common_words():
+    """Lower-case dictionary words, for telling a name from a phrase."""
+    global _COMMON_WORDS
+    if _COMMON_WORDS is None:
+        words = set()
+        try:
+            with open("/usr/share/dict/words", encoding="utf-8", errors="ignore") as fh:
+                # entries the dictionary itself writes in lower case; "Paul" is
+                # listed capitalised and so does not count as an ordinary word
+                words = {w.strip() for w in fh if w[:1].islower()}
+        except OSError:
+            pass
+        # inflected forms the word list leaves out
+        words |= {"dreams", "shattered", "perspectives", "experiments", "sciences", "heavens"}
+        _COMMON_WORDS = words
+    return _COMMON_WORDS
+
+
+def looks_like_a_phrase(first, last):
+    """True if a proposed author is made only of ordinary words.
+
+    2026-10-11: "One Man's Freedom: ..." was split into author "One Man", and
+    "Shattered Dreams, Infinite Hope: ..." into author "Shattered Dreams"; both
+    were logged as fixes. A real name nearly always has a token that is not a
+    dictionary word. The rare one that does not ("Mark Rose") is simply left
+    as it arrived, which is the safe direction to be wrong in.
+    """
+    words = _common_words()
+    toks = [t.strip(".,'\u2019").lower() for t in f"{first or ''} {last or ''}".split()]
+    toks = [t for t in toks if len(t) > 1]          # drop initials
+    if not toks or not words:
+        return False
+
+    def ordinary(t):
+        return (t in words or (t.endswith("s") and t[:-1] in words)
+                or (t.endswith("ed") and (t[:-2] in words or t[:-1] in words)))
+    return all(ordinary(t) for t in toks)
+
+
 def _is_person_name(s):
     """True if `s` plausibly is a personal name (1-4 name words, each
     capitalized or an allowed particle/initial), and not a title fragment.
@@ -677,6 +719,12 @@ def run_integrity_check(since=None, dry_run=False):
                 changes['book_title'] = fixed_title
                 t = fixed_title
 
+        # --- Never invent an author out of title words ---
+        if changes.get('book_author_last_name') and looks_like_a_phrase(
+                changes.get('book_author_first_name'), changes.get('book_author_last_name')):
+            for key in ('book_author_first_name', 'book_author_last_name', 'book_title'):
+                changes.pop(key, None)
+
         # --- Apply changes ---
         if changes:
             if not dry_run:
@@ -996,6 +1044,52 @@ def _author_junk_reasons(s):
     return [why for pat, why in _AUTHOR_JUNK_PATTERNS if re.search(pat, s)]
 
 
+def author_reads_as_a_title(first, last):
+    """An "author" that is really the start of a title: "The Significance",
+    "Kant and Philosophy", "The Cambridge Companion", "Thought Experiments".
+
+    Three shapes, none of which a person's name has:
+      - it opens with an article or preposition;
+      - it is "X and Y" where a side is a single word (two people each need a
+        forename and a surname);
+      - every word is an ordinary dictionary word, with no initial among them.
+    """
+    full = f"{first or ''} {last or ''}".strip()
+    # a religious-order suffix is part of a name here: "Aidan Nichols, O.P."
+    full = re.sub(r",?\s+(?:O\.?P|S\.?J|O\.?S\.?B|O\.?F\.?M|C\.?S\.?C|O\.?Carm|S\.?D\.?B)\.?$", "", full)
+    toks = full.split()
+    if len(toks) < 2:
+        return False
+    if toks[0].lower() in ("the", "a", "an", "on", "of", "in", "for", "to", "from", "towards", "toward"):
+        return True
+    if full.isupper() and len(toks) >= 2 and not any(re.fullmatch(r"[A-Z]\.", t) for t in toks):
+        return looks_like_a_phrase(first, last) or len(toks) >= 3     # "THANK YOU TO", "NATURAL LAW REVIVALS"
+    parts = [x.strip() for x in re.split(r"\s*,\s*(?:and\s+)?|\s+and\s+|\s*&\s*", full) if x.strip()]
+    if len(parts) > 1 and any(len(x.split()) < 2 for x in parts):
+        return True
+    if any(re.fullmatch(r"[A-Z]\.?", t) for t in toks):
+        return False                      # an initial: this is a name
+    return len(parts) == 1 and looks_like_a_phrase(first, last)
+
+
+def title_is_only_names(title):
+    """A "title" that is nothing but people: "Michael Heidelberger and Gregor
+    Schiemann", "Uljana Feest", "Gerson, ed". The editors landed in the title
+    field and the real title went elsewhere."""
+    words = _common_words()
+    t = re.sub(r",?\s*\beds?\.?$", "", (title or "").strip(), flags=re.I)
+    toks = [x for x in re.split(r"[\s,]+", t) if x]
+    if not words or not (2 <= len(toks) <= 9):
+        return False
+    for x in toks:
+        low = x.strip(".").lower()
+        if low in ("and", "&") or re.fullmatch(r"[A-Z]\.?", x):
+            continue
+        if not x[:1].isupper() or low in words or (low.endswith("s") and low[:-1] in words):
+            return False
+    return True
+
+
 def flag_suspect_recent(since):
     """Read-only safety net: flag entries added since `since` whose author/title
     fields still look garbled or non-review after the corrective integrity pass.
@@ -1011,6 +1105,7 @@ def flag_suspect_recent(since):
     rows = conn.execute(
         """SELECT id, publication_source, book_title,
                   book_author_first_name, book_author_last_name,
+                  reviewer_first_name, reviewer_last_name,
                   entry_type
            FROM reviews WHERE created_at >= ?
            ORDER BY publication_source, id""",
@@ -1028,6 +1123,22 @@ def flag_suspect_recent(since):
         # 1) Junk leaked into author fields
         reasons += [f'author:{why}' for why in _author_junk_reasons(af)]
         reasons += [f'author:{why}' for why in _author_junk_reasons(al)]
+
+        # 1b) The author is really the start of a title, or the title is really
+        #     a list of people. These passed for a week as "looks like a name".
+        if (af or al) and author_reads_as_a_title(af, al):
+            reasons.append('author:reads-as-title')
+        if title_is_only_names(title):
+            reasons.append('title:only-names')
+        # "Gerson, ed" / "Gross and Joseph E": an editor credit or a stranded
+        # initial is the tail of a name list, never the end of a book's title
+        if re.search(r",\s*eds?\.?$", title, re.I) or re.search(r"\s[A-Z]$", title):
+            reasons.append('title:ends-like-a-name')
+        # the same person as author and reviewer is almost always a parsing slip
+        rf_ = (r['reviewer_first_name'] or '').strip() if 'reviewer_first_name' in r.keys() else ''
+        rl_ = (r['reviewer_last_name'] or '').strip() if 'reviewer_last_name' in r.keys() else ''
+        if al and al == rl_ and af == rf_ and (r['entry_type'] or 'review') != 'symposium':
+            reasons.append('author:same-as-reviewer')
 
         # 2) Author missing while the title still carries an author cue
         #    (real garble signature: "Review of X, Title" / "Title by X" / "Last, First:")

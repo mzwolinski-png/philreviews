@@ -1128,6 +1128,93 @@ def _parse_title_translator(title: str):
 
 
 
+# ---------------------------------------------------------------------------
+# "<Authors>[, eds.] <i>Title</i>. City: Publisher, Year. Pp. N." (HOPOS)
+#
+# The University of Chicago Press house style puts the book's authors or
+# editors first and the title in italics. Nothing matched it, so the generic
+# splitters took the names for the title and the first words of the real title
+# for the author: 38 HOPOS rows on 2026-10-11 read "Michael Heidelberger and
+# Gregor Schiemann" by "The Significance". The italics settle it: the span is
+# the title, and a plain list of names in front of it is who wrote the book.
+# ---------------------------------------------------------------------------
+_IC_PARTICLES = {"van", "von", "de", "der", "den", "del", "della", "di", "du", "da", "la", "le", "ten", "ter"}
+_IC_NOT_NAMES = {"the", "a", "an", "of", "in", "on", "and", "for", "to", "review", "reviews", "book",
+                 "essay", "symposium", "introduction", "response", "reply", "comments", "remarks"}
+
+
+def _ic_is_name(name: str) -> bool:
+    toks = name.replace(",", " ").split()
+    if not (2 <= len(toks) <= 6):
+        return False
+    for t in toks:
+        if re.fullmatch(r"[A-Z]\.", t):          # an initial; "A." is not the word "a"
+            continue
+        low = t.lower().strip(".")
+        if low in _IC_PARTICLES or low in ("jr", "sr", "ii", "iii"):
+            continue
+        if low in _IC_NOT_NAMES or not re.match(r"^[A-Z\u00C0-\u024F]", t):
+            return False
+        if re.search(r"\d", t):
+            return False
+    return True
+
+
+def _ic_split_names(lead: str):
+    lead = re.sub(r"\s+", " ", lead).strip(" .,;:")
+    names = [n.strip() for n in re.split(r"\s*,\s*(?:and\s+)?|\s+and\s+|\s*&\s*", lead) if n.strip()]
+    return names if names and all(_ic_is_name(n) for n in names) else None
+
+
+def _parse_italic_citation(title: str):
+    m = re.match(r"^(?P<lead>[^<]{4,260}?)\s*<i>(?P<book>.+?)</i>\s*(?P<rest>.*)$", title, re.S)
+    if not m:
+        return None
+    rest = m.group("rest")
+    # only a real citation: the publisher, year and page count follow the title
+    if not re.search(r"\b(1[5-9]|20)\d\d\b|\bPp\.", rest):
+        return None
+    lead = m.group("lead").strip()
+    edited = bool(re.search(r",?\s*\beds?\.?\s*$", lead, re.I))
+    lead = re.sub(r",?\s*\beds?\.?\s*$", "", lead, flags=re.I)
+    names = _ic_split_names(lead)
+    if names is None:
+        # A review essay's own heading can be glued on in front of the names:
+        # "...Seventeenth-Century ScienceDaniel Garber and Sophie Roux". Take the
+        # names after the last glued boundary, if what remains is a heading.
+        for b in reversed([x.start() + 1 for x in re.finditer(r"[a-z\"\u201d'](?=[A-Z][a-z])", lead)]):
+            if len(lead[:b].split()) >= 3:
+                names = _ic_split_names(lead[b:])
+                if names:
+                    break
+    if not names:
+        return None
+    book = re.sub(r"<[^>]+>", "", m.group("book"))
+    book = re.sub(r"\s+", " ", book).strip(" .,;")
+    if len(book) < 3:
+        return None
+
+    def split(n):
+        toks = n.split()
+        i = len(toks) - 1
+        if toks[i].lower().strip(".") in ("jr", "sr", "ii", "iii") and i > 1:
+            i -= 1
+        while i > 1 and toks[i - 1].lower() in _IC_PARTICLES:
+            i -= 1
+        return " ".join(toks[:i]), " ".join(toks[i:])
+
+    if len(names) == 1:
+        first, last = split(names[0])
+    else:
+        lf, last = split(names[-1])
+        first = (", ".join(names[:-1]) + " and " + lf).strip()
+    return {
+        'book_title': book, 'book_author_first': first, 'book_author_last': last,
+        'is_edited_volume': edited, 'has_multiple_authors': len(names) > 1,
+        'needs_doi_scrape': False, 'format': 'italic_citation',
+    }
+
+
 def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = None) -> Optional[Dict]:
     """
     Auto-detect the format of a Crossref book review title and parse it.
@@ -1140,6 +1227,11 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
     title = _normalize(title)
     title = _collapse_duplicated_citation(title)
     subtitle = _normalize(subtitle) if subtitle else ''
+
+    # --- "Authors[, eds.] <i>Title</i>. City: Publisher, Year. Pp." (HOPOS) ---
+    _ic = _parse_italic_citation(title)
+    if _ic:
+        return _ic
 
     # --- "Review of: Author, Title, Place, Publisher, Year, pp, ISBN" ---
     # Runs before the generic splitters, which mistake the publisher or the
