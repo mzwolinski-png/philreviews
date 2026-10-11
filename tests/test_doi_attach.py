@@ -118,5 +118,47 @@ class DoiCase(unittest.TestCase):
         self.assertTrue(real_db.doi_exists("10.1017/S0034412526101917"))
 
 
+class SecondDoi(unittest.TestCase):
+    """A publisher re-registers its back catalogue under new DOIs (HOPOS, 2026-10-11)."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self._orig = real_db.DB_PATH
+        real_db.DB_PATH = os.path.join(self.tmp, "t.db")
+        real_db.init_db()
+        real_db.insert_review(rec(doi="10.2307/26554889", review_link="https://doi.org/10.2307/26554889",
+                                  publication_date="2016-03-01"))
+
+    def tearDown(self):
+        real_db.DB_PATH = self._orig
+        shutil.rmtree(self.tmp)
+
+    def count(self):
+        return sqlite3.connect(real_db.DB_PATH).execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
+
+    def test_the_same_review_under_a_new_doi_is_not_added_again(self):
+        real_db.insert_reviews([rec(doi="10.1086/685565", review_link="https://doi.org/10.1086/685565",
+                                    publication_date="2016-03-01", book_author_last_name="")])
+        self.assertEqual(self.count(), 1)
+        # the copy we had, with its book author, is the one kept
+        c = sqlite3.connect(real_db.DB_PATH)
+        self.assertEqual(c.execute("SELECT doi, book_author_last_name FROM reviews").fetchone(),
+                         ("10.2307/26554889", "Schupmann"))
+
+    def test_single_insert_path_too(self):
+        real_db.insert_review(rec(doi="10.1086/685565", review_link="https://doi.org/10.1086/685565",
+                                  publication_date="2016-03-01"))
+        self.assertEqual(self.count(), 1)
+
+    def test_a_return_to_the_book_years_later_is_a_new_review(self):
+        real_db.insert_reviews([rec(doi="10.1086/999999", review_link="https://doi.org/10.1086/999999",
+                                    publication_date="2024-03-01")])
+        self.assertEqual(self.count(), 2)
+
+    def test_a_different_reviewer_under_a_new_doi_is_a_new_review(self):
+        real_db.insert_reviews([rec(doi="10.1086/685566", review_link="https://doi.org/10.1086/685566",
+                                    publication_date="2016-03-01", reviewer_last_name="Goldberg")])
+        self.assertEqual(self.count(), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

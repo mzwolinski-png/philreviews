@@ -702,8 +702,10 @@ def main():
         try:
             from integrity_check import retry_missing_book_authors
             ba = retry_missing_book_authors()
+            # Log every run, not only the ones that filled something: a week
+            # of "0 filled" looked the same as the step not running at all.
+            log.info(f"Book author retry: {ba['updated']}/{ba['checked']} filled in")
             if ba['updated']:
-                log.info(f"Book author retry: {ba['updated']}/{ba['checked']} filled in")
                 for d in ba['details']:
                     log.info(f"  {d}")
         except Exception:

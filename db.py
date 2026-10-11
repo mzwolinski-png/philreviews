@@ -269,14 +269,57 @@ def init_db():
 
 
 def _title_key(title: str) -> str:
-    """Normalise a title for identity matching: case, curly quotes, punctuation."""
-    t = (title or "").lower().replace("\u2019", "'").replace("\u2018", "'")
-    return "".join(ch for ch in t if ch.isalnum())
+    """Normalise a title for identity matching.
+
+    Case, punctuation, curly quotes, accents and HTML debris all vary between
+    two deposits of the same review: "défi" / "defi", "&amp;amp;" / "&", and
+    mojibake such as "MÃ©taphysique" for "Métaphysique".
+    """
+    import html
+    import unicodedata
+    t = title or ""
+    for _ in range(3):                      # "&amp;amp;" needs unescaping twice
+        t = html.unescape(t)
+    try:                                    # undo UTF-8 read as Latin-1
+        if "Ã" in t:
+            t = t.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        pass
+    t = re.sub(r"<[^>]+>", "", t).lower().replace("&", " and ")
+    t = unicodedata.normalize("NFKD", t)
+    return "".join(ch for ch in t if ch.isalnum() and not unicodedata.combining(ch))
 
 
 # Links that stand in for a review we could not yet point at directly. A real
 # DOI link is always better, so an arriving DOI may replace these.
 _PLACEHOLDER_LINK_HOSTS = ("google.com/search", "ebsco.com")
+
+
+def _held_under_another_doi(conn, rec: dict, key: str, reviewer: str) -> bool:
+    """True if this review is already held under a different DOI.
+
+    Publishers re-register back catalogues: HOPOS reviews held with JSTOR DOIs
+    (10.2307/...) reappeared as 10.1086/..., and the Peirce Society's 10.2979/...
+    as 10.1353/.... Crossref then reports the whole run as newly indexed, and
+    since the DOIs really are different, 64 reviews went in twice on 2026-10-11.
+    Same journal, same full title, same reviewer and the same year is the same
+    review; the copy we already have, which has its book author, is kept.
+    """
+    year = (rec.get("publication_date") or "")[:4]
+    rows = conn.execute(
+        """SELECT book_title, substr(publication_date, 1, 4) FROM reviews
+           WHERE publication_source = ? AND doi IS NOT NULL AND doi <> '' AND doi <> ?
+             AND lower(reviewer_last_name) = ?
+             AND COALESCE(NULLIF(entry_type, ''), 'review') = 'review'""",
+        (rec.get("publication_source", ""), rec.get("doi"), reviewer),
+    ).fetchall()
+    for title, held_year in rows:
+        if _title_key(title) != key:
+            continue
+        if year.isdigit() and (held_year or "").isdigit() and abs(int(year) - int(held_year)) > 1:
+            continue  # the same reviewer returning to the book years later
+        return True
+    return False
 
 
 def _attach_doi_to_placeholder(conn, rec: dict) -> bool:
@@ -305,8 +348,10 @@ def _attach_doi_to_placeholder(conn, rec: dict) -> bool:
         (rec.get("publication_source", ""), reviewer),
     ).fetchall()
     matches = [r for r in rows if _title_key(r[1]) == key]
+    if not matches:
+        return _held_under_another_doi(conn, rec, key, reviewer)
     if len(matches) != 1:
-        return False  # none, or ambiguous: leave both alone rather than guess
+        return False  # ambiguous: leave both alone rather than guess
     rid, _, link = matches[0]
     new_link = rec.get("review_link") or f"https://doi.org/{doi}"
     if link and not any(h in link for h in _PLACEHOLDER_LINK_HOSTS):

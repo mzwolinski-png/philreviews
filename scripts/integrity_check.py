@@ -857,7 +857,7 @@ def retry_missing_book_authors(since_days=14, dry_run=False):
     # the book author (a common OpenAlex failure mode for symposium articles).
     cur.execute(f"""
         SELECT id, book_title, publication_source,
-               reviewer_first_name, reviewer_last_name
+               reviewer_first_name, reviewer_last_name, publication_date
         FROM reviews
         WHERE (book_author_first_name IS NULL OR trim(book_author_first_name) = '')
         AND (book_author_last_name IS NULL OR trim(book_author_last_name) = '')
@@ -869,10 +869,31 @@ def retry_missing_book_authors(since_days=14, dry_run=False):
     def _normalize(s):
         return re.sub(r'[^a-z0-9 ]', '', (s or '').lower()).strip()
 
-    for row_id, title, source, rev_first, rev_last in rows:
+    from book_lookup import crossref_book_people, author_fields
+
+    for row_id, title, source, rev_first, rev_last, pub_date in rows:
         try:
             clean = re.sub(r'<[^>]+>', '', title or '').strip()
             if not clean:
+                continue
+            # Publishers' own book records first: exact title, all authors, and
+            # editors of edited volumes, none of which OpenAlex gave us.
+            year = int(pub_date[:4]) if (pub_date or '')[:4].isdigit() else None
+            names, role = crossref_book_people(clean, rev_last or '', review_year=year)
+            if names:
+                first, last = author_fields(names)
+                if not dry_run:
+                    cur.execute(
+                        "UPDATE reviews SET book_author_first_name = ?, book_author_last_name = ? WHERE id = ?",
+                        (first, last, row_id))
+                updated += 1
+                details.append(f"CROSSREF {row_id} ({source[:25]}): {first} {last} [{role}] for {clean[:40]}")
+                time.sleep(0.2)
+                continue
+            # OpenAlex is the fallback, and it guesses: it gave a 2026 review
+            # titled "Philosophy of Education" a 1996 encyclopedia's editor. A
+            # short generic title cannot identify a book, so it is not tried.
+            if len(clean.split()) < 4:
                 continue
             resp = requests.get(
                 'https://api.openalex.org/works',
