@@ -327,6 +327,22 @@ def parse_springer_record(rec: dict, journal_name: str):
         else:
             reviewer_last = creator.strip()
 
+    # The Meta API has no field for the reviewed book. When the article title
+    # gave no author - Metascience headlines its reviews ("The last Viennese
+    # polymath") - the book is on the article page, as a subtitle under the
+    # headline. One page fetch, and only for records that need it.
+    if not book_author_last and doi:
+        try:
+            from springer_subtitle import fetch_subtitle_lines, join_lines, parse_citation
+            from book_lookup import author_fields
+            lines = fetch_subtitle_lines(doi)
+            cite = parse_citation(lines[0] if len(lines) == 1 else join_lines(lines)) if lines else None
+            if cite:
+                book_title = cite[0]
+                book_author_first, book_author_last = author_fields(cite[1])
+        except Exception:
+            pass      # leave the row as parsed; the weekly author retry still runs
+
     # Access type
     open_access = rec.get("openaccess", "false") == "true"
 
