@@ -85,14 +85,18 @@ class BookPage(unittest.TestCase):
     def test_unknown_slug_is_404(self):
         self.assertEqual(self.c.get("/book/no-such-book-at-all").status_code, 404)
 
-    def test_structured_data_is_a_book_with_reviews(self):
+    def test_structured_data_is_a_book_with_articles_about_it(self):
         slug = self._a_multi_review_book()
         html = self.c.get(f"/book/{slug}").get_data(as_text=True)
         blob = re.search(r'application/ld\+json">(.*?)</script>', html, re.S).group(1)
         d = json.loads(blob)                      # must be valid JSON
         self.assertEqual(d["@type"], "Book")
         self.assertTrue(d["url"].startswith("https://philreviews.org/book/"))
-        self.assertTrue(all(r["@type"] == "Review" for r in d["review"]))
+        # No Review nodes: Google treats them as rating snippets and flags the page
+        self.assertNotIn("review", d)
+        self.assertNotIn('"@type": "Review"', blob)
+        self.assertNotIn("itemReviewed", blob)
+        self.assertTrue(all(r["@type"] == "Article" for r in d["subjectOf"]))
 
     def test_page_is_canonical_and_self_referencing(self):
         slug = self._a_multi_review_book()

@@ -539,12 +539,13 @@ def book_page(slug):
     }
     if byline:
         jsonld["author"] = {"@type": "Person", "name": byline}
+    # Not schema.org "Review": Google reads that as a star-rating snippet and
+    # reports every page as broken, since these reviews carry no ratings.
     graph = []
     for r, raw in zip(reviews, rows):
         node = {
-            "@type": "Review",
-            "itemReviewed": {"@type": "Book", "name": book["title"]},
-            "publisher": {"@type": "Periodical", "name": r["journal"]},
+            "@type": "Article",
+            "isPartOf": {"@type": "Periodical", "name": r["journal"]},
         }
         if r["reviewer"]:
             node["author"] = {"@type": "Person", "name": r["reviewer"]}
@@ -554,7 +555,7 @@ def book_page(slug):
             node["url"] = r["link"]
         graph.append(node)
     if graph:
-        jsonld["review"] = graph
+        jsonld["subjectOf"] = graph
 
     return render_template(
         "book.html", book=book, reviews=reviews, byline=byline,
