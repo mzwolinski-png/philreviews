@@ -338,6 +338,16 @@ def run_marx_philosophy(dry_run=False):
         return None
 
 
+def run_bmcr(dry_run=False):
+    log.info("Starting Bryn Mawr Classical Review scraper (ancient philosophy only)...")
+    try:
+        from bmcr_scraper import BMCRScraper
+        return BMCRScraper().run(dry_run=dry_run)  # current and previous month
+    except Exception:
+        log.exception("BMCR scraper failed")
+        return None
+
+
 def run_mm(dry_run=False):
     log.info("Starting Markets & Morality scraper...")
     try:
@@ -486,6 +496,7 @@ def main():
     atlantic_stats = None
     ct_stats = None
     mp_stats = None
+    bmcr_stats = None
     crossref_added = []
 
     if run_all or args.ndpr:
@@ -515,6 +526,7 @@ def main():
         atlantic_stats = run_atlantic(dry_run=args.dry_run)
         ct_stats = run_cosmos_taxis(dry_run=args.dry_run)
         mp_stats = run_marx_philosophy(dry_run=args.dry_run)
+        bmcr_stats = run_bmcr(dry_run=args.dry_run)
 
     if run_all or args.crossref:
         crossref_stats = run_crossref_delta(from_date, dry_run=args.dry_run)
@@ -643,6 +655,7 @@ def main():
             ("Radical Philosophy", rp_stats), ("Markets & Morality", mm_stats),
             ("Atlantic", atlantic_stats), ("Cosmos + Taxis", ct_stats),
             ("Marx & Philosophy", mp_stats),
+            ("BMCR", bmcr_stats),
         ]
     if run_all or args.crossref:
         attempted.append(("Crossref", crossref_stats))
@@ -866,6 +879,8 @@ def main():
                 f"({ct_stats.get('already_indexed', 0)} already indexed)")
         if mp_stats:
             detail_lines.append(f"Marx & Philosophy: {mp_stats.get('uploaded', 0)} new")
+        if bmcr_stats:
+            detail_lines.append(f"BMCR: {bmcr_stats.get('uploaded', 0)} new")
         if crossref_stats:
             detail_lines.append(f"Crossref: {crossref_stats.get('new', 0)} new (across {crossref_stats.get('journals', 0)} journals)")
         if philosophia_symp_stats and (philosophia_symp_stats['inserted'] or philosophia_symp_stats['updated']):
