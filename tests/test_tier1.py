@@ -51,5 +51,40 @@ class BookPassesFilter(unittest.TestCase):
             publication_source="Claremont Review of Books"))
 
 
+class HandKeptReviews(unittest.TestCase):
+    """A review added by hand from a filtered journal survives the sweep."""
+
+    def test_exempt_link_is_remembered(self):
+        import sqlite3
+        conn = sqlite3.connect(":memory:")
+        self.assertEqual(t1.exempt_links(conn), set())
+        t1.exempt(conn, "https://doi.org/10.1/x", "philosophy of religion")
+        t1.exempt(conn, "https://doi.org/10.1/x", "again")   # no duplicate
+        self.assertEqual(t1.exempt_links(conn), {"https://doi.org/10.1/x"})
+
+    def test_sweep_skips_exempt_rows(self):
+        import sqlite3, tempfile, os
+        path = os.path.join(tempfile.mkdtemp(), "t.db")
+        conn = sqlite3.connect(path)
+        conn.executescript(t1.db._SCHEMA)
+        for link in ("https://x/keep", "https://x/drop"):
+            conn.execute(
+                "INSERT INTO reviews (book_title, book_author_last_name, "
+                "publication_source, review_link) VALUES (?,?,?,?)",
+                ("Zzqx Unheard Of", "Nobodyatall", "New Blackfriars", link))
+        conn.commit()
+        t1.exempt(conn, "https://x/keep", "kept by hand")
+        conn.close()
+        old = t1.db.DB_PATH
+        t1.db.DB_PATH = path
+        try:
+            t1.cleanup_tier1()
+        finally:
+            t1.db.DB_PATH = old
+        conn = sqlite3.connect(path)
+        left = [r[0] for r in conn.execute("SELECT review_link FROM reviews")]
+        self.assertEqual(left, ["https://x/keep"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -221,6 +221,30 @@ def book_passes_filter(book_author_last_name, book_title, reference_index,
     return False
 
 
+_EXEMPT_DDL = """
+    CREATE TABLE IF NOT EXISTS filter_exempt_links (
+        review_link TEXT PRIMARY KEY,
+        reason TEXT,
+        added_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )"""
+
+
+def exempt_links(conn):
+    """Links of hand-added reviews the sweep must not delete."""
+    conn.execute(_EXEMPT_DDL)
+    return {r[0] for r in conn.execute("SELECT review_link FROM filter_exempt_links")}
+
+
+def exempt(conn, review_link, reason=""):
+    """Keep a review whatever the filter says (a judgement call made by hand)."""
+    conn.execute(_EXEMPT_DDL)
+    conn.execute(
+        "INSERT OR REPLACE INTO filter_exempt_links (review_link, reason) VALUES (?, ?)",
+        (review_link, reason),
+    )
+    conn.commit()
+
+
 def cleanup_tier1(dry_run=False):
     """Remove existing Tier 1 entries that don't pass the filter.
 
@@ -236,7 +260,7 @@ def cleanup_tier1(dry_run=False):
     rows = conn.execute(
         f"""
         SELECT id, book_title, book_author_last_name, publication_source,
-               reviewer_first_name, reviewer_last_name
+               reviewer_first_name, reviewer_last_name, review_link
         FROM reviews
         WHERE publication_source IN ({placeholders})
         """,
@@ -248,8 +272,10 @@ def cleanup_tier1(dry_run=False):
     fail_ids = []
     fail_samples = defaultdict(list)
 
-    for rid, title, last, source, rev_first, rev_last in rows:
-        if book_passes_filter(last, title, ref, rev_first, rev_last, source):
+    kept_by_hand = exempt_links(conn)
+
+    for rid, title, last, source, rev_first, rev_last, link in rows:
+        if link in kept_by_hand or book_passes_filter(last, title, ref, rev_first, rev_last, source):
             by_source_pass[source] += 1
         else:
             by_source_fail[source] += 1

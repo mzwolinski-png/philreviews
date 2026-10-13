@@ -49,6 +49,14 @@ CREATE TABLE IF NOT EXISTS excluded_links (
     reason TEXT,
     excluded_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+-- Reviews added by hand from a filtered journal (New Blackfriars, Utopian
+-- Studies...). The weekly tier-1 sweep leaves these alone; without this it
+-- deleted them again the following Sunday.
+CREATE TABLE IF NOT EXISTS filter_exempt_links (
+    review_link TEXT PRIMARY KEY,
+    reason TEXT,
+    added_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 
