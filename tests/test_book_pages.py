@@ -104,6 +104,33 @@ class BookPage(unittest.TestCase):
         self.assertIn(f'rel="canonical" href="https://philreviews.org/book/{slug}"', html)
 
 
+class ConcurrentReads(unittest.TestCase):
+    """Search Console, 2026-10-15: 5xx on book pages. gunicorn runs two threads
+    and they shared one sqlite3 connection; overlapping queries failed."""
+
+    def test_threads_reading_at_once_never_fail(self):
+        import threading
+        import db
+        slugs = [r["slug"] for r in db.get_books_for_sitemap(min_reviews=2, limit=40)]
+        errors = []
+
+        def work():
+            try:
+                for _ in range(5):
+                    for slug in slugs:
+                        if db.get_book(slug) is None:
+                            errors.append(slug)
+            except Exception as e:          # noqa: BLE001 — any failure counts
+                errors.append(repr(e))
+
+        threads = [threading.Thread(target=work) for _ in range(4)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(errors, [])
+
+
 class SearchPage(unittest.TestCase):
     def setUp(self):
         appmod.app.config["TESTING"] = True

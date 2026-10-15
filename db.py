@@ -5,6 +5,7 @@ Single module for all database operations — replaces Airtable.
 
 import re
 import sqlite3
+import threading
 import os
 import time
 
@@ -83,18 +84,30 @@ def _connect():
         return conn
 
 
-# Shared read-only connection for queries (thread-safe in WAL mode)
-_read_conn = None
+# One read-only connection per thread. A single shared connection used to
+# serve gunicorn's two threads at once, and concurrent use of one sqlite3
+# connection fails ("bad parameter or other API misuse", or a fetchone() that
+# comes back None) -- the 5xx errors Search Console reported 2026-10-15.
+_read_local = threading.local()
+_read_generation = 0   # bumped by invalidate_caches(); stale connections reopen
 
 
 def _get_read_conn():
-    """Return a shared read connection, creating it if needed."""
-    global _read_conn
-    if _read_conn is None:
-        _read_conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-        _read_conn.execute("PRAGMA journal_mode=WAL")
-        _read_conn.execute("PRAGMA query_only=ON")
-    return _read_conn
+    """Return this thread's read connection, creating it if needed."""
+    conn = getattr(_read_local, "conn", None)
+    if conn is not None and _read_local.generation != _read_generation:
+        try:
+            conn.close()
+        except Exception:
+            pass
+        conn = None
+    if conn is None:
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA query_only=ON")
+        _read_local.conn = conn
+        _read_local.generation = _read_generation
+    return conn
 
 
 _REVIEW_FLAGS_SCHEMA = """
@@ -540,7 +553,7 @@ def _is_default_query(q, title, author, reviewer, journals, subfields,
 
 def invalidate_caches():
     """Clear query caches (call after inserts/updates)."""
-    global _read_conn
+    global _read_generation
     _default_cache["data"] = None
     _default_cache["expires"] = 0
     _count_cache["total"] = None
@@ -548,13 +561,8 @@ def invalidate_caches():
     _metadata_cache["data"] = None
     _metadata_cache["expires"] = 0
     _query_cache.clear()
-    # Close shared read connection so it picks up new data
-    if _read_conn is not None:
-        try:
-            _read_conn.close()
-        except Exception:
-            pass
-        _read_conn = None
+    # Every thread reopens its read connection on next use, to see new data
+    _read_generation += 1
 
 
 def search_reviews(q=None, title=None, author=None, reviewer=None,
