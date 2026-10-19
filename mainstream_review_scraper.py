@@ -140,9 +140,22 @@ def show_status():
 
 # ── Candidate book selection ──────────────────────────────────────
 
+# Function words never count as evidence that a result is about the book. They
+# used to: "and" and "the" made up 3 of the 7 words of "Likeness and Likelihood
+# in the Presocratics and Plato", so any Guardian review headline with "review"
+# in it cleared the 40% bar (23 false matches on 2026-10-18).
+_STOPWORDS = frozenset("""
+    the and for with from into onto upon about after before between through
+    its his her their our your this that these those what which who whom how
+    why when where are was were been being has have had not but nor yet all
+    any one two new old essay essays book books introduction volume vol
+    """.split())
+
+
 def get_significant_words(title):
-    """Return words with 3+ characters from a title."""
-    return [w for w in re.findall(r"[a-zA-Z]{3,}", title)]
+    """Return the content words (3+ letters, not function words) of a title."""
+    return [w for w in re.findall(r"[a-zA-Z]{3,}", title)
+            if w.lower() not in _STOPWORDS]
 
 
 def get_candidate_books(min_reviews=3, active_since_days=None):
@@ -414,8 +427,12 @@ def verify_result(result_title, result_snippet, result_url, book_title, author_l
     if not sig_words:
         return False
 
-    matched = sum(1 for w in sig_words if w.lower() in combined)
+    matched = sum(1 for w in sig_words if re.search(
+        r"\b" + re.escape(w.lower()) + r"\b", combined))
     match_ratio = matched / len(sig_words)
+    # At least two content words must match (all of them for a one-word title)
+    if matched < min(2, len(sig_words)):
+        return False
 
     # Tier 3: Review signal detection
     review_signals = [
