@@ -17,11 +17,24 @@ import deploy  # noqa: E402
 class SwapClearsWal(unittest.TestCase):
     def test_swap_removes_the_old_wal_and_shm(self):
         src = inspect.getsource(deploy)
-        swap = src[src.index("mv /data/reviews.db /data/reviews_old.db"):]
-        swap = swap[:swap.index("rm -f /data/reviews_old.db")]
-        self.assertIn("rm -f /data/reviews.db-wal /data/reviews.db-shm", swap)
+        swap = src[src.index("rm -f /data/reviews.db-wal /data/reviews.db-shm"):]
         # and it happens before the new file is moved into place
-        self.assertLess(swap.index("reviews.db-wal"), swap.index("mv /data/reviews_new.db"))
+        self.assertIn("mv -f /data/reviews_new.db /data/reviews.db", swap)
+
+
+class SyncDoesNotTakeTheSiteDown(unittest.TestCase):
+    """2026-10-22: `fly apps restart` after each sync refused connections for
+    ~13 s, and Search Console counted the crawls that landed then as 5xx."""
+    def test_no_restart_unless_the_live_check_fails(self):
+        src = inspect.getsource(deploy._sync_once)
+        swap = src.index("mv -f /data/reviews_new.db")
+        check = src.index("if _site_serves():", swap)
+        self.assertLess(check, src.index("_RELOAD_SCRIPT", swap))
+        self.assertLess(src.index("_RELOAD_SCRIPT", swap), src.index('"apps", "restart"', swap))
+        self.assertIn("os.kill(master, signal.SIGHUP)", deploy._RELOAD_PY)
+
+    def test_reload_script_is_valid_python(self):
+        compile(deploy._RELOAD_PY, "reload", "exec")
 
 
 class UploadStaysOffTheVolume(unittest.TestCase):

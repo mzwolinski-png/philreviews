@@ -16,6 +16,12 @@ import db
 app = Flask(__name__)
 
 
+@app.before_request
+def _pick_up_synced_db():
+    # Before any cache is consulted: a sync swaps reviews.db in place.
+    db._check_db_replaced()
+
+
 # --- Abuse protection for the email-sending /subscribe endpoint ------------
 # Single gunicorn worker (see Dockerfile), so a per-process in-memory limiter
 # is sufficient. Guards against using the verification-email sender as an open

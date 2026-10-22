@@ -92,8 +92,30 @@ _read_local = threading.local()
 _read_generation = 0   # bumped by invalidate_caches(); stale connections reopen
 
 
+_db_file_id = None     # (inode, device) of the file the caches were built from
+
+
+def _check_db_replaced():
+    """A sync renames a new reviews.db into place without restarting the app
+    (restarts refused connections; Search Console counted those as 5xx,
+    2026-10-22). Open connections still read the old file, so when the name
+    points at a different file, drop the caches and reopen everywhere."""
+    global _db_file_id
+    try:
+        st = os.stat(DB_PATH)
+    except OSError:
+        return
+    file_id = (st.st_ino, st.st_dev)
+    if _db_file_id is None:
+        _db_file_id = file_id
+    elif file_id != _db_file_id:
+        _db_file_id = file_id
+        invalidate_caches()
+
+
 def _get_read_conn():
     """Return this thread's read connection, creating it if needed."""
+    _check_db_replaced()
     conn = getattr(_read_local, "conn", None)
     if conn is not None and _read_local.generation != _read_generation:
         try:
@@ -102,12 +124,29 @@ def _get_read_conn():
             pass
         conn = None
     if conn is None:
+        # No journal_mode pragma: a reader follows the file's own mode. Setting
+        # WAL here wrote to the freshly synced file and left -wal/-shm beside
+        # it, which a later swap would pair with the next file.
         conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-        conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA query_only=ON")
+        # Set once here: journal and subfield pages call dict(row) and used to
+        # rely on some earlier query having set it, so a fresh connection's
+        # first request 500'd if it was one of those pages.
+        conn.row_factory = sqlite3.Row
         _read_local.conn = conn
         _read_local.generation = _read_generation
     return conn
+
+
+def close_read_conn():
+    """Close this thread's read connection, if it has one."""
+    conn = getattr(_read_local, "conn", None)
+    if conn is not None:
+        _read_local.conn = None
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 
 _REVIEW_FLAGS_SCHEMA = """
@@ -1146,3 +1185,8 @@ try:
     search_reviews()  # cache default landing page query
 except Exception:
     pass
+finally:
+    # Requests run on other threads, so this connection would never be used or
+    # closed again -- and after a sync it held the replaced file open,
+    # keeping its disk space (gunicorn's master and worker both inherit it).
+    close_read_conn()

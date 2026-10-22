@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Shared deployment utilities for syncing the database to Fly.io."""
 
+import base64
 import gzip
 import logging
 import os
@@ -28,8 +29,59 @@ def _local_review_count():
         return 0
 
 
+# Runs on the Fly machine (no procps there): HUP the gunicorn master, then wait
+# for a worker that did not exist before -- it is the one serving the new file.
+_RELOAD_PY = """
+import os, signal, time
+
+def gunicorns():
+    procs = {}
+    for p in os.listdir('/proc'):
+        try:
+            if p.isdigit() and b'gunicorn' in open('/proc/%s/cmdline' % p, 'rb').read():
+                procs[int(p)] = int(open('/proc/%s/stat' % p).read().split()[3])
+        except OSError:      # exited while we looked
+            pass
+    return procs
+
+procs = gunicorns()
+master = [p for p, parent in procs.items() if parent not in procs][0]
+os.kill(master, signal.SIGHUP)
+for _ in range(30):
+    time.sleep(1)
+    if set(gunicorns()) - set(procs):
+        print('RELOADED')
+        break
+else:
+    print('NOT RELOADED')
+"""
+_RELOAD_SCRIPT = ("import base64; exec(base64.b64decode('%s'))"
+                  % base64.b64encode(_RELOAD_PY.encode()).decode())
+
+
+def _site_serves(wait=45):
+    """True once the live site reports the uploaded database's review count."""
+    import json
+    import urllib.request
+    try:
+        db.invalidate_caches()
+        expected = db._get_total_count()
+    except Exception:
+        return False
+    deadline = time.time() + wait
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen("https://philreviews.org/health", timeout=10) as r:
+                if json.load(r).get("reviews") == expected:
+                    return True
+        except Exception:
+            pass
+        time.sleep(3)
+    return False
+
+
 def sync_to_fly(retries=3):
-    """Upload the database to Fly.io and restart the app, retrying on failure.
+    """Upload the database to Fly.io and swap it in live, retrying on failure.
 
     Returns True if production was successfully updated, False otherwise.
     Each attempt is self-contained (uploads to a temp path and atomically
@@ -159,25 +211,37 @@ def _sync_once():
              # and corrupts it: 2026-09-27 a deploy's schema migration wrote to
              # the WAL, the swap kept it, and production went "database disk
              # image is malformed". They go out with the old file.
-             "sh -c 'mv /data/reviews.db /data/reviews_old.db 2>/dev/null;"
-             " rm -f /data/reviews.db-wal /data/reviews.db-shm;"
-             " mv /data/reviews_new.db /data/reviews.db"
-             " && rm -f /data/reviews_old.db'"],
+             # One rename, so there is never a moment with no reviews.db for a
+             # request to open (or to create empty).
+             "sh -c 'rm -f /data/reviews.db-wal /data/reviews.db-shm;"
+             " mv -f /data/reviews_new.db /data/reviews.db'"],
             cwd=ROOT, capture_output=True, text=True, timeout=60,
         )
         if result.returncode != 0:
             log.error(f"Remote swap failed: {result.stderr}")
             return False
 
-        log.info("Database uploaded. Restarting app...")
-        subprocess.run(
-            ["fly", "apps", "restart", FLY_APP],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=60,
+        # No restart: the running app sees reviews.db is a new file on its next
+        # request and reopens (db._check_db_replaced). `fly apps restart` left
+        # the site refusing connections for ~13 s on every sync, which Search
+        # Console reported as 5xx (2026-10-22). Reload and restart are only
+        # fallbacks, if the live site doesn't come back with the new count.
+        log.info("Database uploaded. Checking the live site picked it up...")
+        if _site_serves():
+            log.info("Fly.io deploy complete")
+            return True
+        log.warning("Live site still on the old database; reloading gunicorn")
+        reload = subprocess.run(
+            ["fly", "ssh", "console", "-a", FLY_APP, "-C",
+             f"python3 -c \"{_RELOAD_SCRIPT}\""],
+            cwd=ROOT, capture_output=True, text=True, timeout=90,
         )
+        if "RELOADED" not in (reload.stdout or "") or not _site_serves():
+            log.warning("Graceful reload not confirmed; restarting app instead")
+            subprocess.run(
+                ["fly", "apps", "restart", FLY_APP],
+                cwd=ROOT, check=True, capture_output=True, text=True, timeout=60,
+            )
         log.info("Fly.io deploy complete")
         return True
     except Exception:

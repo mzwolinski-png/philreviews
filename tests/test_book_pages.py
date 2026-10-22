@@ -238,3 +238,62 @@ class BookPageReach(unittest.TestCase):
         many = self.db.get_books_for_sitemap(min_reviews=3, limit=1)[0]
         html = self.c.get("/book/" + many["slug"]).get_data(as_text=True)
         self.assertNotIn("noindex", html)
+
+
+class FreshConnectionFirstRequest(unittest.TestCase):
+    """2026-10-22: a new worker's first request was /journal/…; dict(row) failed
+    because row_factory was only ever set by other queries."""
+
+    def test_journal_and_subfield_work_on_a_new_connection(self):
+        import threading
+        import db
+        results = []
+
+        def first_request():
+            try:
+                results.append(db.get_journal_reviews("Ethics") is not None)
+                results.append(db.get_subfield_reviews("ethics") is not None)
+            except Exception as e:          # noqa: BLE001
+                results.append(repr(e))
+
+        t = threading.Thread(target=first_request)   # new thread, new connection
+        t.start()
+        t.join()
+        self.assertEqual(results, [True, True])
+
+
+class SyncedFileIsPickedUp(unittest.TestCase):
+    """A sync renames a new reviews.db into place; the running app must notice
+    without a restart."""
+
+    def test_replaced_file_drops_caches_and_connections(self):
+        import db
+        db._check_db_replaced()
+        gen = db._read_generation
+        db._get_total_count()
+        self.assertIsNotNone(db._count_cache["total"])
+        real = db._db_file_id
+        try:
+            db._db_file_id = (real[0] + 1, real[1])   # as if renamed over
+            db._check_db_replaced()
+            self.assertEqual(db._read_generation, gen + 1)
+            self.assertIsNone(db._count_cache["total"])
+            self.assertEqual(db._db_file_id, real)
+            db._check_db_replaced()                     # same file: no churn
+            self.assertEqual(db._read_generation, gen + 1)
+        finally:
+            db._db_file_id = real
+
+
+class ImportHoldsNoConnection(unittest.TestCase):
+    """gunicorn --preload imports the app in the master, then forks; a read
+    connection left open there pinned the replaced file after every sync."""
+
+    def test_import_thread_has_no_open_read_connection(self):
+        import subprocess
+        out = subprocess.run(
+            [sys.executable, "-c",
+             "import sys; sys.path.insert(0, %r); import app, db; "
+             "print(getattr(db._read_local, 'conn', None) is None)" % ROOT],
+            capture_output=True, text=True, cwd=ROOT)
+        self.assertEqual(out.stdout.strip().splitlines()[-1], "True")
