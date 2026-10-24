@@ -631,9 +631,9 @@ def main():
 
 
 def _check_weekly_runs():
-    """Alert if Sunday's weekly update didn't happen (checked on Monday)."""
+    """Alert if Saturday's weekly update didn't happen (checked on Sunday)."""
     now = datetime.now()
-    if now.isoweekday() != 1:  # Only check on Monday
+    if now.isoweekday() != 7:  # Only check on Sunday
         return
     try:
         from notify import send_missed_run_alert
@@ -648,9 +648,9 @@ def _check_weekly_runs():
                 ws = json.load(f)
             last_run = ws.get("last_run", "")
             if last_run and not last_run.startswith(yesterday_str):
-                send_missed_run_alert("update.py (Sunday 5 AM)", f"Last run: {last_run}")
+                send_missed_run_alert("update.py (Saturday 5 AM)", f"Last run: {last_run}")
         else:
-            send_missed_run_alert("update.py (Sunday 5 AM)", "No state file found")
+            send_missed_run_alert("update.py (Saturday 5 AM)", "No state file found")
     except Exception as e:
         log.warning(f"Weekly run watchdog check failed: {e}")
 

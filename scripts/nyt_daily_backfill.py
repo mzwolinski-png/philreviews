@@ -5,7 +5,7 @@ Driven by a LaunchAgent (com.philreviews.nyt-backfill, daily 2am). Each run
 takes the next year from the state file, gates that year's NYT book reviews for
 philosophy, and decrements. NYT Article Search caps at 1000 docs/query, so each
 year is split into two half-year windows. Stays under NYT's ~500-request/day
-limit. Does NOT sync to Fly — the Sunday update.py sync pushes the accumulated
+limit. Does NOT sync to Fly — the Saturday update.py sync pushes the accumulated
 rows. Secrets come from .env (none embedded in the plist).
 """
 import json
