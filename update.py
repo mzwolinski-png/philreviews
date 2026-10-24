@@ -851,6 +851,8 @@ def main():
             detail_lines.append(f"Philosophy Now: {phil_now_stats.get('uploaded', 0)} new")
         if ll_stats:
             detail_lines.append(f"Law & Liberty: {ll_stats.get('uploaded', 0)} new")
+            for g in ll_stats.get("gated_out", []):
+                detail_lines.append(f"  dropped as not philosophy: {g}")
         if pd_stats:
             detail_lines.append(f"Public Discourse: {pd_stats.get('uploaded', 0)} new")
         if bjps_stats:

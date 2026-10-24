@@ -495,6 +495,15 @@ def doi_exists(doi: str) -> bool:
         return row is not None
 
 
+def exclude_link(url: str, reason: str = "") -> None:
+    """Mark a link as rejected, so scrapers skip it from now on."""
+    if not url:
+        return
+    with _connect() as conn:
+        conn.execute("INSERT OR IGNORE INTO excluded_links (review_link, reason) VALUES (?, ?)",
+                     (url, reason))
+
+
 def review_link_exists(url: str) -> bool:
     """Check whether a review link already exists in the database."""
     if not url:

@@ -193,6 +193,11 @@ class LawLibertyScraper(BaseScraper):
             self.stats["parse_errors"] += 1
             return None
 
+        # For the relevance gate only; never stored
+        m = re.search(r'<meta property="og:description" content="([^"]*)"', html)
+        if m:
+            record['_excerpt'] = m.group(1).strip()
+
         self.stats["reviews_parsed"] += 1
         return record
 
@@ -267,6 +272,15 @@ class LawLibertyScraper(BaseScraper):
                       f"{rec['Reviewer First Name']} {rec['Reviewer Last Name']} | "
                       f"{rec['Publication Date']}")
         elif records:
+            # Law & Liberty reviews far beyond philosophy; drop the plainly
+            # unrelated before they reach the weekly review (Matt, 2026-10-24).
+            import relevance_gate
+            records, dropped = relevance_gate.screen(records)
+            self.stats["gated_out"] = [
+                f"{r['Book Title'][:60]} ({r['_gate_reason']})" for r in dropped]
+            for r in dropped:
+                self.log.info(f"  gate dropped: {r['Book Title'][:60]} -- {r['_gate_reason']}")
+                db.exclude_link(r['Review Link'], f"relevance gate: {r['_gate_reason']}")
             self.upload_to_db(records)
             state = self._load_state()
             state["last_run"] = datetime.now().isoformat()
