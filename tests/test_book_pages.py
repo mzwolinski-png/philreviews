@@ -41,6 +41,12 @@ class BookKeyIdentity(unittest.TestCase):
             build_books.book_key("Collected Papers: Volume 1", "Quine"),
             build_books.book_key("Collected Papers: Volume 2", "Quine"))
 
+    def test_ampersand_is_and(self):
+        # 2026-10-25: two reviews of Finlay's The Philosophy of Force were split
+        self.assertEqual(
+            build_books.book_key("Violence, Domination, & the Ethics of War", "Finlay"),
+            build_books.book_key("Violence, Domination, and the Ethics of War", "Finlay"))
+
     def test_empty_title_has_no_key(self):
         self.assertIsNone(build_books.book_key("", "Rawls"))
 
@@ -297,3 +303,21 @@ class ImportHoldsNoConnection(unittest.TestCase):
              "print(getattr(db._read_local, 'conn', None) is None)" % ROOT],
             capture_output=True, text=True, cwd=ROOT)
         self.assertEqual(out.stdout.strip().splitlines()[-1], "True")
+
+
+class MergedBookRedirects(unittest.TestCase):
+    def setUp(self):
+        appmod.app.config["TESTING"] = True
+        self.c = appmod.app.test_client()
+        appmod._rate_limiter._hits.clear()
+
+    def test_merged_away_slug_is_a_301_to_the_book(self):
+        import db
+        row = db._get_read_conn().execute(
+            "SELECT old_slug, new_slug FROM book_slug_redirects LIMIT 1").fetchone()
+        if row is None:
+            self.skipTest("no merged books in this database")
+        r = self.c.get(f"/book/{row[0]}")
+        self.assertEqual(r.status_code, 301)
+        self.assertTrue(r.headers["Location"].endswith(f"/book/{row[1]}"))
+        self.assertEqual(self.c.get(f"/book/{row[1]}").status_code, 200)

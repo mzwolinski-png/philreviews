@@ -508,6 +508,9 @@ def book_page(slug):
     """
     data = db.get_book(slug)
     if not data:
+        moved = db.get_book_redirect(slug)
+        if moved:
+            return redirect(f"/book/{moved}", code=301)
         abort(404)
     book, rows = data["book"], data["reviews"]
 

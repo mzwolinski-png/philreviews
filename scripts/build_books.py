@@ -33,6 +33,12 @@ CREATE TABLE IF NOT EXISTS books (
     last_year    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_books_count ON books(review_count DESC);
+-- A slug whose book merged into another (a key change). Served as a 301 so
+-- links and Google's index follow the book instead of hitting a 404.
+CREATE TABLE IF NOT EXISTS book_slug_redirects (
+    old_slug TEXT PRIMARY KEY,
+    new_slug TEXT NOT NULL
+);
 """
 
 _STOP_SLUG = {"the", "a", "an", "of", "and", "or", "in", "on", "to", "for", "with"}
@@ -45,6 +51,18 @@ def _fold(s):
 
 def book_key(title, author_last):
     """Stable identity for a book. Empty title -> None (never grouped)."""
+    # "&" is "and": "Violence, Domination, & the Ethics..." and "...and the
+    # Ethics..." are one book (154 such pairs were split, 2026-10-25).
+    t = re.sub(r"[^a-z0-9]+", " ", _fold(title).lower().replace("&", " and ")).strip()
+    a = re.sub(r"[^a-z0-9]+", " ", _fold(author_last or "").lower()).strip()
+    if not t:
+        return None
+    a = a.split()[-1] if a else ""
+    return f"{t[:120]}|{a}"
+
+
+def _key_before_ampersand(title, author_last):
+    """book_key as it was before 2026-10-25, to find the slugs stored under it."""
     t = re.sub(r"[^a-z0-9]+", " ", _fold(title).lower()).strip()
     a = re.sub(r"[^a-z0-9]+", " ", _fold(author_last or "").lower()).strip()
     if not t:
@@ -102,10 +120,13 @@ def rebuild(verbose=False):
             continue
         g = groups.get(key)
         year = (r["d"] or "")[:4]
+        old_key = _key_before_ampersand(r["t"], r["l"])
         if g is None:
-            groups[key] = {"title": r["t"], "f": r["f"] or "", "l": r["l"] or "",
-                           "n": 1, "lo": year, "hi": year}
+            g = groups[key] = {"title": r["t"], "f": r["f"] or "", "l": r["l"] or "",
+                               "n": 1, "lo": year, "hi": year, "old": {}}
+            g["old"][old_key] = 1
         else:
+            g["old"][old_key] = g["old"].get(old_key, 0) + 1
             g["n"] += 1
             # keep the longest title seen — usually the one with its subtitle
             if len(r["t"]) > len(g["title"]):
@@ -114,9 +135,16 @@ def rebuild(verbose=False):
                 g["lo"] = min(g["lo"] or year, year)
                 g["hi"] = max(g["hi"] or year, year)
 
-    rows = []
+    rows, redirects = [], []
     for key, g in groups.items():
-        slug = existing.get(key) or make_slug(g["title"], g["l"], taken)
+        # Slugs stored under this key or under keys that now merge into it;
+        # the best-reviewed one survives, the rest redirect to it.
+        prior = [existing[k] for k in sorted(g["old"], key=g["old"].get, reverse=True)
+                 if k in existing and k != key]
+        if key in existing:
+            prior.insert(0, existing[key])
+        slug = prior[0] if prior else make_slug(g["title"], g["l"], taken)
+        redirects += [(old, slug) for old in prior[1:]]
         rows.append((key, slug, g["title"], g["f"], g["l"], g["n"], g["lo"], g["hi"]))
 
     # Stamp the key onto each review: the page must be one indexed lookup,
@@ -136,12 +164,19 @@ def rebuild(verbose=False):
     conn.executemany("UPDATE reviews SET book_key = ? WHERE id = ?", updates)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_reviews_book_key ON reviews(book_key)")
 
+    live = {r[1] for r in rows}
+    conn.executemany("INSERT OR REPLACE INTO book_slug_redirects VALUES (?, ?)",
+                     [(o, n) for o, n in redirects if o not in live])
     conn.execute("DELETE FROM books")
     conn.executemany("""INSERT INTO books
         (book_key, slug, title, author_first, author_last, review_count, first_year, last_year)
         VALUES (?,?,?,?,?,?,?,?)""", rows)
+    # A redirect never shadows a live page or points at one that's gone
+    conn.execute("DELETE FROM book_slug_redirects WHERE old_slug IN (SELECT slug FROM books)"
+                 " OR new_slug NOT IN (SELECT slug FROM books)")
     conn.commit()
     stats = {
+        "redirects_added": len(redirects),
         "books": len(rows),
         "multi_review": sum(1 for r in rows if r[5] > 1),
         "slugs_reused": sum(1 for k in groups if k in existing),

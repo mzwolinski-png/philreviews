@@ -1071,6 +1071,16 @@ def get_verified_follows() -> list[dict]:
         conn.close()
 
 
+def get_book_redirect(slug: str):
+    """The slug a merged-away book now lives at, or None."""
+    try:
+        row = _get_read_conn().execute(
+            "SELECT new_slug FROM book_slug_redirects WHERE old_slug = ?", (slug,)).fetchone()
+    except sqlite3.OperationalError:
+        return None   # table not built yet
+    return row[0] if row else None
+
+
 def get_book(slug: str):
     """One book and every review of it, for /book/<slug>.
 
