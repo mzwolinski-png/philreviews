@@ -16,6 +16,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ heading }} — PhilReviews</title>
     <meta name="description" content="{{ "{:,}".format(total) }} philosophy book reviews matching {{ q }}. Searchable index of {{ "{:,}".format(corpus) }} reviews across {{ "{:,}".format(sources) }} journals.">
+    {# Search results repeat what book/journal pages show (a one-review book's
+       title search is that book page again); Search Console flagged them as
+       duplicates, 2026-10-26. Crawlable, never indexed. #}
+    <meta name="robots" content="noindex, follow">
     <link rel="canonical" href="{{ BASE_URL }}/search?q={{ q | url_encode }}{% if page > 1 %}&amp;page={{ page }}{% endif %}">
     {% if page > 1 %}<link rel="prev" href="{{ BASE_URL }}/search?q={{ q | url_encode }}{% if page > 2 %}&amp;page={{ page - 1 }}{% endif %}">{% endif %}
     {% if page < total_pages %}<link rel="next" href="{{ BASE_URL }}/search?q={{ q | url_encode }}&amp;page={{ page + 1 }}">{% endif %}

@@ -160,6 +160,11 @@ class SearchPage(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertIn("No reviews match", r.get_data(as_text=True))
 
+    def test_results_are_not_for_indexing(self):
+        # duplicates of book pages in Google's eyes (Search Console, 2026-10-26)
+        html = self.c.get("/search?q=kant").get_data(as_text=True)
+        self.assertIn('name="robots" content="noindex, follow"', html)
+
     def test_canonical_includes_the_query(self):
         html = self.c.get("/search?q=kant").get_data(as_text=True)
         self.assertIn('rel="canonical" href="https://philreviews.org/search?q=kant"', html)
