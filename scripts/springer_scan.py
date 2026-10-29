@@ -245,7 +245,9 @@ def parse_review_citation(title):
 def parse_springer_record(rec: dict, journal_name: str):
     """Parse a Springer Meta API record into a review dict for DB insertion."""
     genre = rec.get("genre", [])
-    if not any("Book Review" in g for g in genre):
+    # Springer writes both "Book Review" and "BookReview" (Res Publica's
+    # reviews are mostly the latter, and were all being skipped until 2026-10).
+    if not any("bookreview" in g.replace(" ", "").lower() for g in genre):
         return None
 
     title = rec.get("title", "").strip()

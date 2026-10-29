@@ -96,3 +96,20 @@ class EssayTitledReview(unittest.TestCase):
         self.assertEqual(r["book_title"],
                          "Notes on Darwin's finches and their ecology")
         self.assertEqual(r["book_author_last_name"], "")
+
+
+class GenreSpelling(unittest.TestCase):
+    """Springer writes the genre both ways; Res Publica's reviews were all
+    'BookReview' and the scan skipped every one of them."""
+    BASE = {"url": [], "creators": [], "publicationDate": "2026-01-01",
+            "doi": "", "title": "Anna Stilz: Territorial Sovereignty"}
+
+    def test_both_spellings_are_reviews(self):
+        from springer_scan import parse_springer_record
+        for g in (["Book Review"], ["BookReview"], ["BookReview", "Book review"]):
+            self.assertIsNotNone(parse_springer_record({**self.BASE, "genre": g}, "Res Publica"), g)
+
+    def test_papers_are_not(self):
+        from springer_scan import parse_springer_record
+        for g in (["OriginalPaper"], ["ReviewPaper"], []):
+            self.assertIsNone(parse_springer_record({**self.BASE, "genre": g}, "Res Publica"), g)
