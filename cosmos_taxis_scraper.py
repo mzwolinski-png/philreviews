@@ -195,9 +195,9 @@ _PARTICLE_CAPS = re.compile(r"^(De|Van|Von|Der|Den|La|Le|Di|Du|Da)\s", re.U)
 
 def _citation_spans(pdf_bytes):
     """Spans of the citation block on page one, or [] if there is none."""
-    import fitz  # PyMuPDF; imported here so the page scraper needs nothing extra
+    import pymupdf  # imported here so the page scraper needs nothing extra
     try:
-        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     except Exception:
         return []
     lines = []
