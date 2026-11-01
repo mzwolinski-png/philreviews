@@ -161,6 +161,14 @@ class CrossrefReviewScraper(BaseScraper):
         else:
             detection_mode = self.JOURNALS.get(journal_name, {}).get('detection_mode', 'all')
             reviews = [item for item in all_items if is_book_review(item, detection_mode)]
+        # reviews_from: a date floor, so that fixing a journal's detection
+        # doesn't bulk-insert its whole back catalogue unreviewed.
+        floor = self.JOURNALS.get(journal_name, {}).get('reviews_from')
+        if floor:
+            def _issued(it):
+                p = (it.get('issued', {}).get('date-parts') or [[0]])[0]
+                return '%04d-%02d-%02d' % (p[0] or 0, p[1] if len(p) > 1 else 1, p[2] if len(p) > 2 else 1)
+            reviews = [it for it in reviews if _issued(it) >= floor]
         self.log(f"  {journal_name}: {len(all_items)} items, {len(reviews)} book reviews")
         self.stats['journals_searched'] += 1
         self.stats['dois_found'] += len(reviews)

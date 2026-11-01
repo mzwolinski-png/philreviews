@@ -20,7 +20,9 @@ JOURNALS = {
     # Category D: generic "Book Review" — enriched via Semantic Scholar
     'Mind': {'crossref_parseable': False, 'semantic_scholar_enrichable': True, 'detection_mode': 'italic_only'},
     # Category F/D mix: older entries have "Title - Author", newer are generic
-    'The Philosophical Quarterly': {'crossref_parseable': False, 'semantic_scholar_enrichable': True, 'detection_mode': 'no_abstract', 'title_is_book': True},
+    'The Philosophical Quarterly': {'crossref_parseable': False, 'semantic_scholar_enrichable': True, 'detection_mode': 'no_abstract', 'title_is_book': True,
+                                    # Back catalogue (~440, 2015-2026) awaits a checked backfill
+                                    'reviews_from': '2026-11-01'},
 
     # --- New journals ---
     # "Title, Author. Publisher, Year, pages." or "<i>Title</i>, by Author"
