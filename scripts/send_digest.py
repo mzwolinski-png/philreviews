@@ -116,12 +116,49 @@ def filter_for_subscriber(reviews, subfields_str):
     ]
 
 
-def format_digest(reviews, token):
+def get_digest_question():
+    """This Monday's approved Question of the Week, or None.
+
+    The question goes in only if its page is already live: the email links to
+    the answer, and a link that 404s is worse than no question."""
+    q = db.get_question_for_digest(datetime.now().date().isoformat())
+    if not q:
+        log.info("No approved Question of the Week for today.")
+        return None
+    url = f"{BASE_URL}/question/{q['id']}"
+    try:
+        import requests
+        ok = requests.get(url, timeout=20).status_code == 200
+    except Exception:
+        ok = False
+    if not ok:
+        log.error(f"Question {q['id']} is approved but {url} is not live; leaving it out.")
+        try:
+            send_email("[PhilReviews] Question of the Week left out of the digest",
+                       f"Question {q['id']} is approved for today, but {url} did not load, "
+                       "so the digest went without it. Has the app been deployed?")
+        except Exception:
+            log.exception("Could not send question alert")
+        return None
+    return q
+
+
+def _question_text(q):
+    if not q:
+        return []
+    lines = ["QUESTION OF THE WEEK", q["question"]]
+    lines += [f"  {'ABCD'[i]}) {c}" for i, c in enumerate(q["choices"])]
+    lines += [f"See the answer: {BASE_URL}/question/{q['id']}", ""]
+    return lines
+
+
+def format_digest(reviews, token, question=None):
     """Format a plain-text digest email."""
     lines = [
         "PhilReviews Weekly Digest",
         f"{datetime.now():%B %d, %Y}",
         "",
+    ] + _question_text(question) + [
         f"{len(reviews)} new review{'s' if len(reviews) != 1 else ''} published this week:",
         "",
     ]
@@ -173,7 +210,30 @@ def _h(s):
     return _html.escape(str(s or ""))
 
 
-def format_digest_html(reviews, token):
+def _question_html(q, navy, rule, grey):
+    if not q:
+        return ""
+    url = f"{BASE_URL}/question/{q['id']}"
+    choices = "".join(
+        f'<a href="{url}?pick={i}" style="display:block;margin:6px 0;padding:9px 12px;'
+        f'border:1px solid {rule};border-radius:6px;background:#ffffff;color:#22303a;'
+        f'text-decoration:none;font-size:15px;"><b style="color:{navy};">{"ABCD"[i]}</b>'
+        f'&nbsp;&nbsp;{_h(c)}</a>'
+        for i, c in enumerate(q["choices"]))
+    return f"""\
+  <div style="background:#eaf1f5;border-radius:8px;padding:16px 18px;margin:0 0 24px;">
+    <div style="font-family:Helvetica,Arial,sans-serif;font-size:11px;color:{navy};
+         text-transform:uppercase;letter-spacing:1.5px;font-weight:bold;margin-bottom:6px;">
+      Question of the Week</div>
+    <div style="font-size:17px;line-height:1.4;font-weight:bold;margin-bottom:8px;">{_h(q['question'])}</div>
+    <div style="font-family:Helvetica,Arial,sans-serif;">{choices}</div>
+    <div style="font-family:Helvetica,Arial,sans-serif;font-size:12.5px;color:{grey};margin-top:8px;">
+      Pick one to see the answer.</div>
+  </div>
+"""
+
+
+def format_digest_html(reviews, token, question=None):
     """Styled HTML version of the digest (sent alongside the plain-text
     fallback). Email-client constraints: inline styles only, no web fonts
     (Georgia/serif approximates the site's Libre Baskerville), single-column
@@ -203,7 +263,7 @@ def format_digest_html(reviews, token):
   <div style="border-top:2px solid {navy};margin:14px 0 18px;"></div>
   <p style="font-size:15px;margin:0 0 20px;color:{grey};text-align:center;">
     {len(reviews)} new review{'s' if len(reviews) != 1 else ''} of philosophy books this week</p>
-"""]
+""", _question_html(question, navy, rule, grey)]
 
     for journal in sorted(by_journal.keys()):
         parts.append(f"""\
@@ -283,6 +343,7 @@ def main():
         log.info("No verified subscribers — nothing to send.")
         return
 
+    question = get_digest_question()
     sent = 0
 
     for sub in subscribers:
@@ -291,8 +352,8 @@ def main():
             log.info(f"  {sub['email']}: 0 matching reviews, skipping")
             continue
 
-        body = format_digest(filtered, sub["token"])
-        html = format_digest_html(filtered, sub["token"])
+        body = format_digest(filtered, sub["token"], question)
+        html = format_digest_html(filtered, sub["token"], question)
         subfield_label = sub["subfields"] if sub["subfields"] != "all" else "all subfields"
         subject = f"[PhilReviews] {len(filtered)} new review{'s' if len(filtered) != 1 else ''} this week"
 

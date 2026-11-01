@@ -71,6 +71,18 @@
 
 <div class="container" id="main-content" role="main">
 
+    {% if question %}
+    <aside class="qotw-card" aria-labelledby="qotw-q">
+        <p class="qotw-eyebrow">Question of the Week</p>
+        <p class="qotw-card-q" id="qotw-q">{{ question.question }}</p>
+        <ol class="qotw-card-choices" type="A">
+        {% for c in question.choices %}
+            <li><a href="/question/{{ question.id }}?pick={{ loop.index0 }}" rel="nofollow"><span class="qotw-letter">{{ "ABCD"[loop.index0] }}</span>{{ c }}</a></li>
+        {% endfor %}
+        </ol>
+    </aside>
+    {% endif %}
+
     <!-- Search panel -->
     <div class="search-panel" role="search">
         <div class="global-search">

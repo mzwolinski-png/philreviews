@@ -1250,3 +1250,125 @@ html { scroll-behavior: smooth; }
 @media (prefers-reduced-motion: reduce) {
   .theme-toggle { transition: none; }
 }
+
+/* ---------- Question of the Week ---------- */
+.qotw-eyebrow {
+  margin: 0 0 0.35rem;
+  font-family: var(--ui);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brand);
+}
+.qotw-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-right: 0.6rem;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--brand);
+}
+.qotw-card {
+  margin: 0 0 1.5rem;
+  padding: 1.1rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.qotw-card-q {
+  margin: 0 0 0.75rem;
+  font-family: var(--serif);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--ink);
+  text-wrap: balance;
+}
+.qotw-card-choices {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.5rem;
+}
+.qotw-card-choices a,
+.qotw-choice {
+  display: flex;
+  align-items: center;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--ink);
+  text-decoration: none;
+  background: var(--surface);
+}
+.qotw-card-choices a:hover,
+a.qotw-choice:hover,
+.qotw-card-choices a:focus-visible,
+a.qotw-choice:focus-visible {
+  border-color: var(--brand);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--brand);
+}
+.qotw-page { max-width: 720px; }
+.qotw-question {
+  margin: 0 0 1.25rem;
+  font-family: var(--serif);
+  font-size: 1.6rem;
+  line-height: 1.3;
+  color: var(--ink);
+  text-wrap: balance;
+}
+.qotw-choices {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.qotw-choice { font-size: 1.02rem; }
+.qotw-choice.is-right {
+  border-color: var(--ok-solid);
+  background: var(--ok-bg);
+  color: var(--ok-fg);
+}
+.qotw-choice.is-wrong {
+  border-color: var(--err-fg);
+  background: var(--err-bg);
+  color: var(--err-fg);
+}
+.qotw-mark {
+  margin-left: auto;
+  padding-left: 1rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.qotw-hint, .qotw-links { color: var(--ink-mid); font-size: 0.95rem; }
+.qotw-hint a, .qotw-links a, .qotw-archive a { color: var(--brand); }
+.qotw-answer {
+  margin: 0.5rem 0 1.25rem;
+  padding: 1rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  max-width: 65ch;
+}
+.qotw-answer p { margin: 0 0 0.6rem; }
+.qotw-answer p:last-child { margin-bottom: 0; }
+.qotw-verdict { font-weight: 700; color: var(--brand); }
+.qotw-asof { font-size: 0.85rem; color: var(--ink-mid); }
+.qotw-archive { list-style: none; margin: 0; padding: 0; }
+.qotw-archive li { padding: 0.75rem 0; border-bottom: 1px solid var(--line); }
+.qotw-archive .qotw-eyebrow { display: block; }
+@media (max-width: 600px) {
+  .qotw-question { font-size: 1.3rem; }
+  .qotw-card-choices { grid-template-columns: 1fr; }
+}

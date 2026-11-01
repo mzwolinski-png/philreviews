@@ -160,6 +160,21 @@ CREATE TABLE IF NOT EXISTS review_flags (
 """
 
 
+_QUESTIONS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS weekly_questions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    question TEXT NOT NULL,
+    choices TEXT NOT NULL,
+    answer INTEGER NOT NULL,
+    explanation TEXT,
+    status TEXT DEFAULT 'pending',
+    week_of TEXT,
+    note TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+
 _REJECTION_LOG_SCHEMA = """
 CREATE TABLE IF NOT EXISTS rejection_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -221,6 +236,7 @@ def _migrate(conn):
     conn.executescript(_SUBSCRIBERS_SCHEMA)
     conn.executescript(_REVIEW_FLAGS_SCHEMA)
     conn.executescript(_REJECTION_LOG_SCHEMA)
+    conn.executescript(_QUESTIONS_SCHEMA)
 
 
 def _create_indexes(conn):
@@ -1209,3 +1225,116 @@ finally:
     # closed again -- and after a sync it held the replaced file open,
     # keeping its disk space (gunicorn's master and worker both inherit it).
     close_read_conn()
+
+
+# --- Question of the week ---
+#
+# Drafted by Claude as 'pending'; Matt approves or rejects each one in the
+# weekly review app. Approval gives the question the next free Monday
+# (week_of), the day the digest goes out. Only approved questions whose Monday
+# has arrived are ever shown, so a future answer never leaks.
+
+DIGEST_HOUR = 8  # the digest LaunchAgent fires Mondays at 08:00
+
+
+def _question_row(r):
+    import json
+    if not r:
+        return None
+    return {"id": r[0], "question": r[1], "choices": json.loads(r[2]),
+            "answer": r[3], "explanation": r[4] or "", "status": r[5],
+            "week_of": r[6], "note": r[7] or ""}
+
+
+_Q_COLS = "id, question, choices, answer, explanation, status, week_of, note"
+
+
+def _today():
+    from datetime import date
+    return date.today().isoformat()
+
+
+def get_current_question(today=None):
+    """The question running this week, or None."""
+    try:
+        r = _get_read_conn().execute(
+            f"SELECT {_Q_COLS} FROM weekly_questions WHERE status = 'approved' "
+            "AND week_of <= ? ORDER BY week_of DESC LIMIT 1", (today or _today(),)).fetchone()
+    except sqlite3.OperationalError:  # table not there yet
+        return None
+    return _question_row(r)
+
+
+def get_question(qid, today=None):
+    """One published question (approved, and its week has arrived)."""
+    try:
+        r = _get_read_conn().execute(
+            f"SELECT {_Q_COLS} FROM weekly_questions WHERE id = ? AND status = 'approved' "
+            "AND week_of <= ?", (qid, today or _today())).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    return _question_row(r)
+
+
+def get_published_questions(today=None):
+    """Every question that has run, newest first."""
+    try:
+        rows = _get_read_conn().execute(
+            f"SELECT {_Q_COLS} FROM weekly_questions WHERE status = 'approved' "
+            "AND week_of <= ? ORDER BY week_of DESC", (today or _today(),)).fetchall()
+    except sqlite3.OperationalError:
+        return []
+    return [_question_row(r) for r in rows]
+
+
+def get_question_for_digest(day):
+    """The question scheduled for this Monday's digest, if one was approved."""
+    with _connect() as conn:
+        r = conn.execute(f"SELECT {_Q_COLS} FROM weekly_questions WHERE status = 'approved' "
+                         "AND week_of = ?", (day,)).fetchone()
+    return _question_row(r)
+
+
+def pending_questions():
+    with _connect() as conn:
+        rows = conn.execute(f"SELECT {_Q_COLS} FROM weekly_questions WHERE status = 'pending' "
+                            "ORDER BY id").fetchall()
+    return [_question_row(r) for r in rows]
+
+
+def add_question(question, choices, answer, explanation=""):
+    import json
+    if len(choices) != 4 or not 0 <= answer < 4:
+        raise ValueError("a question needs four choices and an answer index 0-3")
+    with _connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO weekly_questions (question, choices, answer, explanation) "
+            "VALUES (?, ?, ?, ?)", (question, json.dumps(choices), answer, explanation))
+        return cur.lastrowid
+
+
+def next_free_monday(conn, now=None):
+    """First Monday whose digest hasn't gone out and has no question yet."""
+    from datetime import datetime, timedelta
+    now = now or datetime.now()
+    d = now.date()
+    if d.weekday() == 0 and now.hour >= DIGEST_HOUR:
+        d += timedelta(days=7)
+    d += timedelta(days=(7 - d.weekday()) % 7)
+    taken = {r[0] for r in conn.execute(
+        "SELECT week_of FROM weekly_questions WHERE status = 'approved' AND week_of IS NOT NULL")}
+    while d.isoformat() in taken:
+        d += timedelta(days=7)
+    return d.isoformat()
+
+
+def decide_question(qid, decision, note=""):
+    """Approve (schedules it) or reject a pending question."""
+    with _connect() as conn:
+        if decision == "approve":
+            conn.execute("UPDATE weekly_questions SET status = 'approved', week_of = ?, note = ? "
+                         "WHERE id = ? AND status = 'pending'",
+                         (next_free_monday(conn), note, qid))
+        elif decision == "reject":
+            conn.execute("UPDATE weekly_questions SET status = 'rejected', note = ? "
+                         "WHERE id = ? AND status = 'pending'", (note, qid))

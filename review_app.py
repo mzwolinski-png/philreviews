@@ -191,6 +191,14 @@ footer{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px sol
 #done{display:none;text-align:center;padding:60px 20px}#done h2{color:var(--keep)}
 .toolbar{margin:4px;font-size:13px}.toolbar button{background:#fff;border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer;margin-right:6px}
 .empty{text-align:center;padding:80px 20px;color:#6b7480}
+.qcard{background:#fff;border:1px solid var(--line);border-left:4px solid var(--navy);border-radius:10px;padding:14px 16px;margin:8px 0}
+.qcard .q{font-weight:600;font-size:16px;margin-bottom:8px}
+.qcard ol{margin:0 0 8px;padding-left:22px}.qcard li{margin:2px 0}
+.qcard li.ans{color:var(--keep);font-weight:600}.qcard li.ans:after{content:"  ✓ correct answer";font-size:12px}
+.qcard .ex{color:#444;font-size:14px;margin-bottom:10px}
+.qcard.approve{background:#eef8f2}.qcard.reject{opacity:.55;background:#fbeceb}
+.qbtns{display:flex;gap:6px}.tg.a.on{background:var(--keep);color:#fff;border-color:var(--keep)}
+.qcard .note{display:block}
 </style></head><body>
 <header><h1>Weekly review</h1>
 <p>{{N}} entries awaiting review. Default is <b>Keep</b>. <b>Flag</b> keeps it live and saves a note for Claude; <b>Reject</b> deletes it. Suspect entries (auto-detected) are highlighted and listed first.</p></header>
@@ -198,7 +206,10 @@ footer{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px sol
 <div id="done"><h2>✓ Submitted</h2><p id="dmsg"></p><p>Decisions applied and syncing to production. You can close this tab.</p></div>
 <footer id="ft"><span id="tally"></span><button id="go" onclick="submit()">Submit decisions</button></footer>
 <script>
-const dec={},notes={};
+const dec={},notes={},qdec={},qnotes={};
+function qset(id,v){qdec[id]=(qdec[id]===v?undefined:v);const c=document.querySelector('[data-q="'+id+'"]');
+ c.classList.toggle('approve',qdec[id]==='approve');c.classList.toggle('reject',qdec[id]==='reject');
+ c.querySelector('.a').classList.toggle('on',qdec[id]==='approve');c.querySelector('.r').classList.toggle('on',qdec[id]==='reject');}
 function set(id,v){dec[id]=v;render(id);tally();}
 function note(id,el){notes[id]=el.value;}
 function all(v){document.querySelectorAll('[data-id]').forEach(c=>{dec[c.dataset.id]=v;render(c.dataset.id);});tally();}
@@ -215,7 +226,7 @@ async function submit(){document.getElementById('go').disabled=true;
   if(dec[i]==='reject')reject.push({id:id,note:notes[i]||''});
   else if(dec[i]==='flag')flags.push({id:id,note:notes[i]||''});
   else accept.push(id);});
- const res=await fetch('/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accept,reject,flags})});
+ const res=await fetch('/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accept,reject,flags,questions:Object.keys(qdec).filter(i=>qdec[i]).map(i=>({id:Number(i),decision:qdec[i],note:qnotes[i]||''}))})});
  const j=await res.json();
  document.getElementById('app').style.display='none';document.getElementById('ft').style.display='none';
  document.getElementById('dmsg').textContent=j.message;document.getElementById('done').style.display='block';}
@@ -223,10 +234,30 @@ document.querySelectorAll('[data-id]').forEach(c=>dec[c.dataset.id]='keep');tall
 </script></body></html>"""
 
 
-def render_body(items):
+def render_questions(qs):
+    """Pending Question of the Week drafts. Nothing is approved by default:
+    each needs an explicit Approve, which schedules it for the next Monday."""
+    if not qs:
+        return ""
+    out = ['<div class="sec">Question of the Week — needs your approval</div>']
+    for q in qs:
+        lis = "".join(f'<li{" class=ans" if i == q["answer"] else ""}>{html.escape(c)}</li>'
+                      for i, c in enumerate(q["choices"]))
+        out.append(f'''<div class="qcard" data-q="{q['id']}">
+<div class="q">{html.escape(q['question'])}</div><ol type="A">{lis}</ol>
+<div class="ex">{html.escape(q['explanation'])}</div>
+<div class="qbtns"><button class="tg a" onclick="qset({q['id']},'approve')">Approve</button>
+<button class="tg r" onclick="qset({q['id']},'reject')">Reject</button>
+<span style="color:#6b7480;font-size:13px;align-self:center">Leave both off to decide later.</span></div>
+<textarea class="note" placeholder="Note for Claude (optional: what to change)…" oninput="qnotes[{q['id']}]=this.value"></textarea>
+</div>''')
+    return "\n".join(out)
+
+
+def render_body(items, qs=()):
     if not items:
-        return '<div class="empty"><h2>✓ All caught up</h2><p>Nothing awaiting review.</p></div>'
-    out = ['<div class="toolbar"><button onclick="all(\'keep\')">Keep all</button>'
+        return render_questions(qs) + '<div class="empty"><h2>✓ All caught up</h2><p>Nothing awaiting review.</p></div>'
+    out = [render_questions(qs), '<div class="toolbar"><button onclick="all(\'keep\')">Keep all</button>'
            '<button onclick="all(\'reject\')">Reject all</button></div>']
     last = None
     for it in items:
@@ -256,7 +287,7 @@ def render_body(items):
 @app.route("/")
 def index():
     items = load_pending()
-    return PAGE.replace("{{N}}", str(len(items))).replace("{{BODY}}", render_body(items))
+    return PAGE.replace("{{N}}", str(len(items))).replace("{{BODY}}", render_body(items, db.pending_questions()))
 
 
 _ALLOWED_HOSTS = {f"localhost:{PORT}", f"127.0.0.1:{PORT}"}
@@ -286,8 +317,14 @@ def submit():
     reject = [{"id": int(x["id"]), "note": x.get("note", "")} for x in data.get("reject", [])]
     flags = [{"id": int(f["id"]), "note": f.get("note", "")} for f in data.get("flags", [])]
     apply_decisions(accept, reject, flags)
+    qmsg = []
+    for qd in data.get("questions", []):
+        if qd.get("decision") in ("approve", "reject"):
+            db.decide_question(int(qd["id"]), qd["decision"], qd.get("note", ""))
+            qmsg.append(qd["decision"] + "d")
     threading.Thread(target=background_sync, daemon=True).start()
-    return jsonify({"message": f"{len(accept)} kept, {len(flags)} flagged, {len(reject)} rejected."})
+    extra = f" Question of the Week: {', '.join(qmsg)}." if qmsg else ""
+    return jsonify({"message": f"{len(accept)} kept, {len(flags)} flagged, {len(reject)} rejected.{extra}"})
 
 
 if __name__ == "__main__":

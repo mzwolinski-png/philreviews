@@ -199,7 +199,34 @@ def index():
         min_year=meta["min_year"],
         max_year=meta["max_year"],
         initial_reviews=initial_reviews,
+        question=_with_week_label(db.get_current_question()),
     )
+
+
+def _with_week_label(q):
+    if q:
+        from datetime import date
+        q["week_label"] = date.fromisoformat(q["week_of"]).strftime("%B %-d, %Y")
+    return q
+
+
+@app.route("/question/<int:qid>")
+def question_page(qid):
+    """One Question of the Week. Picking a choice (?pick=N) reveals the answer;
+    ?pick=-1 reveals it without a guess."""
+    q = _with_week_label(db.get_question(qid))
+    if not q:
+        abort(404)
+    picked = request.args.get("pick", type=int)
+    if picked is not None and not -1 <= picked <= 3:
+        picked = -1
+    return render_template("question.html", q=q, picked=picked)
+
+
+@app.route("/questions")
+def questions_archive():
+    return render_template("question.html", q=None, picked=None,
+                           questions=[_with_week_label(x) for x in db.get_published_questions()])
 
 
 @app.route("/changelog")

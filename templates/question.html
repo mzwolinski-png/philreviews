@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <script>
+    // Applied before paint: without this a dark-mode reader sees a white flash.
+    (function () {
+      try {
+        var t = localStorage.getItem("pr-theme");
+        if (t === "dark" || t === "light") {
+          document.documentElement.setAttribute("data-theme", t);
+        }
+      } catch (e) {}
+    })();
+    </script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% if q %}
+    <title>Question of the Week &mdash; PhilReviews</title>
+    <meta name="description" content="{{ q.question }}">
+    <meta property="og:title" content="Question of the Week &mdash; PhilReviews">
+    <meta property="og:description" content="{{ q.question }}">
+    <link rel="canonical" href="https://philreviews.org/question/{{ q.id }}">
+    {% else %}
+    <title>Questions of the Week &mdash; PhilReviews</title>
+    <meta name="description" content="Every PhilReviews Question of the Week so far, with answers.">
+    <meta property="og:title" content="Questions of the Week &mdash; PhilReviews">
+    <link rel="canonical" href="https://philreviews.org/questions">
+    {% endif %}
+    {% if picked is not none %}<meta name="robots" content="noindex">{% endif %}
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="https://philreviews.org/static/og-image.png">
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,600;7..72,700&family=Public+Sans:wght@400;600;700&family=Sometype+Mono:wght@400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script data-goatcounter="https://philreviews.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+    <button type="button" class="theme-toggle" id="theme-toggle"
+            aria-label="Switch between light and dark theme">
+        <span aria-hidden="true" class="theme-toggle-icon"></span>
+    </button>
+
+    <a href="/" class="site-logo"><img src="{{ url_for('static', filename='logo.svg') }}" alt="PhilReviews" height="44"></a>
+    <p class="tagline">Question of the Week</p>
+</header>
+
+<div class="container qotw-page">
+{% if q %}
+    <p class="qotw-eyebrow">Week of {{ q.week_label }}</p>
+    <h1 class="qotw-question">{{ q.question }}</h1>
+
+    <ol class="qotw-choices{% if picked is not none %} revealed{% endif %}" type="A">
+    {% for c in q.choices %}
+        {% set right = loop.index0 == q.answer %}
+        <li>
+        {% if picked is none %}
+            <a class="qotw-choice" href="/question/{{ q.id }}?pick={{ loop.index0 }}" rel="nofollow">
+                <span class="qotw-letter">{{ "ABCD"[loop.index0] }}</span>{{ c }}</a>
+        {% else %}
+            <span class="qotw-choice{% if right %} is-right{% elif loop.index0 == picked %} is-wrong{% endif %}">
+                <span class="qotw-letter">{{ "ABCD"[loop.index0] }}</span>{{ c }}
+                {% if right %}<span class="qotw-mark">Correct answer</span>
+                {% elif loop.index0 == picked %}<span class="qotw-mark">Your pick</span>{% endif %}
+            </span>
+        {% endif %}
+        </li>
+    {% endfor %}
+    </ol>
+
+    {% if picked is none %}
+        <p class="qotw-hint">Pick an answer to see if you&rsquo;re right, or
+           <a href="/question/{{ q.id }}?pick=-1" rel="nofollow">just show me the answer</a>.</p>
+    {% else %}
+        <div class="qotw-answer">
+            {% if picked == q.answer %}<p class="qotw-verdict">You got it.</p>
+            {% elif picked >= 0 %}<p class="qotw-verdict">Not quite.</p>{% endif %}
+            <p>{{ q.explanation }}</p>
+            <p class="qotw-asof">Counts as of {{ q.week_label }}; the index keeps growing.</p>
+        </div>
+    {% endif %}
+
+    <p class="qotw-links"><a href="/questions">All questions</a> &middot; <a href="/#subscribe">Get next week&rsquo;s question by email</a> &middot; <a href="/">Search the index</a></p>
+{% else %}
+    <h1 class="qotw-question">Questions of the Week</h1>
+    {% if questions %}
+    <ul class="qotw-archive">
+    {% for x in questions %}
+        <li><span class="qotw-eyebrow">{{ x.week_label }}</span>
+            <a href="/question/{{ x.id }}">{{ x.question }}</a></li>
+    {% endfor %}
+    </ul>
+    {% else %}
+    <p>The first question goes out soon. <a href="/#subscribe">Subscribe to the weekly digest</a> to get it.</p>
+    {% endif %}
+{% endif %}
+</div>
+
+<footer class="site-footer">
+    PhilReviews &mdash; built by <a href="https://mzwolinski.com" target="_blank" rel="noopener">Matt Zwolinski</a> &middot; <a href="mailto:mzwolinski@sandiego.edu">Contact</a> &middot; <a href="/">Back to PhilReviews</a>
+    <br><small>&copy; 2026 Matt Zwolinski. PhilReviews is a bibliographic index. All review content is hosted by the original publishers.</small>
+</footer>
+
+<script>
+// Cycles light -> dark -> system. "System" removes the attribute so the
+// prefers-color-scheme media query takes over again.
+(function () {
+    var btn = document.getElementById("theme-toggle");
+    if (!btn) return;
+    var root = document.documentElement;
+    function current() {
+        return root.getAttribute("data-theme") || "system";
+    }
+    function label() {
+        var c = current();
+        btn.setAttribute("title", "Theme: " + c + " (click to change)");
+        btn.dataset.theme = c;
+    }
+    btn.addEventListener("click", function () {
+        var next = { system: "light", light: "dark", dark: "system" }[current()];
+        if (next === "system") {
+            root.removeAttribute("data-theme");
+            try { localStorage.removeItem("pr-theme"); } catch (e) {}
+        } else {
+            root.setAttribute("data-theme", next);
+            try { localStorage.setItem("pr-theme", next); } catch (e) {}
+        }
+        label();
+    });
+    label();
+})();
+</script>
+</body>
+</html>
