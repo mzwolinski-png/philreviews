@@ -97,5 +97,40 @@ class ShoutedTitles(unittest.TestCase):
         self.assertFalse(_is_shouting(""))
 
 
+class NoAbstractMode(unittest.TestCase):
+    """The Philosophical Quarterly (OUP) deposits reviews as the bare book
+    title, so italic_only matched almost nothing from 2015 to 2026. Reviews
+    have no abstract and few references; articles have both."""
+
+    def item(self, title, page=None, abstract=None, refs=0):
+        d = {"title": [title], "reference-count": refs}
+        if page:
+            d["page"] = page
+        if abstract:
+            d["abstract"] = abstract
+        return d
+
+    def test_reviews(self):
+        for it in [
+            self.item("The Heart and its Attitudes", "1441-1443"),
+            self.item("The Metaphysics of Quantities", "201-205", refs=12),
+            self.item("Do Not Go Gentle: The Case Against Assisted Death"),  # online first
+            self.item("Book Review", refs=6),
+            self.item("Critical Notice: Perspectival Realism", "300-308", refs=5),
+        ]:
+            self.assertTrue(is_book_review(it, "no_abstract"), it["title"])
+
+    def test_not_reviews(self):
+        for it in [
+            self.item("The Ubiquity of Humor", abstract="<jats:p>I defend</jats:p>", refs=69),
+            self.item("Varieties of Presence", refs=6),
+            self.item("A Note on Existentially Known Assertions", "100-108", refs=22),
+            self.item("Discussion", "50-58", refs=4),
+            self.item("Editorial Note"),
+            self.item("Introduction to the Special Issue of The Philosophical Quarterly"),
+        ]:
+            self.assertFalse(is_book_review(it, "no_abstract"), it["title"])
+
+
 if __name__ == "__main__":
     unittest.main()

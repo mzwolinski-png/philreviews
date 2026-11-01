@@ -2704,6 +2704,24 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
     if detection_mode == 'citation_required':
         return looks_like_review_citation(raw_title_check)
 
+    # no_abstract mode: OUP's Philosophical Quarterly deposits reviews as the
+    # bare book title (no italics) with the reviewer as author. What sets them
+    # apart is that articles carry an abstract and a reference list, reviews
+    # neither. Checked against every PQ item 2015-2026.
+    if detection_mode == 'no_abstract':
+        if re.search(r'book review|critical notice|critical review of', title):
+            return True
+        if crossref_item.get('abstract'):
+            return False
+        if re.match(r"(?:discussion|reply|response|editor['’]s note|editorial|introduction to|correction)\b", title):
+            return False
+        n_pages = (last_pg - first_pg + 1) if page_m else None
+        if n_pages is not None and 1 <= n_pages <= 5:
+            return True
+        if crossref_item.get('reference-count', 0) > 5:
+            return False
+        return n_pages is None or 1 <= n_pages <= 9
+
     # Positive indicators
     # Italic/bold tags suggest a book title, but only if they dominate the title
     # or appear in a review-like framing context. An italic phrase embedded in a

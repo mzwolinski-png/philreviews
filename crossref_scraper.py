@@ -316,7 +316,8 @@ class CrossrefReviewScraper(BaseScraper):
         """Check if two book titles are a reasonable match."""
         return self._title_match_score(book_title, openalex_title) >= 0.5
 
-    def lookup_book_author(self, book_title: str, review_year: int = 0) -> Optional[Tuple[str, str]]:
+    def lookup_book_author(self, book_title: str, review_year: int = 0,
+                           reviewer_last: str = '') -> Optional[Tuple[str, str]]:
         """
         Look up the author of a book via OpenAlex API.
         Returns (first_name, last_name) or None if not found.
@@ -337,6 +338,10 @@ class CrossrefReviewScraper(BaseScraper):
                 'https://api.openalex.org/works',
                 params={
                     'search': search_title,
+                    # Books only: reviews deposited under the book's title
+                    # (PQ, Phil Review, Ethics...) are OpenAlex works too, and
+                    # their "author" is a reviewer.
+                    'filter': 'type:book',
                     'select': 'id,title,authorships,publication_year',
                     'per_page': 5,
                     'api_key': os.getenv('OPENALEX_API_KEY', ''),
@@ -368,6 +373,10 @@ class CrossrefReviewScraper(BaseScraper):
                     continue
                 parts = display_name.split()
                 if not parts:
+                    continue
+                # Belt and braces for the type filter: never credit the
+                # reviewer with the book (either name order).
+                if reviewer_last and reviewer_last.lower() in (parts[0].lower(), parts[-1].lower()):
                     continue
 
                 # When multiple books have the same score, prefer the one
@@ -481,7 +490,9 @@ class CrossrefReviewScraper(BaseScraper):
                     review_year = int(pub_date[:4])
                 except ValueError:
                     pass
-            oa_author = self.lookup_book_author(record['Book Title'], review_year=review_year)
+            oa_author = self.lookup_book_author(
+                record['Book Title'], review_year=review_year,
+                reviewer_last=record.get('Reviewer Last Name', '') or '')
             # Open Library fallback: OpenAlex often lacks recent university-press
             # books (APT audit 2026-07-19 — OL had 3/4 that OpenAlex missed).
             author = oa_author or self.lookup_book_author_openlibrary(
