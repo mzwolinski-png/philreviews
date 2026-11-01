@@ -221,8 +221,17 @@ class CrossrefReviewScraper(BaseScraper):
         # Access type
         access_type = _access_type_from_license(crossref_item)
 
-        # Parse the title to get book info
-        parsed = parse_review_title(title, subtitle, crossref_item)
+        # Parse the title to get book info. title_is_book journals (PQ)
+        # deposit the bare book title, which the parser would split at the
+        # colon as "Author: Title"; take it whole and look the author up.
+        if self.JOURNALS.get(_html.unescape(container), {}).get('title_is_book'):
+            bare = _html.unescape(re.sub(r'<[^>]+>', '', title)).strip()
+            bare = re.sub(r'^(?:critical notice|critical review)(?: of)?\s*[:.]?\s*', '', bare, flags=re.IGNORECASE)
+            if re.fullmatch(r'(?i)book reviews?', bare):
+                bare = ''
+            parsed = {'book_title': bare, 'book_author_first': '', 'book_author_last': ''}
+        else:
+            parsed = parse_review_title(title, subtitle, crossref_item)
 
         if not parsed:
             return None
