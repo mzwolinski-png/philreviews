@@ -127,6 +127,9 @@ class NoAbstractMode(unittest.TestCase):
             self.item("A Note on Existentially Known Assertions", "100-108", refs=22),
             self.item("Discussion", "50-58", refs=4),
             self.item("Editorial Note"),
+            self.item("Introduction"),
+            self.item("Corrigendum to: Death, Creation, and Future Bias"),
+            self.item("OUP accepted manuscript"),
             self.item("Introduction to the Special Issue of The Philosophical Quarterly"),
         ]:
             self.assertFalse(is_book_review(it, "no_abstract"), it["title"])

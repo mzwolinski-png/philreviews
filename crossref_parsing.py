@@ -2713,7 +2713,7 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
             return True
         if crossref_item.get('abstract'):
             return False
-        if re.match(r"(?:discussion|reply|response|editor['’]s note|editorial|introduction to|correction)\b", title):
+        if re.match(r"(?:discussion|reply|response|editor['’]s note|editorial|introduction|corrigendum|correction|oup accepted manuscript)\b", title):
             return False
         n_pages = (last_pg - first_pg + 1) if page_m else None
         if n_pages is not None and 1 <= n_pages <= 5:
