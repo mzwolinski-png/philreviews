@@ -86,7 +86,10 @@ def run_crossref_delta(from_date, dry_run=False):
         log.info(f"Checking {journal_name} (since {from_date})...")
         try:
             params = {
-                "filter": f"container-title:{journal_name},from-index-date:{from_date}",
+                # crossref_name: Crossref matches container-title exactly, and
+                # some journals deposit under a name that differs from ours
+                "filter": f"container-title:{journal_cfg.get('crossref_name', journal_name)},"
+                          f"from-index-date:{from_date}",
                 "rows": 100, "cursor": "*",
                 "mailto": "mzwolinski@sandiego.edu",
             }
@@ -690,6 +693,7 @@ def main():
     tier1_removed = 0
     stale_sources = []
     undecided_sources = []
+    silent_crossref = []
     reconcile_report_path = None
     autofix = None
 
@@ -770,6 +774,9 @@ def main():
             source_health.seed()
             stale_sources = source_health.check_stale()
             undecided_sources = source_health.needs_decision()
+            silent_crossref = source_health.check_crossref_names()
+            if silent_crossref:
+                log.warning(f"Crossref: {len(silent_crossref)} scanned journal(s) return nothing under their name")
             if stale_sources:
                 log.warning(f"Source health: {len(stale_sources)} active source(s) have gone quiet")
                 for s in stale_sources[:10]:
@@ -1021,6 +1028,13 @@ def main():
                         f"  {sv['source']} — last issue {sv['last_reviewed']} ({sv['why']})")
                 if len(stale_sources) > 15:
                     health_lines.append(f"  ...and {len(stale_sources) - 15} more")
+            if silent_crossref:
+                health_lines.append("")
+                health_lines.append(
+                    f"CROSSREF RETURNS NOTHING UNDER THESE NAMES ({len(silent_crossref)}), "
+                    "renamed or ceased? Fix in journals.CROSSREF_NAMES, or mark ceased:")
+                for sc in silent_crossref[:15]:
+                    health_lines.append(f"  {sc['source']} (searched as \"{sc['crossref_name']}\")")
             if undecided_sources:
                 health_lines.append("")
                 health_lines.append(

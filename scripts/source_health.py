@@ -198,6 +198,48 @@ def check_stale(stale_days=STALE_DAYS):
     return sorted(out, key=lambda x: -(x["days_behind"] or 0))
 
 
+def check_crossref_names(window_days=730):
+    """Scanned journals that Crossref returns NOTHING for under their configured name.
+
+    check_stale() looks at our own table, so it misses a journal whose scan
+    returns zero while reviews keep arriving by other routes (TOC alerts, PI).
+    That is how Philosophical Review went unscanned from 2024 to Nov 2026:
+    Crossref matches container-title exactly, and Duke renamed its deposits.
+
+    Zero items of any kind in two years means the journal ceased or was
+    renamed (two years, not one: annual journals deposit year-only dates,
+    which Crossref treats as 1 January). Fix a rename in journals.CROSSREF_NAMES; mark a dead journal
+    with set_status(name, 'ceased') to silence it.
+    """
+    import time
+    import requests
+    from journals import JOURNALS
+
+    conn = _conn()
+    ceased = {r["source"] for r in conn.execute(
+        "SELECT source FROM source_status WHERE status = 'ceased'")}
+    conn.close()
+    since = (datetime.now() - timedelta(days=window_days)).strftime("%Y-%m-%d")
+    session = requests.Session()
+    out = []
+    for name, cfg in sorted(JOURNALS.items()):
+        if html.unescape(name) in ceased or name in ceased:
+            continue
+        crossref_name = cfg.get("crossref_name", name)
+        try:
+            r = session.get("https://api.crossref.org/works", params={
+                "filter": f"container-title:{crossref_name},from-pub-date:{since}",
+                "rows": 0, "mailto": "mzwolinski@sandiego.edu"}, timeout=30)
+            r.raise_for_status()
+            n = r.json()["message"]["total-results"]
+        except Exception:
+            continue  # a network blip is not evidence of a rename
+        if n == 0:
+            out.append({"source": name, "crossref_name": crossref_name, "since": since})
+        time.sleep(0.2)
+    return out
+
+
 def needs_decision():
     """Configured sources still awaiting a human call."""
     conn = _conn()
