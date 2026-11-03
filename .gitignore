@@ -29,3 +29,4 @@ scripts/coauthor_state.json
 scripts/coauthor_expansion_report.txt
 csp_reports.db
 springer_backfill/
+backups/
