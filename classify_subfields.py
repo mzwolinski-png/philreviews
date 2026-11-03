@@ -257,6 +257,9 @@ JOURNAL_SUBFIELD_MAP = {
     # Utopian Studies → Political
     "Utopian Studies": ("political", None),
 
+    # History of science
+    "British Journal for the History of Science": ("science", "history"),
+
     # Interdisciplinary / Aesthetics
     "Critical Inquiry": ("aesthetics", None),
     "Film-Philosophy": ("aesthetics", None),

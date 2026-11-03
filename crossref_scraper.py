@@ -240,6 +240,14 @@ class CrossrefReviewScraper(BaseScraper):
             parsed = {'book_title': bare, 'book_author_first': '', 'book_author_last': ''}
         else:
             parsed = parse_review_title(title, subtitle, crossref_item)
+            # A title that is nothing but an italicized book title (Critical
+            # Inquiry since 2025 deposits ":<i>Title</i>", the author dropped)
+            # is still a review; keep it and let enrichment find the author.
+            if not parsed:
+                m = re.fullmatch(r'\s*:?\s*<i>(.+?)</i>\s*', title, flags=re.DOTALL)
+                if m and '<i>' not in m.group(1):
+                    bare = _html.unescape(re.sub(r'\s+', ' ', m.group(1))).strip()
+                    parsed = {'book_title': bare, 'book_author_first': '', 'book_author_last': ''}
 
         if not parsed:
             return None

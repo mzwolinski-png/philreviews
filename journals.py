@@ -676,6 +676,14 @@ JOURNALS = {
     'Contemporary Political Theory': {
         'crossref_parseable': True, 'openalex_enrichable': True,
     },
+    # History of science — Cambridge "Author, <i>Title</i>" citations. Found
+    # unscanned via the Nov 2026 PI refresh (121 missed reviews). Earlier rows
+    # came from PI, ~180 of them pre-2020 with no DOI, so floor the scan there
+    # rather than duplicate them.
+    'British Journal for the History of Science': {
+        'crossref_parseable': True, 'openalex_enrichable': True,
+        'detection_mode': 'italic_only', 'reviews_from': '2020-01-01',
+    },
     # Intellectual history — generic "Book review" titles (~87 est.)
     'History of European Ideas': {
         'crossref_parseable': False, 'semantic_scholar_enrichable': True,

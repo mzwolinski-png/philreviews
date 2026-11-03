@@ -72,6 +72,28 @@ PI_JOURNAL_MAP = {
     "Theoretical Medicine and Bioethics: Philosophy of Medical Research and Practice": "Theoretical Medicine and Bioethics",
     "Topoi: An International Review of Philosophy": "Topoi",
     "Philosophy: The Journal of the Royal Institute of Philosophy": "Philosophy",
+    # Subtitled names first seen in the November 2026 export
+    "Mind: A Quarterly Review of Philosophy": "Mind",
+    "Ethics: An International Journal of Social, Political, and Legal Philosophy": "Ethics",
+    "Journal of Moral Philosophy: An International Journal of Moral, Political and Legal Philosophy": "Journal of Moral Philosophy",
+    "Kant-Studien: Philosophische Zeitschrift der Kant-Gesellschaft": "Kant-Studien",
+    "Medicina y ética: Revista internacional de bioética, deontología y ética médica": "Medicina y Ética",
+    "Journal for General Philosophy of Science (Zeitschrift für allgemeine Wissenschaftstheorie)": "Journal for General Philosophy of Science",
+    "Ethical Theory and Moral Practice: An International Forum": "Ethical Theory and Moral Practice",
+    "European Journal for Philosophy of Religion: Journal of the Central European Society for Philosophy of Religion": "European Journal for Philosophy of Religion / Verein zur Forderung der Fachzeitschrift",
+    "The Journal of Moral Education": "Journal of Moral Education",
+    "Polis: The Journal of the Society for the Study of Greek Political Thought": "Polis: The Journal of the Society for Greek Political Thought",
+    "Espíritu: Cuadernos del Instituto Filosófico de Balmesiana": "Espíritu",
+    "Alpha Omega: Rivista di Filosofia e Teologia dell'Ateneo Pontificio Regina Apostolorum": "Alpha Omega",
+    "Quién Revista de filosofía personalista": "Quién. Revista de filosofía Personalista",
+    "Medicina e Morale: Rivista internazionale di Bioetica": "Medicina e Morale",
+    "Law and Philosophy: An International Journal for Jurisprudence and Legal Philosophy": "Law and Philosophy",
+    "Comprendre: Revista Catalana de Filosofia": "Comprendre: Revista Catalana de Filosofía",
+    "Tábano Revista de filosofía": "Tábano",
+    "Ethics and Behavior": "Ethics & Behavior",
+    "Method: Journal of Lonergan Studies (New Series)": "Method: Journal of Lonergan Studies",
+    "Journal of East-West Thought": "Journal of East-West Thought (JET)",
+    "Elenchos: Rivista di studi sul pensiero antico": "Elenchos: Rivista di Studi sul Pensiero Antico",
 
     # & vs "and"
     "American Journal of Theology and Philosophy": "American Journal of Theology & Philosophy",
@@ -658,6 +680,15 @@ def stage_resolve(dry_run=False):
                         _print_resolve_progress(i + 1, total, inserted, resolved_dois, skipped_dupe)
                     continue
 
+        # Never resurrect something deliberately removed from the index
+        if (doi and conn.execute("SELECT 1 FROM excluded_dois WHERE lower(doi) = lower(?)",
+                                 (doi,)).fetchone()) or \
+           (review_url and conn.execute("SELECT 1 FROM excluded_links WHERE review_link = ?",
+                                        (review_url,)).fetchone()):
+            conn.execute("UPDATE pi_staging SET status = 'excluded', doi_resolved = ? WHERE id = ?",
+                         (doi or '', row['id']))
+            continue
+
         if dry_run:
             conn.execute(
                 "UPDATE pi_staging SET status = 'dry_run' WHERE id = ?",
@@ -676,8 +707,8 @@ def stage_resolve(dry_run=False):
                (book_title, book_author_first_name, book_author_last_name,
                 reviewer_first_name, reviewer_last_name,
                 publication_source, publication_date, review_link,
-                doi, entry_type)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'review')""",
+                doi, entry_type, reviewed)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'review', 1)""",
             (
                 row['book_title'],
                 row['book_author_first'],
