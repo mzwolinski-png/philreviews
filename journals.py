@@ -886,3 +886,24 @@ JOURNALS = {
         'detection_mode': 'italic_only',
     },
 }
+
+# Crossref filters on container-title by exact match, so a journal whose
+# deposited name differs from ours returns nothing, silently. These were
+# found by the Nov 2026 PI gap report and a name audit: Duke, OUP and others
+# renamed deposits around 2024, and some publishers deposit a literal "&amp;".
+# Reviews are still filed under our name (see CrossrefReviewScraper._our_name).
+# Re-audit: any journal returning 0 items since the last two years.
+CROSSREF_NAMES = {
+    'The Philosophical Review': 'Philosophical Review',
+    'The British Journal of Aesthetics': 'British Journal of Aesthetics',
+    'British Journal for the History of Science': 'The British Journal for the History of Science',
+    'Transactions of the Charles S. Peirce Society':
+        'Transactions of the Charles S. Peirce Society: A Quarterly Journal in American Philosophy',
+    'IJFAB: International Journal of Feminist Approaches to Bioethics':
+        'International Journal of Feminist Approaches to Bioethics',
+    # 'Biology and Philosophy' deposits as 'Biology &amp; Philosophy', but under
+    # that name italic_only detection admits symposium articles, not reviews.
+    'Philosophy & Rhetoric': 'Philosophy &amp; Rhetoric',
+}
+for _ours, _theirs in CROSSREF_NAMES.items():
+    JOURNALS[_ours]['crossref_name'] = _theirs

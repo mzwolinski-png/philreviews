@@ -52,6 +52,7 @@ def _why_missed(scraper, doi, cfg):
     issued = '-'.join(f'{p:02d}' if i else str(p) for i, p in enumerate(parts[0]))
     if floor and issued < floor:
         return 'before reviews_from floor', title
+    container = scraper._our_name.get(container, container)
     if container and container not in JOURNALS:
         return f'container-title differs ({container})', title
     if not cfg.get('all_reviews') and not cp.is_book_review(item, cfg.get('detection_mode', 'all')):
@@ -69,13 +70,21 @@ def main():
     args = ap.parse_args()
 
     conn = sqlite3.connect(DB)
-    since = args.since or conn.execute(
-        "SELECT date(max(r.created_at)) FROM reviews r JOIN pi_staging s "
-        "ON s.status = 'inserted' AND r.review_link = s.review_url_resolved").fetchone()[0]
-    rows = conn.execute(
-        "SELECT s.journal_name, s.doi_resolved, s.book_title "
-        "FROM pi_staging s JOIN reviews r ON r.review_link = s.review_url_resolved "
-        "WHERE s.status = 'inserted' AND r.created_at >= ?", (since,)).fetchall()
+    # Joined in Python: pi_staging has no index on review_url_resolved, and
+    # reviews' link index is partial, so a SQL join scans for an hour.
+    staged = {url: (j, doi, title) for j, doi, title, url in conn.execute(
+        "SELECT journal_name, doi_resolved, book_title, review_url_resolved "
+        "FROM pi_staging WHERE status = 'inserted' AND review_url_resolved != ''")}
+    if args.since:
+        since = args.since
+    else:
+        dates = [d for link, d in conn.execute(
+            "SELECT review_link, created_at FROM reviews "
+            "WHERE review_link IS NOT NULL AND review_link != ''") if link in staged]
+        since = max(dates)[:10]
+    rows = [staged[link] for (link,) in conn.execute(
+        "SELECT review_link FROM reviews WHERE created_at >= ? "
+        "AND review_link IS NOT NULL AND review_link != ''", (since,)) if link in staged]
     print(f'PI rows inserted since {since}: {len(rows)}\n')
 
     by_journal = collections.defaultdict(list)

@@ -95,6 +95,10 @@ class CrossrefReviewScraper(BaseScraper):
             'errors': 0,
         }
         self.results = []
+        # Crossref's deposited journal name -> our name, for crossref_name journals
+        import html as _html
+        self._our_name = {_html.unescape(cfg['crossref_name']): name
+                          for name, cfg in self.JOURNALS.items() if cfg.get('crossref_name')}
 
     def _compat_log(self, msg: str, level: str = "INFO"):
         """Compatibility wrapper: routes self.log("msg", "LEVEL") to the logger."""
@@ -119,7 +123,9 @@ class CrossrefReviewScraper(BaseScraper):
         while True:
             try:
                 params = {
-                    'filter': f'container-title:{journal_name}',
+                    # Crossref matches container-title exactly; crossref_name
+                    # covers journals whose deposited name differs from ours
+                    'filter': 'container-title:' + self.JOURNALS.get(journal_name, {}).get('crossref_name', journal_name),
                     'rows': 100,
                     'cursor': cursor,
                     'mailto': self.crossref_email,
@@ -185,6 +191,8 @@ class CrossrefReviewScraper(BaseScraper):
         # Decode HTML entities (Crossref returns "Mind &amp; Language", "Philosophy &amp; Social Criticism", etc.)
         import html as _html
         container = _html.unescape(container)
+        # File under our name when Crossref deposits a different one
+        container = self._our_name.get(container, container)
 
         # Get reviewer from Crossref author field
         reviewer_first = ''
