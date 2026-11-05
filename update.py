@@ -694,6 +694,7 @@ def main():
     stale_sources = []
     undecided_sources = []
     silent_crossref = []
+    initials_expanded = None
     reconcile_report_path = None
     autofix = None
 
@@ -740,6 +741,19 @@ def main():
                     log.info(f"  {d}")
         except Exception:
             log.exception("Book author retry failed")
+
+        # Expand initials-only book authors ("P. Gomberg" -> "Paul Gomberg");
+        # JAP and Political Studies Review deposit initials. Reviews since
+        # 2015 only, and never authors the index mostly writes as initials.
+        try:
+            import expand_initials
+            initials_expanded = expand_initials.expand_recent(days=14)
+            ei = initials_expanded
+            log.info(f"Initials expansion: {ei['updated']}/{ei['checked']} expanded")
+            for d in ei['details']:
+                log.info(f"  {d}")
+        except Exception:
+            log.exception("Initials expansion failed")
 
         # Tier 1 filter: drop popular/fringe-source reviews of books we don't
         # have evidence are philosophy (no other DB review by the same author
@@ -848,6 +862,9 @@ def main():
     # --- Admin email ---
     if not args.dry_run:
         detail_lines = []
+        if initials_expanded and initials_expanded['updated']:
+            detail_lines.append(f"Initials expanded: {initials_expanded['updated']}")
+            detail_lines += [f"  {d}" for d in initials_expanded['details'][:20]]
         if ndpr_stats:
             detail_lines.append(f"NDPR: {ndpr_stats.get('new', 0)} new")
         if dn_stats:

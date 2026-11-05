@@ -818,6 +818,10 @@ _PUB_CITY = {
     'voronezh', 'rostov', 'nizhnii novgorod', 'sankt-peterburg', 'oberägeri',
     'fairfax', 'cham', 'wiesbaden', 'göttingen', 'tübingen', 'heidelberg',
     'hamburg', 'cologne', 'köln', 'stuttgart', 'leipzig', 'dresden', 'bern',
+    # BJHS imprints (2026-11)
+    'new haven', 'new jersey', 'new brunswick', 'turnhout', 'chennai',
+    'hong kong', 'shanghai', 'beijing', 'taipei', 'abingdon', 'basingstoke',
+    'new delhi', 'cape town', 'pune', 'mexico city', 'buenos aires',
 }
 
 
@@ -865,6 +869,31 @@ def _seg_is_name(seg):
                             r"[\w.’'-]*$", t):
                 return False
     return True
+
+
+def strip_trailing_imprint(title):
+    """Cut "… Place: Publisher, Year. Pp. …" off the end of a book title.
+
+    BJHS deposits the whole citation with no separator between title and
+    place: "Proxies: The Cultural Work of Standing In London: MIT Press,
+    2021. Pp. 228". The place must be a known publishing city (or a list of
+    them, or "City, ST"), followed by a colon, then a publisher and a year;
+    a greedy capitalised-words rule would eat the title instead.
+    """
+    m = re.search(r':\s*[^:]{2,120}?,\s*(?:1[5-9]|20)\d\d\b', title)
+    if m:
+        head = title[:m.start()]
+        words = head.split(' ')
+        best = None
+        for k in range(1, min(len(words), 25) + 1):
+            place = ' '.join(words[-k:]).strip(' .,')
+            parts = [x.strip().lower() for x in re.split(r',\s*|\s+and\s+|\s*&\s*|/', place) if x.strip()]
+            if parts and all(x in _PUB_CITY or re.fullmatch(r'[a-z]{2}', x) for x in parts) \
+                    and parts[0] in _PUB_CITY:
+                best = len(' '.join(words[:-k]))
+        if best:
+            return title[:best].rstrip(' .,;:')
+    return title
 
 
 def _strong_imprint(seg):

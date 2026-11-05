@@ -32,7 +32,7 @@ from journals import JOURNALS as _JOURNALS_CONFIG
 load_dotenv()
 
 
-from crossref_parsing import (
+from crossref_parsing import (strip_trailing_imprint, 
     _normalize, parse_review_title, _looks_like_author_name,
     _extract_first_author, is_book_review,
 )
@@ -259,6 +259,11 @@ class CrossrefReviewScraper(BaseScraper):
 
         if not parsed:
             return None
+        # A correction notice repeats the review's citation; it is not a review
+        if re.search(r'\bcorrigend|\berrat(?:um|a)\b', title, re.IGNORECASE):
+            return None
+        if parsed.get('book_title'):
+            parsed['book_title'] = strip_trailing_imprint(parsed['book_title'])
 
         record = {
             'Book Title': _normalize(parsed['book_title']) if parsed['book_title'] else '',
