@@ -32,7 +32,7 @@ from journals import JOURNALS as _JOURNALS_CONFIG
 load_dotenv()
 
 
-from crossref_parsing import (strip_trailing_imprint, 
+from crossref_parsing import (strip_trailing_imprint, fix_surname_initials,
     _normalize, parse_review_title, _looks_like_author_name,
     _extract_first_author, is_book_review,
 )
@@ -60,6 +60,22 @@ def _access_type_from_license(crossref_item: dict) -> str:
 
 
 # --- Main scraper class ---
+
+def apply_reviews_floor(items, floor):
+    """Drop items issued before a journal's `reviews_from` date.
+
+    Detection rules like no_abstract only hold for some eras of a journal, and
+    Crossref re-indexes old records from time to time, so the weekly delta
+    must honour the floor too (PQ took in 22 JSTOR-era articles on 2026-11-07).
+    """
+    if not floor:
+        return items
+
+    def _issued(it):
+        p = (it.get('issued', {}).get('date-parts') or [[0]])[0]
+        return '%04d-%02d-%02d' % (p[0] or 0, p[1] if len(p) > 1 else 1, p[2] if len(p) > 2 else 1)
+    return [it for it in items if _issued(it) >= floor]
+
 
 class CrossrefReviewScraper(BaseScraper):
     """Scrapes book reviews from multiple philosophy journals via the Crossref API."""
@@ -169,12 +185,7 @@ class CrossrefReviewScraper(BaseScraper):
             reviews = [item for item in all_items if is_book_review(item, detection_mode)]
         # reviews_from: a date floor, so that fixing a journal's detection
         # doesn't bulk-insert its whole back catalogue unreviewed.
-        floor = self.JOURNALS.get(journal_name, {}).get('reviews_from')
-        if floor:
-            def _issued(it):
-                p = (it.get('issued', {}).get('date-parts') or [[0]])[0]
-                return '%04d-%02d-%02d' % (p[0] or 0, p[1] if len(p) > 1 else 1, p[2] if len(p) > 2 else 1)
-            reviews = [it for it in reviews if _issued(it) >= floor]
+        reviews = apply_reviews_floor(reviews, self.JOURNALS.get(journal_name, {}).get('reviews_from'))
         self.log(f"  {journal_name}: {len(all_items)} items, {len(reviews)} book reviews")
         self.stats['journals_searched'] += 1
         self.stats['dois_found'] += len(reviews)
@@ -264,6 +275,11 @@ class CrossrefReviewScraper(BaseScraper):
             return None
         if parsed.get('book_title'):
             parsed['book_title'] = strip_trailing_imprint(parsed['book_title'])
+        if container == 'Political Studies Review':
+            # Sage deposits PSR authors as "Furedi F"; elsewhere a bare initial
+            # in the surname slot is a truncation ("Edward H"), so PSR only
+            parsed['book_author_first'], parsed['book_author_last'] = fix_surname_initials(
+                parsed.get('book_author_first', ''), parsed.get('book_author_last', ''))
 
         record = {
             'Book Title': _normalize(parsed['book_title']) if parsed['book_title'] else '',

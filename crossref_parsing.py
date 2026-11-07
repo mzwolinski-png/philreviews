@@ -2897,3 +2897,39 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
         return True
 
     return False
+
+
+_BARE_INITIALS = re.compile(r'^[A-Z](?:\.?\s?[A-Z]){0,2}\.?$')
+
+
+def _dotted(inits):
+    return ' '.join(c + '.' for c in inits if c.isalpha())
+
+
+def fix_surname_initials(first, last):
+    """Undo reversed "Surname Initials" bylines (Political Studies Review).
+
+    Sage deposits PSR book authors as "Furedi F" or "Mchangama J and Kosseff J",
+    which the parsers store as first="Furedi", last="F". Returns the corrected
+    (first, last) in the site convention, initials dotted ("F.", "Furedi"),
+    or the input unchanged when it does not have that shape.
+    """
+    first, last = (first or '').strip(), (last or '').strip()
+    if not _BARE_INITIALS.match(last) or re.fullmatch(r'[IVX]+', last):
+        return first, last  # "Edwards III", "Benedict XVI"
+    parts = [p for p in re.split(r',\s*|\s+and\s+', first) if p]
+    if not parts:
+        return first, last
+    *others, final = parts
+    # the last author's surname sits in `first`: one capitalised word, not initials
+    if not re.fullmatch(r"[A-ZÀ-Þ][\w'’-]+", final) or _BARE_INITIALS.match(final):
+        return first, last
+    fixed = []
+    for p in others:
+        m = re.fullmatch(r"([A-ZÀ-Þ][\w'’ -]+?)\s+([A-Z](?:\.?\s?[A-Z]){0,2}\.?)", p.strip())
+        if not m:
+            return first, last
+        fixed.append(f"{_dotted(m.group(2))} {m.group(1)}")
+    fixed.append(_dotted(last))
+    new_first = fixed[0] if len(fixed) == 1 else f"{', '.join(fixed[:-1])} and {fixed[-1]}"
+    return new_first, final

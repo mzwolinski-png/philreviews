@@ -72,7 +72,7 @@ def run_crossref_delta(from_date, dry_run=False):
     """Crossref delta check across all journals since from_date."""
     log.info(f"Starting Crossref delta check (since {from_date})...")
     import requests
-    from crossref_scraper import CrossrefReviewScraper, is_book_review, _to_db_fields
+    from crossref_scraper import CrossrefReviewScraper, is_book_review, _to_db_fields, apply_reviews_floor
 
     scraper = CrossrefReviewScraper()
     total_new = 0
@@ -118,6 +118,7 @@ def run_crossref_delta(from_date, dry_run=False):
             reviews = items
         else:
             reviews = [item for item in items if is_book_review(item, detection_mode)]
+        reviews = apply_reviews_floor(reviews, journal_cfg.get("reviews_from"))
 
         if not reviews:
             log.info(f"  {journal_name}: {len(items)} items, 0 reviews")
