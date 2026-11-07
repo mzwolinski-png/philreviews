@@ -24,7 +24,7 @@ KEEP a book if a philosopher could plausibly want to know it was reviewed: philo
 DROP only books that are plainly something else: narrative or military history, biography of a politician or general, fiction, poetry, memoir, current-affairs or policy books about a specific issue, business, journalism.
 
 When unsure, KEEP.
-
+{extra}
 Reply with ONLY a JSON array, one object per item, in order:
 [{"item": 1, "keep": true, "reason": "<= 8 words"}, ...]
 
@@ -32,7 +32,23 @@ Items:
 """
 
 
-def screen(records, client=None):
+# Extra instructions for journals whose own field overlaps philosophy only in
+# part. Political Studies Review is a political science journal: most of its
+# books are elections, parties, policy and international relations (Matt
+# asked for a filter, 2026-11-07).
+JOURNAL_GUIDANCE = {
+    "Political Studies Review": (
+        "\nThese items come from a political SCIENCE journal. Also DROP empirical political "
+        "science: elections, voting, parties, legislatures, public policy and administration, "
+        "comparative politics of particular countries or regions, international relations, "
+        "security and foreign policy, political economy of particular countries, area studies, "
+        "and political history. KEEP political theory and philosophy, the history of political "
+        "thought, democratic theory, justice, rights, citizenship, ideologies treated as ideas, "
+        "and studies of political thinkers.\n"),
+}
+
+
+def screen(records, client=None, source=None):
     """Return (kept, dropped) lists. Each dropped record gets '_gate_reason'.
 
     records: dicts with 'Book Title', 'Book Author First Name',
@@ -61,7 +77,7 @@ def screen(records, client=None):
         try:
             resp = client.messages.create(
                 model=MODEL, max_tokens=4000,
-                messages=[{"role": "user", "content": _PROMPT + items}],
+                messages=[{"role": "user", "content": _PROMPT.replace("{extra}", JOURNAL_GUIDANCE.get(source, "")) + items}],
             )
             text = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
             m = re.search(r"\[.*\]", text, re.S)

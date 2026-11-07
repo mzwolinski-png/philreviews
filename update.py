@@ -77,6 +77,8 @@ def run_crossref_delta(from_date, dry_run=False):
     scraper = CrossrefReviewScraper()
     total_new = 0
     added_reviews = []
+    gated_out = []
+    import relevance_gate
 
     for journal_name in sorted(scraper.JOURNALS.keys()):
         journal_cfg = scraper.JOURNALS.get(journal_name, {})
@@ -128,6 +130,7 @@ def run_crossref_delta(from_date, dry_run=False):
         log.info(f"  {journal_name}: {len(items)} items, {len(reviews)} reviews found")
 
         new_count = 0
+        fresh = []
         for item in reviews:
             extracted = scraper.extract_review(item)
             if not extracted:
@@ -138,7 +141,17 @@ def run_crossref_delta(from_date, dry_run=False):
                 continue
             if link and db.review_link_exists(link):
                 continue
+            fresh.append(extracted)
 
+        if journal_name in relevance_gate.JOURNAL_GUIDANCE and fresh and not dry_run:
+            # Journals mostly outside philosophy: drop the plainly unrelated
+            fresh, dropped = relevance_gate.screen(fresh, source=journal_name)
+            for r in dropped:
+                log.info(f"    gate dropped: {r.get('Book Title', '')[:60]} -- {r['_gate_reason']}")
+                db.exclude_link(r.get("Review Link", ""), f"relevance gate: {r['_gate_reason']}")
+                gated_out.append(f"{journal_name}: {r.get('Book Title', '')[:60]} ({r['_gate_reason']})")
+
+        for extracted in fresh:
             db_record = _to_db_fields(extracted)
             title = db_record.get("book_title", "?")
 
@@ -167,7 +180,8 @@ def run_crossref_delta(from_date, dry_run=False):
         time.sleep(1)
 
     log.info(f"Crossref delta: {total_new} new reviews from {len(scraper.JOURNALS)} journals")
-    return {"new": total_new, "journals": len(scraper.JOURNALS), "added_reviews": added_reviews}
+    return {"new": total_new, "journals": len(scraper.JOURNALS), "added_reviews": added_reviews,
+            "gated_out": gated_out}
 
 
 def run_ndpr(dry_run=False):
@@ -910,6 +924,8 @@ def main():
             detail_lines.append(f"BMCR: {bmcr_stats.get('uploaded', 0)} new")
         if crossref_stats:
             detail_lines.append(f"Crossref: {crossref_stats.get('new', 0)} new (across {crossref_stats.get('journals', 0)} journals)")
+            for g in crossref_stats.get("gated_out", []):
+                detail_lines.append(f"  dropped as not philosophy: {g}")
         if philosophia_symp_stats and (philosophia_symp_stats['inserted'] or philosophia_symp_stats['updated']):
             detail_lines.append(
                 f"Philosophia symposia: {philosophia_symp_stats['inserted']} pieces added, "
