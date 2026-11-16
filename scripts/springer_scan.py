@@ -180,11 +180,20 @@ def _cite_is_meta(seg):
     return False
 
 
+# "…and biodiversity. Princeton University Press, 2024": the year goes as a
+# comma segment, but the imprint is joined to the title by a full stop
+_CITE_PERIOD_IMPRINT = re.compile(
+    r"\.\s+(?:The\s+)?(?:(?:[A-Z][\w&'’-]+\s+){1,4}University Press"
+    r"|University of [A-Z][\w' -]+? Press|(?:MIT|Clarendon|Belknap|Polity) Press"
+    r"|Routledge|Springer|Palgrave Macmillan|Bloomsbury(?: Academic)?|De Gruyter|Brill)$")
+
+
 def _cite_strip_tail(text):
     segs = _cite_split(text)
     while len(segs) > 1 and _cite_is_meta(segs[-1]):
         segs.pop()
-    return ', '.join(segs).strip().rstrip(' .,;')
+    out = ', '.join(segs).strip().rstrip(' .,;')
+    return _CITE_PERIOD_IMPRINT.sub('', out).rstrip(' .,;')
 
 
 def _cite_is_person_name(s):

@@ -98,6 +98,21 @@ class EssayTitledReview(unittest.TestCase):
         self.assertEqual(r["book_author_last_name"], "")
 
 
+class PeriodJoinedImprint(unittest.TestCase):
+    def test_publisher_after_full_stop_is_dropped(self):
+        t, af, al = ss.parse_review_citation(
+            "Review of Evolution evolving: The developmental origins of adaptation "
+            "and biodiversity. Princeton University Press, 2024")
+        self.assertEqual(t, "Evolution evolving: The developmental origins of "
+                            "adaptation and biodiversity")
+        self.assertEqual((af, al), ("", ""))
+
+    def test_full_stop_inside_a_title_is_kept(self):
+        t, _, _ = ss.parse_review_citation(
+            "Review of: Jane Doe, Mind and World. A Study, New York, Oxford University Press, 2023")
+        self.assertEqual(t, "Mind and World. A Study")
+
+
 class GenreSpelling(unittest.TestCase):
     """Springer writes the genre both ways; Res Publica's reviews were all
     'BookReview' and the scan skipped every one of them."""
