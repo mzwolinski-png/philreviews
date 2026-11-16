@@ -506,7 +506,7 @@ def doi_exists(doi: str) -> bool:
         # Check the excluded_dois table — DOIs of items previously identified
         # as false positives that we don't want to re-scrape.
         row = conn.execute(
-            "SELECT 1 FROM excluded_dois WHERE doi = ? LIMIT 1", (doi,)
+            "SELECT 1 FROM excluded_dois WHERE doi IN (?, ?) LIMIT 1", (doi, doi.lower())
         ).fetchone()
         return row is not None
 

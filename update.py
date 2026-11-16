@@ -706,6 +706,7 @@ def main():
     log.info(f"Reviews after update: {after}")
     log.info(f"Net new reviews added: {net_new}")
     tier1_removed = 0
+    tier1_removed_items = []
     stale_sources = []
     undecided_sources = []
     silent_crossref = []
@@ -777,8 +778,11 @@ def main():
             from tier1_filter import cleanup_tier1
             t1 = cleanup_tier1()
             tier1_removed = t1.get('deleted', 0)
+            tier1_removed_items = t1.get('removed', [])
             if tier1_removed:
                 log.info(f"Tier 1 filter: removed {tier1_removed}/{t1['checked']} reviews")
+                for r in tier1_removed_items:
+                    log.info(f"  removed + blocked: {r['source']}: {r['title'][:60]} ({r['author']})")
         except Exception:
             log.exception("Tier 1 filter failed")
 
@@ -948,7 +952,13 @@ def main():
         if lrb_stats and lrb_stats.get("inserted"):
             detail_lines.append(f"LRB: {lrb_stats['inserted']} new")
         if tier1_removed:
-            detail_lines.append(f"Tier 1 filter removed: {tier1_removed} (non-philosophy)")
+            detail_lines.append(f"Tier 1 filter removed and blocked: {tier1_removed} (non-philosophy)")
+            # these no longer come back by themselves, so a wrong one has to be seen here
+            for r in tier1_removed_items[:40]:
+                detail_lines.append(f"  {r['source']}: {r['title'][:70]}"
+                                    + (f" ({r['author']})" if r['author'] else ""))
+            if len(tier1_removed_items) > 40:
+                detail_lines.append(f"  … and {len(tier1_removed_items) - 40} more (see weekly_update.log)")
         if reconcile_report_path:
             detail_lines.append(
                 f"Title merges to review: file://{reconcile_report_path}")

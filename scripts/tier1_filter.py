@@ -229,6 +229,15 @@ _EXEMPT_DDL = """
     )"""
 
 
+_EXCLUDED_DDL = """
+    CREATE TABLE IF NOT EXISTS excluded_links (
+        review_link TEXT PRIMARY KEY, reason TEXT,
+        excluded_at TEXT DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS excluded_dois (
+        doi TEXT PRIMARY KEY, reason TEXT,
+        excluded_at TEXT DEFAULT CURRENT_TIMESTAMP);"""
+
+
 def exempt_links(conn):
     """Links of hand-added reviews the sweep must not delete."""
     conn.execute(_EXEMPT_DDL)
@@ -242,6 +251,14 @@ def exempt(conn, review_link, reason=""):
         "INSERT OR REPLACE INTO filter_exempt_links (review_link, reason) VALUES (?, ?)",
         (review_link, reason),
     )
+    # the sweep blocks what it deletes; keeping a review by hand lifts that
+    try:
+        conn.execute("DELETE FROM excluded_links WHERE review_link = ?", (review_link,))
+        m = re.match(r"https?://(?:dx\.)?doi\.org/(.+)$", review_link or "", re.I)
+        if m:
+            conn.execute("DELETE FROM excluded_dois WHERE lower(doi) = ?", (m.group(1).lower(),))
+    except sqlite3.OperationalError:
+        pass    # exclusion tables not created yet
     conn.commit()
 
 
@@ -260,7 +277,7 @@ def cleanup_tier1(dry_run=False):
     rows = conn.execute(
         f"""
         SELECT id, book_title, book_author_last_name, publication_source,
-               reviewer_first_name, reviewer_last_name, review_link
+               reviewer_first_name, reviewer_last_name, review_link, doi
         FROM reviews
         WHERE publication_source IN ({placeholders})
         """,
@@ -270,16 +287,19 @@ def cleanup_tier1(dry_run=False):
     by_source_pass = defaultdict(int)
     by_source_fail = defaultdict(int)
     fail_ids = []
+    removed = []
     fail_samples = defaultdict(list)
 
     kept_by_hand = exempt_links(conn)
 
-    for rid, title, last, source, rev_first, rev_last, link in rows:
+    for rid, title, last, source, rev_first, rev_last, link, doi in rows:
         if link in kept_by_hand or book_passes_filter(last, title, ref, rev_first, rev_last, source):
             by_source_pass[source] += 1
         else:
             by_source_fail[source] += 1
             fail_ids.append(rid)
+            removed.append({"source": source, "title": title or "", "author": last or "",
+                            "link": link or "", "doi": (doi or "").lower()})
             if len(fail_samples[source]) < 3:
                 fail_samples[source].append((rid, title or "", last or ""))
 
@@ -305,13 +325,25 @@ def cleanup_tier1(dry_run=False):
                 f"DELETE FROM reviews WHERE id IN ({','.join('?' * len(batch))})",
                 batch,
             )
+        # Block what was deleted. Without this the daily Springer scan put
+        # every failing HPLS / J. Hist. Biol. review back the next morning and
+        # the sweep deleted it again, week after week (found 2026-11-15).
+        conn.executescript(_EXCLUDED_DDL)
+        for r in removed:
+            if r["link"]:
+                conn.execute("INSERT OR IGNORE INTO excluded_links (review_link, reason) VALUES (?, ?)",
+                             (r["link"], "tier1 filter"))
+            if r["doi"]:
+                conn.execute("INSERT OR IGNORE INTO excluded_dois (doi, reason) VALUES (?, ?)",
+                             (r["doi"], "tier1 filter"))
         conn.commit()
         print(f"\nDeleted {len(fail_ids)} entries")
     elif dry_run:
         print(f"\n[DRY RUN] would delete {len(fail_ids)} entries")
 
     conn.close()
-    return {"deleted": len(fail_ids) if not dry_run else 0, "checked": len(rows)}
+    return {"deleted": len(fail_ids) if not dry_run else 0, "checked": len(rows),
+            "removed": removed if not dry_run else []}
 
 
 if __name__ == "__main__":

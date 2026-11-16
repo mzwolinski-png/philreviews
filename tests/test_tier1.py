@@ -85,6 +85,35 @@ class HandKeptReviews(unittest.TestCase):
         left = [r[0] for r in conn.execute("SELECT review_link FROM reviews")]
         self.assertEqual(left, ["https://x/keep"])
 
+    def test_sweep_blocks_what_it_deletes(self):
+        """A deleted review must not be re-added by the next scan."""
+        import sqlite3, tempfile, os
+        path = os.path.join(tempfile.mkdtemp(), "t.db")
+        conn = sqlite3.connect(path)
+        conn.executescript(t1.db._SCHEMA)
+        conn.execute(
+            "INSERT INTO reviews (book_title, book_author_last_name, publication_source, "
+            "review_link, doi) VALUES (?,?,?,?,?)",
+            ("Zzqx Unheard Of", "Nobodyatall", "History and Philosophy of the Life Sciences",
+             "http://link.springer.com/openurl/fulltext?id=doi:10.1007/zz-1", "10.1007/zz-1"))
+        conn.commit()
+        conn.close()
+        old = t1.db.DB_PATH
+        t1.db.DB_PATH = path
+        try:
+            out = t1.cleanup_tier1()
+            self.assertEqual([r["title"] for r in out["removed"]], ["Zzqx Unheard Of"])
+            self.assertTrue(t1.db.doi_exists("10.1007/ZZ-1"))
+            self.assertTrue(t1.db.review_link_exists(
+                "http://link.springer.com/openurl/fulltext?id=doi:10.1007/zz-1"))
+            # keeping it by hand lifts the block
+            conn = sqlite3.connect(path)
+            t1.exempt(conn, "https://doi.org/10.1007/zz-1", "kept by hand")
+            conn.close()
+            self.assertFalse(t1.db.doi_exists("10.1007/zz-1"))
+        finally:
+            t1.db.DB_PATH = old
+
 
 if __name__ == "__main__":
     unittest.main()
