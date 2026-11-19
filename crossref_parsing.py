@@ -2688,8 +2688,16 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
                'correction', 'erratum', 'retraction', 'call for papers',
                'book notes', 'books received', 'brief notices', 'notes on our contributors',
                'general index', 'author responds']
+    # "<i>Fractured Goodness: Aristotle's Response to Plato's Form of the
+    # Good</i>, by Christopher Shields": the phrase belongs to the book's own
+    # title, and the record is a citation, not a reply.
+    m_cite = re.match(r'\s*<i>(.*?)</i>\s*,?\s*(?:by|edited by|eds?\.? by|translated by)\b',
+                      title, re.S)
+    cited = m_cite.group(1) if m_cite else ''
     for pattern in exclude:
         if pattern in title_plus_sub:
+            if cited and pattern in cited and pattern not in title_plus_sub.replace(cited, '', 1):
+                continue
             return False
 
     # Length heuristic: items > 15 pages are very rarely book reviews.
