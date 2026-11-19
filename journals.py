@@ -66,8 +66,6 @@ JOURNALS = {
     'British Journal for the History of Philosophy': {'crossref_parseable': False, 'openalex_enrichable': True, 'detection_mode': 'italic_only'},
     # Mixed: "<i>Title</i>" — often no author parseable
     'The Journal of Aesthetics and Art Criticism': {'crossref_parseable': False, 'openalex_enrichable': True, 'detection_mode': 'italic_only'},
-    # Generic "BOOK REVIEWS" — needs Semantic Scholar enrichment
-    'The British Journal of Aesthetics': {'crossref_parseable': False, 'semantic_scholar_enrichable': True, 'detection_mode': 'italic_only'},
     # Generic "Book reviews" or "Book Review" — needs enrichment
     'History and Philosophy of Logic': {'crossref_parseable': False, 'semantic_scholar_enrichable': True, 'detection_mode': 'italic_only'},
     # Many generic "Book reviews" — needs enrichment
@@ -458,9 +456,14 @@ JOURNALS = {
 
     # ── Aesthetics ───────────────────────────────────────────────
     # British Journal of Aesthetics (est. ~192 reviews)
+    # OUP deposits each review as the bare book title with the reviewer as
+    # author, so italic_only caught none of them (only articles that italicise
+    # an artwork). Articles carry abstracts from 2019 on; before that nothing
+    # does, hence the floor.
     'The British Journal of Aesthetics': {
-        'crossref_parseable': True, 'openalex_enrichable': True,
-        'detection_mode': 'italic_only',
+        'crossref_parseable': False, 'openalex_enrichable': True,
+        'detection_mode': 'no_abstract', 'title_is_book': True,
+        'reviews_from': '2020-01-01',
     },
 
     # ── Social / Political Philosophy (more) ─────────────────────

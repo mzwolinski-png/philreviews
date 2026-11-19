@@ -103,7 +103,8 @@ class NoAbstractMode(unittest.TestCase):
     have no abstract and few references; articles have both."""
 
     def item(self, title, page=None, abstract=None, refs=0):
-        d = {"title": [title], "reference-count": refs}
+        d = {"title": [title], "reference-count": refs,
+             "author": [{"given": "A.", "family": "Reviewer"}]}
         if page:
             d["page"] = page
         if abstract:
@@ -133,6 +134,40 @@ class NoAbstractMode(unittest.TestCase):
             self.item("Introduction to the Special Issue of The Philosophical Quarterly"),
         ]:
             self.assertFalse(is_book_review(it, "no_abstract"), it["title"])
+
+    # The British Journal of Aesthetics deposits the same way (OUP), and adds
+    # front matter and exhibition reviews that no abstract either.
+    def test_bja_reviews(self):
+        for it in [
+            self.item("Aesthetic Expertise: An Exploration and Defense", "909-912", refs=2),
+            self.item("The Female Avenger, Women’s Anger and Rape-Revenge Film and Television", "918-921"),
+            self.item("Dangerous Jokes: How Racism and Sexism Weaponize Humor", page=None, refs=2),
+        ]:
+            self.assertTrue(is_book_review(it, "no_abstract"), it["title"])
+
+    def test_bja_front_matter_and_exhibitions(self):
+        unsigned = self.item("Notes on Contributors", "iii-iii")
+        unsigned["author"] = []
+        self.assertFalse(is_book_review(unsigned, "no_abstract"))
+        for it in [
+            self.item("Note on the Cover Artist", "434-434"),
+            self.item("Notes On Contributors", "355-355"),
+            self.item("‘Antony Gormley’, Royal Academy of Arts, 21 September–3 December 2019", "89-92"),
+            self.item("‘Andy Warhol’, Tate Modern, London, 12 March – 15 November 2020; then Museum Ludwig", "107-109"),
+            self.item("Lubaina Himid exhibition at Tate Modern", "435-438", refs=7),
+            self.item("Kehinde Wiley at the National Gallery: The Prelude", "601-605", refs=6),
+            self.item("Ronald W. Hepburn: In Memoriam", "199-202"),
+            self.item("Synopsis", "383-387"),
+            self.item("Replies to My Critics", "97-101"),
+        ]:
+            self.assertFalse(is_book_review(it, "no_abstract"), it["title"])
+
+    def test_bja_is_configured_for_bare_titles(self):
+        from journals import JOURNALS
+        cfg = JOURNALS["The British Journal of Aesthetics"]
+        self.assertEqual(cfg["detection_mode"], "no_abstract")
+        self.assertTrue(cfg["title_is_book"])
+        self.assertGreaterEqual(cfg["reviews_from"], "2019-01-01")
 
 
 if __name__ == "__main__":

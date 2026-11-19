@@ -2752,6 +2752,18 @@ def is_book_review(crossref_item: dict, detection_mode: str = 'all') -> bool:
             return False
         if re.match(r"(?:discussion|reply|response|editor['’]s note|editorial|introduction|corrigendum|correction|oup accepted manuscript)\b", title):
             return False
+        # A review is signed; front matter ("Notes on Contributors") is not.
+        if not crossref_item.get('author'):
+            return False
+        # The British Journal of Aesthetics, deposited the same way, also runs
+        # cover-artist notes, obituaries, book-symposium pieces and exhibition
+        # reviews ("‘Andy Warhol’, Tate Modern, London, 12 March – 15 November
+        # 2020") without abstracts.
+        if re.match(r"(?:notes? on (?:the )?(?:contributors?|cover artist)|synopsis|pr[eé]cis\b|replies to)", title):
+            return False
+        if re.search(r"\bin memoriam\b|\bexhibition at\b|\bat the national gallery\b"
+                     r"|\b\d{1,2} [a-z]{3,9}\s*[–—-]\s*\d{1,2} [a-z]{3,9} \d{4}\b", title):
+            return False
         n_pages = (last_pg - first_pg + 1) if page_m else None
         if n_pages is not None and 1 <= n_pages <= 5:
             return True
