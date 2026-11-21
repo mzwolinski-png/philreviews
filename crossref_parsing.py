@@ -2202,7 +2202,11 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
         _pubs = (r'Oxford University Press|Cambridge University Press|Princeton University Press'
                  r'|Harvard University Press|Cornell University Press|Columbia University Press'
                  r'|Routledge|Bloomsbury|Lexington Books|MIT Press|Anthem Press')
-        book_title = re.sub(r'\s*\([^)]*(?:' + _pubs + r')[^)]*\)(?:\s*,?\s*\d+\s*pages?\.?)?', '', book_title).strip()
+        # the page count can trail the bracketed imprint: "(Oxford: Oxford
+        # University Press, 2013), pp. xii + 315."
+        book_title = re.sub(r'\s*\([^)]*(?:' + _pubs + r')[^)]*\)'
+                            r'(?:\s*,?\s*(?:pp\.?\s*)?(?:[ivxlcdm]+\s*\+\s*)?\d+\s*(?:pages?|pp)?\.?)?',
+                            '', book_title, flags=re.IGNORECASE).strip()
         book_title = re.split(r'\.\s+(?:' + _cities + r')[,:]\s', book_title)[0].strip()
         book_title = re.split(r'\.\s+(?:' + _pubs + r')', book_title)[0].strip()
         book_title = re.split(r',\s+(?:' + _cities + r')[,:]\s', book_title)[0].strip()

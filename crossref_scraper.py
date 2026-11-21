@@ -61,6 +61,21 @@ def _access_type_from_license(crossref_item: dict) -> str:
 
 # --- Main scraper class ---
 
+def name_case(name: str) -> str:
+    """DAVID WEINSTEIN -> David Weinstein. Cambridge deposits some reviewers in
+    capitals. Initials and names already in mixed case are left alone."""
+    if not name or not name.isupper() or not re.search(r'[A-Z]{3}', name):
+        return name
+
+    def word(w):
+        # initials, "III", and religious-order suffixes stay as they are
+        if re.fullmatch(r'(?:[A-Z]\.)+|[IVX]+,?|OSB|RSM|OFM|CSC|SDB|OMI|OP|SJ', w):
+            return w
+        w = re.sub(r"[^\W\d_]+", lambda m: m.group(0).capitalize(), w)
+        return re.sub(r'\bMc([a-z])', lambda m: 'Mc' + m.group(1).upper(), w)
+    return ' '.join(word(w) for w in name.split())
+
+
 def apply_reviews_floor(items, floor):
     """Drop items issued before a journal's `reviews_from` date.
 
@@ -285,8 +300,8 @@ class CrossrefReviewScraper(BaseScraper):
             'Book Title': _normalize(parsed['book_title']) if parsed['book_title'] else '',
             'Book Author First Name': re.sub(r'^by\s+', '', _normalize(parsed['book_author_first']), flags=re.IGNORECASE),
             'Book Author Last Name': _normalize(parsed['book_author_last']),
-            'Reviewer First Name': _normalize(reviewer_first),
-            'Reviewer Last Name': _normalize(reviewer_last),
+            'Reviewer First Name': name_case(_normalize(reviewer_first)),
+            'Reviewer Last Name': name_case(_normalize(reviewer_last)),
             'Publication Source': container,
             'Publication Date': pub_date,
             'Review Link': review_link,

@@ -959,3 +959,30 @@ class WeeklyReviewFormats20260920(unittest.TestCase):
         r = self._p('Robert Pippin: The Culmination: Heidegger, German Idealism, '
                     'and the Fate of Philosophy')
         self.assertEqual(r['book_author_last'], 'Pippin')
+
+    def test_page_count_after_imprint_parenthesis(self):
+        # Utilitas: the imprint is in brackets and the page count follows it
+        r = self._p('Frederick Rosen, Mill (Oxford: Oxford University Press, '
+                    '2013), pp. xii + 315.')
+        self.assertEqual(r['book_title'], 'Mill')
+        self.assertEqual((r['book_author_first'], r['book_author_last']),
+                         ('Frederick', 'Rosen'))
+
+
+class ShoutedReviewerNames(unittest.TestCase):
+    """Cambridge deposits some reviewers in capitals ("DAVID WEINSTEIN")."""
+    def test_capitals_become_name_case(self):
+        from crossref_scraper import name_case
+        self.assertEqual(name_case('DAVID'), 'David')
+        self.assertEqual(name_case('WEINSTEIN'), 'Weinstein')
+        self.assertEqual(name_case("O'NEILL"), "O'Neill")
+        self.assertEqual(name_case('MCDOWELL'), 'McDowell')
+        self.assertEqual(name_case('SMITH-JONES'), 'Smith-Jones')
+        self.assertEqual(name_case('JOHN STUART'), 'John Stuart')
+        self.assertEqual(name_case('AIDAN NICHOLS OSB'), 'Aidan Nichols OSB')
+
+    def test_initials_and_mixed_case_left_alone(self):
+        from crossref_scraper import name_case
+        for n in ('J.T.', 'J. T.', 'A', 'III', 'DeRose', 'van Fraassen', 'MacIntyre', 'צבי א.'):
+            self.assertEqual(name_case(n), n)
+
