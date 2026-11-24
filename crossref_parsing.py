@@ -553,7 +553,9 @@ def _collapse_duplicated_citation(title: str) -> str:
         return title
     second = t.find(probe, t.find(probe) + 1)
     if second > 0:
-        return t[:second].strip().rstrip(' ,;')
+        # the second copy can carry its own "Book Review:" label
+        head = re.sub(r'\s*(?:book\s+review|review)\s*:\s*$', '', t[:second], flags=re.I)
+        return head.strip().rstrip(' ,;')
     return title
 
 
@@ -1478,11 +1480,14 @@ def parse_review_title(title: str, subtitle: str = '', crossref_data: dict = Non
         _byline_part = re.split(
             r'\.\s+(?=[A-ZÀ-Þ][\w\s]*:\s|\d)|,\s*(?=[A-ZÀ-Þ][a-z]+:\s)',
             remainder, maxsplit=1)[0].strip().rstrip('.,;')
-        by_m = re.match(
-            r"^(.{4,}?)\s*,\s*by\s+([A-ZÀ-Þ][^,]{2,40}(?:,\s*[A-ZÀ-Þ][\w.'-]{1,30})?)$",
-            _byline_part, re.I) or re.match(
-            r"^(.{4,}?)\s*,\s*by\s+([A-ZÀ-Þ][^,]{2,40}(?:,\s*[A-ZÀ-Þ][\w.'-]{1,30})?)$",
-            remainder, re.I)
+        # the inverted form is "Surname, Given" or "Surname, Given Given"
+        # ("Temin, David Myer"); two given names only after a one-word surname,
+        # so "by John Rawls, Harvard University" is not read as a name.
+        _by_re = (r"^(.{4,}?)\s*,\s*by\s+((?:[A-ZÀ-Þ][^,\s]{1,30},\s*[A-ZÀ-Þ][\w.'-]{1,30}"
+                  r"\s+[A-ZÀ-Þ][\w.'-]{0,30})|"
+                  r"[A-ZÀ-Þ][^,]{2,40}(?:,\s*[A-ZÀ-Þ][\w.'-]{1,30})?)$")
+        by_m = (re.match(_by_re, _byline_part, re.I)
+                or re.match(_by_re, remainder, re.I))
         if by_m:
             cand_title = by_m.group(1).strip().rstrip('.,;')
             cand_author = by_m.group(2).strip().rstrip('.,;')

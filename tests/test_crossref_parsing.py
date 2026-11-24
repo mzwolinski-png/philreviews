@@ -388,6 +388,33 @@ class SageDuplicatedCitation(unittest.TestCase):
         t = ('Book Review: The Cambridge Companion to Augustine, by Eleonore Stump')
         self.assertEqual(self._p(t)['book_title'], 'The Cambridge Companion to Augustine')
 
+    def test_duplicate_repeats_the_book_review_label(self):
+        # the second copy can carry its own "Book Review:" prefix
+        r = self._p('Book Review: Biopolitics as a System of Thought , by Serene Richards '
+                    'Book Review: Biopolitics as a System of Thought, by RichardsSerene. '
+                    'London: Bloomsbury Academic, 2024, 193 pp.')
+        self.assertEqual(r['book_title'], 'Biopolitics as a System of Thought')
+        self.assertEqual((r['book_author_first'], r['book_author_last']),
+                         ('Serene', 'Richards'))
+
+    def test_inverted_byline_with_two_given_names(self):
+        r = self._p('Book Review: Remapping Sovereignty: Decolonization and '
+                    'Self-Determination in North American Indigenous Political Thought , '
+                    'by Temin, David Myer Remapping Sovereignty: Decolonization and '
+                    'Self-Determination in North American Indigenous Political Thought, '
+                    'by TeminDavid Myer. Chicago: University of Chicago Press, 2023, 272 pp.')
+        self.assertEqual(r['book_title'], 'Remapping Sovereignty: Decolonization and '
+                         'Self-Determination in North American Indigenous Political Thought')
+        self.assertEqual((r['book_author_first'], r['book_author_last']),
+                         ('David Myer', 'Temin'))
+
+    def test_middle_initial_kept(self):
+        r = self._p('Book Review: Poor Things: How Those with Money Depict Those without It , '
+                    'by Lennard J. Davis Poor Things: How Those with Money Depict Those '
+                    'without It, by DavisLennard J., Durham: Duke University Press, 2024, 304 pp.')
+        self.assertEqual((r['book_author_first'], r['book_author_last']),
+                         ('Lennard J.', 'Davis'))
+
 
 class CitationByline(unittest.TestCase):
     """New Blackfriars-style headers: 'Title, by Author. Publisher, City, Year. pp.'"""
